@@ -1,11 +1,11 @@
 {
   "expo": {
-    "name": "chill-night-town-new",
-    "slug": "chill-night-town-new",
+    "name": "chill-night-town",
+    "slug": "chill-night-town",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "chillnighttownnew",
+    "scheme": "chillnighttown",
     "userInterfaceStyle": "automatic",
     "ios": {
       "icon": "./assets/expo.icon"
