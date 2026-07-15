@@ -1,5 +1,7 @@
 {
   "enabledPlugins": {
     "expo@claude-plugins-official": true
-  }
+  },
+  "model": "opus",
+  "effortLevel": "medium"
 }
