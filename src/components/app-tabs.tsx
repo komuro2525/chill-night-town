@@ -47,6 +47,22 @@ export default function AppTabs() {
           ),
         }}
       />
+      <Tabs.Screen
+        name="test"
+        options={{
+          title: "テスト",
+          tabBarIcon: ({ focused }) => (
+            <Image
+              source={require("@/assets/images/tabIcons/explore.png")}
+              style={{
+                width: 24,
+                height: 24,
+                tintColor: focused ? colors.text : undefined,
+              }}
+            />
+          ),
+        }}
+      />
     </Tabs>
   );
 }
