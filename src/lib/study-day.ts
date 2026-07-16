@@ -7,6 +7,7 @@
 // =====================================================================
 
 import { STUDY_DAY } from "@/constants/domain";
+import { now } from "./clock";
 
 /** Date をローカルタイムの 'YYYY-MM-DD' に整形する（UTCではなく端末ローカル基準） */
 export function formatDateKey(date: Date): string {
@@ -29,7 +30,7 @@ export function formatDateKey(date: Date): string {
  *     ホーム表示等で当関数が呼ばれた場合は「これから始まる夜のサイクル=当日」に
  *     帰属させる方針とする（※この昼間の扱いは要確認事項）。
  */
-export function getStudyDate(instant: Date = new Date()): string {
+export function getStudyDate(instant: Date = now()): string {
   const d = new Date(instant.getTime());
   if (d.getHours() < STUDY_DAY.END_HOUR) {
     d.setDate(d.getDate() - 1);
@@ -41,7 +42,7 @@ export function getStudyDate(instant: Date = new Date()): string {
  * 指定時刻が夜間帯（18:00〜翌5:00）かどうか。学習開始可否の判定に使う（要件2.3）。
  * 5:00 ちょうどは夜間帯外（自動終了時刻）とする。
  */
-export function isNightTime(instant: Date = new Date()): boolean {
+export function isNightTime(instant: Date = now()): boolean {
   const hour = instant.getHours();
   return hour >= STUDY_DAY.START_HOUR || hour < STUDY_DAY.END_HOUR;
 }

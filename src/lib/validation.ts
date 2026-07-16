@@ -3,8 +3,11 @@
 
 import {
   DAILY_GOAL_MINUTES,
+  EXTENSION_MINUTES,
   LIMITS,
   NOTIFICATION_WINDOW,
+  POMODORO,
+  SIMPLE_PLANNED_MINUTES,
 } from "@/constants/domain";
 
 /** ニックネーム（必須・上限20文字）。要件1.2 / UC 1.2 */
@@ -25,6 +28,96 @@ export function validateDailyGoalMinutes(raw: string): string | null {
   const value = Number(trimmed);
   if (value < DAILY_GOAL_MINUTES.MIN || value > DAILY_GOAL_MINUTES.MAX) {
     return `目標時間は${DAILY_GOAL_MINUTES.MIN}〜${DAILY_GOAL_MINUTES.MAX}分で入力してください`;
+  }
+  return null;
+}
+
+/** 分単位の整数入力の共通検証。値域外・非数字はメッセージを返す */
+function validateMinutesInRange(
+  raw: string,
+  min: number,
+  max: number,
+  label: string,
+): string | null {
+  const trimmed = raw.trim();
+  if (trimmed.length === 0) return `${label}を入力してください`;
+  if (!/^\d+$/.test(trimmed)) return `${label}は数字で入力してください`;
+  const value = Number(trimmed);
+  if (value < min || value > max) {
+    return `${label}は${min}〜${max}分で入力してください`;
+  }
+  return null;
+}
+
+/** 黙々モードの予定学習時間（10〜660分）。UC 3.1 */
+export function validatePlannedMinutes(raw: string): string | null {
+  return validateMinutesInRange(
+    raw,
+    SIMPLE_PLANNED_MINUTES.MIN,
+    SIMPLE_PLANNED_MINUTES.MAX,
+    "予定学習時間",
+  );
+}
+
+/** ポモドーロの作業時間（5〜120分）。要件3.1 */
+export function validatePomodoroWorkMinutes(raw: string): string | null {
+  return validateMinutesInRange(
+    raw,
+    POMODORO.WORK_MINUTES.MIN,
+    POMODORO.WORK_MINUTES.MAX,
+    "作業時間",
+  );
+}
+
+/** ポモドーロの休憩時間（1〜30分）。要件3.1 */
+export function validatePomodoroBreakMinutes(raw: string): string | null {
+  return validateMinutesInRange(
+    raw,
+    POMODORO.BREAK_MINUTES.MIN,
+    POMODORO.BREAK_MINUTES.MAX,
+    "休憩時間",
+  );
+}
+
+/** ポモドーロの繰り返し回数（1〜10回）。要件3.1 */
+export function validatePomodoroLoopCount(raw: string): string | null {
+  const trimmed = raw.trim();
+  if (trimmed.length === 0) return "繰り返し回数を入力してください";
+  if (!/^\d+$/.test(trimmed)) return "繰り返し回数は数字で入力してください";
+  const value = Number(trimmed);
+  if (value < POMODORO.LOOP_COUNT.MIN || value > POMODORO.LOOP_COUNT.MAX) {
+    return `繰り返し回数は${POMODORO.LOOP_COUNT.MIN}〜${POMODORO.LOOP_COUNT.MAX}回で入力してください`;
+  }
+  return null;
+}
+
+/** 延長宣言の追加時間（5〜120分）。要件5.2 */
+export function validateExtensionMinutes(raw: string): string | null {
+  return validateMinutesInRange(
+    raw,
+    EXTENSION_MINUTES.MIN,
+    EXTENSION_MINUTES.MAX,
+    "延長する時間",
+  );
+}
+
+/**
+ * タグ名（必須・上限20文字）。要件3.4。
+ * 名称の重複（標準タグ・既存マイタグとの衝突）は登録時にDB側で判定する。
+ */
+export function validateTagName(raw: string): string | null {
+  const name = raw.trim();
+  if (name.length === 0) return "タグの名前を入力してください";
+  if (name.length > LIMITS.TAG_NAME_MAX) {
+    return `タグの名前は${LIMITS.TAG_NAME_MAX}文字以内で入力してください`;
+  }
+  return null;
+}
+
+/** 振り返りメモ（任意・上限500文字）。要件3.4 */
+export function validateMemo(raw: string): string | null {
+  if (raw.length > LIMITS.MEMO_MAX) {
+    return `メモは${LIMITS.MEMO_MAX}文字以内で入力してください`;
   }
   return null;
 }

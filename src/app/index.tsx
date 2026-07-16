@@ -41,7 +41,7 @@ import {
 } from "@/db/repositories";
 import type { StudyDaySummary } from "@/db/repositories/sessionRepo";
 import type { SelectedTown } from "@/db/repositories/townProgressRepo";
-import { useNow } from "@/hooks/use-now";
+import { setDevTimeToHour, useAppNow } from "@/lib/clock";
 import { getPseudoOnlineCount } from "@/lib/pseudo-online";
 import { getStudyDate, isNightTime } from "@/lib/study-day";
 
@@ -122,7 +122,6 @@ export default function HomeScreen() {
               level={level}
               summary={summary}
               goalMinutes={user?.daily_goal_minutes ?? null}
-              devHour={devHour}
             />
           ) : null}
           <SideIcons />
@@ -140,12 +139,13 @@ export default function HomeScreen() {
             }
             onSessionsChanged={reloadSummary}
             devHour={devHour}
-            onCycleDevHour={() =>
-              setDevHour((prev) => {
-                const i = DEV_CLOCK_HOURS.indexOf(prev);
-                return DEV_CLOCK_HOURS[(i + 1) % DEV_CLOCK_HOURS.length];
-              })
-            }
+            onCycleDevHour={() => {
+              const i = DEV_CLOCK_HOURS.indexOf(devHour);
+              const next = DEV_CLOCK_HOURS[(i + 1) % DEV_CLOCK_HOURS.length];
+              setDevHour(next);
+              // 実体は clock.ts の1箇所。計測・5:00判定にも同じ時刻が効く
+              setDevTimeToHour(next);
+            }}
           />
         </>
       ) : null}
@@ -221,18 +221,11 @@ const DEV_DUMMY_SESSION_MINUTES = 35;
 
 // 開発用の時刻上書き。夜間帯判定（要件2.3）の両側を実機で確認するために使う。
 // null = 実時間 / 21 = 夜間帯内（開始できる） / 12 = 夜間帯外（開始できない）
+// 上書きの実体は src/lib/clock.ts にあり、計測・5:00判定にも同じ時刻が効く。
 const DEV_CLOCK_HOURS: (number | null)[] = [null, 21, 12];
 
 function devHourLabel(hour: number | null): string {
   return hour === null ? "実時間" : `${hour}:00`;
-}
-
-/** 開発用の時刻上書きを適用する。上書きなし（null）ならそのまま返す */
-function applyDevHour(now: Date, hour: number | null): Date {
-  if (hour === null) return now;
-  const d = new Date(now.getTime());
-  d.setHours(hour, 0, 0, 0);
-  return d;
 }
 const WEEKDAYS = ["日", "月", "火", "水", "木", "金", "土"];
 
@@ -255,17 +248,14 @@ function TopOverlay({
   level,
   summary,
   goalMinutes,
-  devHour,
 }: {
   level: number;
   summary: StudyDaySummary | null;
   goalMinutes: number | null;
-  devHour: number | null;
 }) {
   const insets = useSafeAreaInsets();
-  const realNow = useNow(10000);
-  // 開発用の時刻上書き（__DEV__ 限定）。時計・日時表示・夜間帯判定すべてに効かせる
-  const now = applyDevHour(realNow, devHour);
+  // アプリ内の現在時刻（開発用の上書きが効く）。時計・日時表示・夜間帯判定で共有する
+  const now = useAppNow(10000);
   const dateLabel = formatDateTimeLabel(now);
   const online = getPseudoOnlineCount();
   const top = insets.top + Spacing.two;
