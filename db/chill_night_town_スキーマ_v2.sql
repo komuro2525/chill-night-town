@@ -35,6 +35,8 @@ CREATE TABLE user (
     pomodoro_work_minutes       INTEGER NOT NULL DEFAULT 25 CHECK (pomodoro_work_minutes BETWEEN 5 AND 120),
     pomodoro_break_minutes      INTEGER NOT NULL DEFAULT 5  CHECK (pomodoro_break_minutes BETWEEN 1 AND 30),
     pomodoro_loop_count         INTEGER NOT NULL DEFAULT 1  CHECK (pomodoro_loop_count BETWEEN 1 AND 10),
+    -- 初回ホームの「街の育て方」お知らせ（成長方式の案内）を表示済みか。1=表示済み（以後出さない）
+    growth_hint_dismissed       INTEGER NOT NULL DEFAULT 0  CHECK (growth_hint_dismissed IN (0, 1)),
     created_at                  TEXT    NOT NULL DEFAULT (datetime('now')),
     updated_at                  TEXT    NOT NULL DEFAULT (datetime('now'))
 );

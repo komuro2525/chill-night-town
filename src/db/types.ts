@@ -37,6 +37,8 @@ export type User = {
   pomodoro_work_minutes: number;
   pomodoro_break_minutes: number;
   pomodoro_loop_count: number;
+  /** 初回ホームの成長方式お知らせを表示済みか（1=表示済み） */
+  growth_hint_dismissed: Bool;
   created_at: string;
   updated_at: string;
 };
