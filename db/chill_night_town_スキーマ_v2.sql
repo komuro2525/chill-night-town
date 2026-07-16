@@ -401,6 +401,30 @@ CREATE TABLE daily_goal_achievement (
 );
 
 -- =====================================================================
+-- 18. daily_night_weather : 学習日ごとに選択された夜の天気
+--     ・ホーム画面の背景演出・環境音の参照先（要件8章）。
+--       行が無い学習日は「天気未選択」＝ニュートラルな夜空とする
+--       （前日以前の天気は引き継がない）
+--     ・学習を開始せずホーム画面から天気だけ選べるようにするため、
+--       セッションから独立して保持する（要件2.5）。
+--       旧版は当学習日の study_session / active_session から導出していたが、
+--       その方式では学習を開始しない限り天気を選べなかった
+--     ・複合主キーにより1学習日1行。選び直した場合は上書きする（履歴は持たない）
+--     ・study_session.night_weather_id とは役割が異なる。あちらは
+--       「その学習に紐づく記録」であり、本テーブルの更新では書き換えない
+--       （夜の天気アルバムは study_session を集計するため）
+-- =====================================================================
+CREATE TABLE daily_night_weather (
+    user_id             INTEGER NOT NULL REFERENCES user(id)          ON DELETE CASCADE,
+    study_date          TEXT    NOT NULL,  -- 'YYYY-MM-DD'（学習日）
+    night_weather_id    INTEGER NOT NULL REFERENCES night_weather(id) ON DELETE RESTRICT,
+    updated_at          TEXT    NOT NULL DEFAULT (datetime('now')),
+    PRIMARY KEY (user_id, study_date)
+);
+
+CREATE INDEX idx_daily_night_weather_weather ON daily_night_weather(night_weather_id);
+
+-- =====================================================================
 -- 備考:
 -- ・10.8 データ削除機能: user テーブルの該当行を削除すると、上記の
 --   ON DELETE CASCADE 設定により、ユーザーに紐づく全データ

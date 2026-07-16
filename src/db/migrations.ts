@@ -31,7 +31,7 @@ type Migration = {
 
 // 現在のスキーマバージョン（db/*.sql が表す「最新」の版）。
 // スキーマを変更したら、スキーマSQLを更新しつつ本値を+1し、DELTA_MIGRATIONS に差分を追加する。
-const SCHEMA_VERSION = 3;
+const SCHEMA_VERSION = 4;
 
 // 既存DB（過去バージョン）向けの差分マイグレーション（version >= 2）。
 // 新規インストールはスキーマSQL（=最新）を適用して一気に SCHEMA_VERSION まで上がるため、
@@ -63,6 +63,33 @@ const DELTA_MIGRATIONS: Migration[] = [
         "ローファイ少女は今日も寝不足",
         "assets/audio/bgm/ローファイ少女は今日も寝不足.mp3",
       );
+    },
+  },
+  {
+    version: 4,
+    up: async (db) => {
+      // 学習日ごとに選択された夜の天気（要件2.5）。
+      // 旧版は演出用の天気を当学習日の study_session / active_session から導出しており、
+      // 学習を開始しない限り天気を選べなかった。セッションから独立した保存先を設ける
+      await db.execAsync(`
+        CREATE TABLE daily_night_weather (
+            user_id             INTEGER NOT NULL REFERENCES user(id)          ON DELETE CASCADE,
+            study_date          TEXT    NOT NULL,
+            night_weather_id    INTEGER NOT NULL REFERENCES night_weather(id) ON DELETE RESTRICT,
+            updated_at          TEXT    NOT NULL DEFAULT (datetime('now')),
+            PRIMARY KEY (user_id, study_date)
+        );
+        CREATE INDEX idx_daily_night_weather_weather ON daily_night_weather(night_weather_id);
+      `);
+
+      // 既存の計測中セッション・学習記録から、当学習日の天気を引き継ぐ
+      // （移行前に選ばれていた天気が失われないようにする）
+      await db.execAsync(`
+        INSERT OR IGNORE INTO daily_night_weather (user_id, study_date, night_weather_id)
+        SELECT user_id, study_date, night_weather_id
+          FROM study_session
+         WHERE id IN (SELECT MAX(id) FROM study_session GROUP BY user_id, study_date)
+      `);
     },
   },
 ];

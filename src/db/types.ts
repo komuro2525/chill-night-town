@@ -198,6 +198,18 @@ export type DailyGoalAchievement = {
   achieved_at: string;
 };
 
+/**
+ * 学習日ごとに選択された夜の天気（要件2.5 / 8章）。
+ * ホーム画面の背景演出・環境音はこの値を参照する。行が無い学習日は「天気未選択」。
+ * study_session.night_weather_id とは役割が異なる（あちらはその学習に紐づく記録）。
+ */
+export type DailyNightWeather = {
+  user_id: number;
+  study_date: string;
+  night_weather_id: number;
+  updated_at: string;
+};
+
 // =====================================================================
 // Ⅴ. 設定（ユーザー単位 1:1）
 // =====================================================================
