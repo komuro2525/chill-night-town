@@ -1,0 +1,30 @@
+import type { ImageSourcePropType } from "react-native";
+
+// 街コード → レベル別背景画像の登録。
+// React Native の require() は静的パスのみ解決可能なため、DBのパス文字列ではなく
+// 街コードをキーに静的に対応づける（将来 Firebase 連携時もこの層で吸収できる）。
+// アート未作成の街は未登録とし、UI側でプレースホルダ（準備中）を表示する。
+const TOWN_LEVEL_ART: Record<string, Record<number, ImageSourcePropType>> = {
+  // town_01 = nightTown（海辺の港町テーマ）。Lv.1〜Lv.5。
+  town_01: {
+    1: require("@/assets/images/home/nightTown/lv1.png"),
+    2: require("@/assets/images/home/nightTown/lv2.png"),
+    3: require("@/assets/images/home/nightTown/lv3.png"),
+    4: require("@/assets/images/home/nightTown/lv4.png"),
+    5: require("@/assets/images/home/nightTown/lv5.png"),
+  },
+  // town_02 は素材制作前のため未登録（準備中枠として表示）
+};
+
+/** 指定した街コード・レベルの背景画像を返す（未登録なら undefined） */
+export function getTownArt(
+  code: string,
+  level: number,
+): ImageSourcePropType | undefined {
+  return TOWN_LEVEL_ART[code]?.[level];
+}
+
+/** その街のアートが用意されているか（未作成の街の判定に使う） */
+export function hasTownArt(code: string): boolean {
+  return TOWN_LEVEL_ART[code] != null;
+}
