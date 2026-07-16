@@ -7,6 +7,8 @@ import { Stack, useRouter } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { useEffect } from "react";
 import { useColorScheme } from "react-native";
+import { GestureHandlerRootView } from "react-native-gesture-handler";
+import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import { AnimatedSplashOverlay } from "@/components/animated-icon";
 import { AudioProvider } from "@/contexts/AudioContext";
@@ -20,16 +22,21 @@ SplashScreen.preventAutoHideAsync();
 export default function RootLayout() {
   const colorScheme = useColorScheme();
   return (
-    <ThemeProvider value={colorScheme === "dark" ? DarkTheme : DefaultTheme}>
-      <SettingsProvider>
-        <AudioProvider>
-          <TimerProvider>
-            <AnimatedSplashOverlay />
-            <RootNavigator />
-          </TimerProvider>
-        </AudioProvider>
-      </SettingsProvider>
-    </ThemeProvider>
+    // 全画面でジェスチャ（ホームの街探索スワイプ等）を有効にするためルートに配置する
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <SafeAreaProvider>
+        <ThemeProvider value={colorScheme === "dark" ? DarkTheme : DefaultTheme}>
+          <SettingsProvider>
+            <AudioProvider>
+              <TimerProvider>
+                <AnimatedSplashOverlay />
+                <RootNavigator />
+              </TimerProvider>
+            </AudioProvider>
+          </SettingsProvider>
+        </ThemeProvider>
+      </SafeAreaProvider>
+    </GestureHandlerRootView>
   );
 }
 

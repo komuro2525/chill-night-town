@@ -5,3 +5,4 @@ export * as activeSessionRepo from "./activeSessionRepo";
 export * as settingsRepo from "./settingsRepo";
 export * as setupRepo from "./setupRepo";
 export * as maintenanceRepo from "./maintenanceRepo";
+export * as townProgressRepo from "./townProgressRepo";
