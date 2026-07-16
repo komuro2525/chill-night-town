@@ -69,34 +69,67 @@ export function getCappedMs(session: ActiveSession, atMs: number): number {
   return Math.min(atMs, getAutoEndMs(session));
 }
 
-/** ポモドーロ1ループの秒数（作業＋休憩） */
-function getCycleSeconds(session: ActiveSession): number {
-  return (
-    (session.pomodoro_work_minutes ?? 0) * 60 +
-    (session.pomodoro_break_minutes ?? 0) * 60
-  );
+/**
+ * ポモドーロの構成（要件3.1・修正履歴30）:
+ *   作業 →（休憩 → 作業）× (n−1)
+ * 休憩は**作業と作業の間にのみ**挟み、最後の作業の後に休憩は行わない。
+ * n=1 のときは休憩が一切発生しない。
+ */
+type PomodoroLayout = {
+  workSec: number;
+  breakSec: number;
+  loops: number;
+  /** 作業＋休憩。最後のループを除く各ループの長さ */
+  cycleSec: number;
+  /** 全体の長さ = 作業×n ＋ 休憩×(n−1) */
+  totalSec: number;
+  /** 最後の作業フェーズが始まる位置 = (作業＋休憩)×(n−1) */
+  lastWorkStartSec: number;
+};
+
+function getLayout(session: ActiveSession): PomodoroLayout {
+  const workSec = (session.pomodoro_work_minutes ?? 0) * 60;
+  const breakSec = (session.pomodoro_break_minutes ?? 0) * 60;
+  const loops = session.pomodoro_loop_count ?? 0;
+  const cycleSec = workSec + breakSec;
+  return {
+    workSec,
+    breakSec,
+    loops,
+    cycleSec,
+    totalSec: workSec * loops + breakSec * Math.max(0, loops - 1),
+    lastWorkStartSec: cycleSec * Math.max(0, loops - 1),
+  };
 }
 
 /**
  * ポモドーロの現在フェーズを経過秒から算出する。
  * フェーズはDBに保存せず、経過秒と設定値から毎回導く（テーブル定義書の方針）。
- *
- * 1ループ = 作業 → 休憩。これを繰り返し回数だけ交互に繰り返し、
- * 全ループ完了で終了演出へ移行する（要件3.1）。
+ * 最後の作業フェーズの完了をもって全ループ完了とする（要件3.1）。
  */
 export function getPomodoroPhase(
   session: ActiveSession,
   elapsedSeconds: number,
 ): PomodoroPhase {
-  const workSec = (session.pomodoro_work_minutes ?? 0) * 60;
-  const loops = session.pomodoro_loop_count ?? 0;
-  const cycleSec = getCycleSeconds(session);
-  const totalSec = cycleSec * loops;
+  const { workSec, loops, cycleSec, totalSec, lastWorkStartSec } =
+    getLayout(session);
 
   if (elapsedSeconds >= totalSec) {
-    return { kind: "break", loop: loops, remainingSeconds: 0, completed: true };
+    // 最後の作業フェーズを終えた時点で完了
+    return { kind: "work", loop: loops, remainingSeconds: 0, completed: true };
   }
 
+  // 最後の作業フェーズ（この後に休憩は続かない）
+  if (elapsedSeconds >= lastWorkStartSec) {
+    return {
+      kind: "work",
+      loop: loops,
+      remainingSeconds: totalSec - elapsedSeconds,
+      completed: false,
+    };
+  }
+
+  // 途中のループ（作業 → 休憩）
   const loopIndex = Math.floor(elapsedSeconds / cycleSec); // 0始まり
   const within = elapsedSeconds % cycleSec;
   const isWork = within < workSec;
@@ -126,15 +159,18 @@ export function getActualStudySeconds(
   if (session.timer_mode === "simple") return elapsed;
 
   // ポモドーロは休憩フェーズを除く
-  const workSec = (session.pomodoro_work_minutes ?? 0) * 60;
-  const loops = session.pomodoro_loop_count ?? 0;
-  const cycleSec = getCycleSeconds(session);
+  const { workSec, loops, cycleSec, lastWorkStartSec } = getLayout(session);
 
+  // 最後の作業フェーズ以降（この後に休憩はない）
+  if (elapsed >= lastWorkStartSec) {
+    const lastWork = Math.min(elapsed - lastWorkStartSec, workSec);
+    return Math.max(0, loops - 1) * workSec + lastWork;
+  }
+
+  // 途中のループ: 完了したループ数×作業 ＋ 現在ループの作業した分
   const completedLoops = Math.floor(elapsed / cycleSec);
   const within = elapsed % cycleSec;
-  const actual = completedLoops * workSec + Math.min(within, workSec);
-  // 全ループ完了後は作業時間の合計で頭打ち
-  return Math.min(actual, workSec * loops);
+  return completedLoops * workSec + Math.min(within, workSec);
 }
 
 /** 実績学習時間（分・切り捨て）。保存・表示はこの単位で行う */
@@ -173,7 +209,7 @@ export function getEndMs(session: ActiveSession, atMs: number): number {
   const capped = getCappedMs(session, atMs);
   if (session.timer_mode !== "pomodoro") return capped;
 
-  const totalSec = getCycleSeconds(session) * (session.pomodoro_loop_count ?? 0);
+  const { totalSec } = getLayout(session);
   if (getElapsedSeconds(session, capped) < totalSec) return capped;
 
   // 全ループ完了後に終了した場合、完了した瞬間を終了時刻とする
