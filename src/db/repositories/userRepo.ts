@@ -21,3 +21,12 @@ export async function getUser(): Promise<User | null> {
   const row = await db.getFirstAsync<User>("SELECT * FROM user LIMIT 1");
   return row ?? null;
 }
+
+/**
+ * 「育て方のお知らせ」を表示済みとして記録する。
+ * 初回ホーム表示で一度だけ案内し、以降は二度と表示しない（要件6.2の周知）。
+ */
+export async function markGrowthHintDismissed(): Promise<void> {
+  const db = await getDatabase();
+  await db.runAsync("UPDATE user SET growth_hint_dismissed = 1");
+}

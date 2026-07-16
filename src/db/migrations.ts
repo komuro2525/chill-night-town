@@ -4,7 +4,12 @@ import { loadSqlAsset } from "./sql-loader";
 
 // db/*.sql を「正」としてバンドル読み込みする（metro.config.js で assetExts に sql を追加済み）
 // 非ASCIIファイル名でも metro のリテラル require であれば解決できる
+//
+// import は使えない: metro はビルド時に「リテラルの require()」を走査してアセットを同梱する。
+// import に置き換えるとSQLがバンドルされず、DBを初期化できずアプリが起動しなくなる。
+// eslint-disable-next-line @typescript-eslint/no-require-imports -- metro のアセット同梱にはリテラル require が必須
 const SCHEMA_SQL_MODULE = require("../../db/chill_night_town_スキーマ_v2.sql") as number;
+// eslint-disable-next-line @typescript-eslint/no-require-imports -- 同上
 const SEED_SQL_MODULE = require("../../db/chill_night_town_シードデータ.sql") as number;
 
 /**
@@ -26,7 +31,7 @@ type Migration = {
 
 // 現在のスキーマバージョン（db/*.sql が表す「最新」の版）。
 // スキーマを変更したら、スキーマSQLを更新しつつ本値を+1し、DELTA_MIGRATIONS に差分を追加する。
-const SCHEMA_VERSION = 2;
+const SCHEMA_VERSION = 3;
 
 // 既存DB（過去バージョン）向けの差分マイグレーション（version >= 2）。
 // 新規インストールはスキーマSQL（=最新）を適用して一気に SCHEMA_VERSION まで上がるため、
@@ -39,6 +44,24 @@ const DELTA_MIGRATIONS: Migration[] = [
       // 初回ホームの成長方式お知らせ表示済みフラグ
       await db.execAsync(
         "ALTER TABLE user ADD COLUMN growth_hint_dismissed INTEGER NOT NULL DEFAULT 0 CHECK (growth_hint_dismissed IN (0, 1))",
+      );
+    },
+  },
+  {
+    version: 3,
+    up: async (db) => {
+      // BGM音源マスタの修正: file_path を実ファイル名に合わせ、登録漏れの1曲を追加する
+      await db.runAsync(
+        "UPDATE ambient_sound SET file_path = ? WHERE code = ?",
+        "assets/audio/bgm/2_23_AM.mp3",
+        "bgm_223am",
+      );
+      await db.runAsync(
+        `INSERT OR IGNORE INTO ambient_sound (code, sound_type, name, artist, file_path)
+         VALUES (?, 'bgm', ?, NULL, ?)`,
+        "bgm_lofigirl",
+        "ローファイ少女は今日も寝不足",
+        "assets/audio/bgm/ローファイ少女は今日も寝不足.mp3",
       );
     },
   },

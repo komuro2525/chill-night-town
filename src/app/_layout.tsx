@@ -85,10 +85,23 @@ function RootNavigator() {
       <Stack.Screen name="index" />
       <Stack.Screen name="setup" options={{ gestureEnabled: false }} />
       <Stack.Screen name="record" options={{ presentation: "modal" }} />
-      <Stack.Screen name="calendar" />
-      <Stack.Screen name="settings/index" />
-      <Stack.Screen name="settings/towns" />
-      <Stack.Screen name="settings/tags" />
+      {/* ホーム以外の画面はヘッダー（戻る）を出す。ホームだけは街の全景を遮らないため非表示（要件2.1） */}
+      <Stack.Screen
+        name="calendar"
+        options={{ headerShown: true, title: "カレンダー", headerBackTitle: "戻る" }}
+      />
+      <Stack.Screen
+        name="settings/index"
+        options={{ headerShown: true, title: "設定", headerBackTitle: "戻る" }}
+      />
+      <Stack.Screen
+        name="settings/towns"
+        options={{ headerShown: true, title: "街の切り替え", headerBackTitle: "戻る" }}
+      />
+      <Stack.Screen
+        name="settings/tags"
+        options={{ headerShown: true, title: "マイタグ", headerBackTitle: "戻る" }}
+      />
     </Stack>
   );
 }

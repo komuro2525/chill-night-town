@@ -6,3 +6,5 @@ export * as settingsRepo from "./settingsRepo";
 export * as setupRepo from "./setupRepo";
 export * as maintenanceRepo from "./maintenanceRepo";
 export * as townProgressRepo from "./townProgressRepo";
+export * as sessionRepo from "./sessionRepo";
+export * as devSeedRepo from "./devSeedRepo";

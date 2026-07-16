@@ -42,10 +42,13 @@ export function ClockButton({
   size = 200,
   now,
   onPress,
+  disabled = false,
 }: {
   size?: number;
   now: Date;
   onPress: () => void;
+  /** 夜間帯外は非活性にする（要件2.3） */
+  disabled?: boolean;
 }) {
   const center = size / 2;
   const hours = now.getHours() % 12;
@@ -61,7 +64,9 @@ export function ClockButton({
   return (
     <Pressable
       onPress={onPress}
+      disabled={disabled}
       accessibilityLabel="タイマーを開始する"
+      accessibilityState={{ disabled }}
       // 枠線は親に付けない。borderWidth があると子の座標基準（パディングボックス）が
       // 枠の分ずれ、針の回転軸と中央の丸の位置がずれるため、枠は下で重ねて描く。
       style={{
@@ -70,6 +75,8 @@ export function ClockButton({
         borderRadius: size / 2,
         backgroundColor: "rgba(18,26,46,0.4)",
         overflow: "hidden",
+        // 非活性でも時刻は読めるよう、消し込みすぎない
+        opacity: disabled ? 0.45 : 1,
       }}
     >
       <Text

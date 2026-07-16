@@ -47,6 +47,19 @@ export function isNightTime(instant: Date = new Date()): boolean {
 }
 
 /**
+ * 学習時間（分）を日本語の表示用文字列にする。
+ * 例: 0 → '0分' / 45 → '45分' / 60 → '1時間' / 95 → '1時間35分'
+ */
+export function formatMinutes(minutes: number): string {
+  const safe = minutes < 0 ? 0 : Math.floor(minutes);
+  const hours = Math.floor(safe / 60);
+  const mins = safe % 60;
+  if (hours === 0) return `${mins}分`;
+  if (mins === 0) return `${hours}時間`;
+  return `${hours}時間${mins}分`;
+}
+
+/**
  * 差分秒数を0以上に丸める（要件3.2: 端末時計変更等で負値になった場合は0扱い）。
  */
 export function clampNonNegativeSeconds(seconds: number): number {

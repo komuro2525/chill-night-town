@@ -75,13 +75,15 @@ INSERT INTO growth_level_threshold (method, level, required_value) VALUES
 
 -- =====================================================================
 -- ambient_sound : 音源マスタ
---   BGM: テスト用1曲（しゃろう「2:23 AM」）
+--   BGM: テスト用2曲
+--   ※file_path は実ファイル名と完全に一致させること（大文字小文字を含む）
 --   ※アプリ組み込み配布の可否は、配布元（DOVA-SYNDROME等）および
 --     アーティスト個別のライセンス規約をリリース前に必ず原文で確認すること
 --   環境音: 音源調達後に追加する（下のコメントを雛形として使用）
 -- =====================================================================
 INSERT INTO ambient_sound (code, sound_type, name, artist, file_path) VALUES
-    ('bgm_223am', 'bgm', '2:23 AM', 'しゃろう', 'assets/audio/bgm/2_23_am.mp3');
+    ('bgm_223am',    'bgm', '2:23 AM',                'しゃろう', 'assets/audio/bgm/2_23_AM.mp3'),
+    ('bgm_lofigirl', 'bgm', 'ローファイ少女は今日も寝不足', NULL,       'assets/audio/bgm/ローファイ少女は今日も寝不足.mp3');
 
 -- 環境音の追加用雛形（ファイル調達後にコメントを外して更新する）
 -- INSERT INTO ambient_sound (code, sound_type, name, artist, file_path) VALUES

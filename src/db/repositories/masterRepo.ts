@@ -4,6 +4,7 @@
 
 import { getDatabase } from "../database";
 import type {
+  AmbientSound,
   Emotion,
   NightWeather,
   NpcMessage,
@@ -32,6 +33,14 @@ export async function getEmotions(): Promise<Emotion[]> {
   const db = await getDatabase();
   return db.getAllAsync<Emotion>(
     "SELECT * FROM emotion ORDER BY display_order",
+  );
+}
+
+/** BGMプール（要件9: BGMに分類された有効な音源。再生順のシャッフルは再生側で行う） */
+export async function getBgmTracks(): Promise<AmbientSound[]> {
+  const db = await getDatabase();
+  return db.getAllAsync<AmbientSound>(
+    "SELECT * FROM ambient_sound WHERE sound_type = 'bgm' AND is_active = 1 ORDER BY id",
   );
 }
 
