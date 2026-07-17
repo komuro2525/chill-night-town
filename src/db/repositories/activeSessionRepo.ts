@@ -29,7 +29,6 @@ export async function getActiveSession(): Promise<ActiveSession | null> {
 export type CreateActiveSessionInput = {
   userId: number;
   townId: number;
-  nightWeatherId: number;
   timerMode: TimerMode;
   /** 黙々モードのみ */
   plannedMinutes?: number | null;
@@ -45,6 +44,8 @@ export type CreateActiveSessionInput = {
 
 /**
  * 計測を開始する（active_session を1件作る）。
+ * 夜の天気はここでは扱わない。開始時に weatherRepo.setWeather() で
+ * その学習日の天気として確定する（1晩＝1天気。要件2.5）。
  * モードと設定値の整合はスキーマの CHECK 制約でも担保されている
  * （simple なら planned_minutes のみ / pomodoro なら pomodoro_* のみ）。
  */
@@ -52,14 +53,13 @@ export async function create(input: CreateActiveSessionInput): Promise<void> {
   const db = await getDatabase();
   await db.runAsync(
     `INSERT INTO active_session
-       (user_id, town_id, night_weather_id, timer_mode,
+       (user_id, town_id, timer_mode,
         planned_minutes, pomodoro_work_minutes, pomodoro_break_minutes, pomodoro_loop_count,
         start_time, paused_accumulated_seconds, pause_started_at,
         break_suggest_threshold_minutes)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, NULL, ?)`,
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, NULL, ?)`,
     input.userId,
     input.townId,
-    input.nightWeatherId,
     input.timerMode,
     input.plannedMinutes ?? null,
     input.pomodoroWorkMinutes ?? null,

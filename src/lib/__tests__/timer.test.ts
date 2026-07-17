@@ -24,7 +24,6 @@ const at = (iso: string) => Date.parse(iso);
 const base = {
   user_id: 1,
   town_id: 1,
-  night_weather_id: 1,
   start_time: "2026-01-10T23:00:00",
   paused_accumulated_seconds: 0,
   pause_started_at: null,

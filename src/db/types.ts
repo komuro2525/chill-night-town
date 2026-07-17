@@ -128,7 +128,6 @@ export type StudySession = {
   id: number;
   user_id: number;
   town_id: number;
-  night_weather_id: number;
   emotion_id: number | null;
   timer_mode: TimerMode;
   /** 学習日（'YYYY-MM-DD'、要件0章の定義） */
@@ -150,7 +149,6 @@ export type SessionTag = {
 export type ActiveSession = {
   user_id: number;
   town_id: number;
-  night_weather_id: number;
   timer_mode: TimerMode;
   /** simple時は必須、pomodoro時は null */
   planned_minutes: number | null;
@@ -201,7 +199,8 @@ export type DailyGoalAchievement = {
 /**
  * 学習日ごとに選択された夜の天気（要件2.5 / 8章）。
  * ホーム画面の背景演出・環境音はこの値を参照する。行が無い学習日は「天気未選択」。
- * study_session.night_weather_id とは役割が異なる（あちらはその学習に紐づく記録）。
+ * 1晩＝1天気。その学習日のあいだ何度でも選び直せ、最後の選択が残る。
+ * study_session / active_session は天気を持たない（二重管理を避けるため）。
  */
 export type DailyNightWeather = {
   user_id: number;

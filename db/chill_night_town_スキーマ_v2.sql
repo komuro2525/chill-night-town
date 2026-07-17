@@ -224,7 +224,10 @@ END;
 --     ・study_date は「学習日」（要件0章: 18:00〜翌5:00サイクルの開始日）。
 --       例: 1/10 23:30開始→翌1:30終了のセッションは '2026-01-10'。
 --       カレンダー表示・目標達成判定はすべて本カラムを基準とする
---     ・night_weather_id はタイマー開始時に確定するため常に NOT NULL
+--     ・夜の天気は本テーブルに持たない。天気は「1晩＝1天気」であり、
+--       study_date で daily_night_weather を引いて求める（要件2.5）。
+--       セッションごとに持つと同じ情報が2箇所に存在し、片方だけ更新される
+--       事故が起き得るため
 --     ・emotion_id は感情記録OFF時・未入力時に NULL
 --     ・ポモドーロは全ループで1件の記録（planned_minutes = 作業時間×回数）
 --     ・成果記録画面から離脱した場合も自動保存する
@@ -234,7 +237,6 @@ CREATE TABLE study_session (
     id                  INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id             INTEGER NOT NULL REFERENCES user(id)          ON DELETE CASCADE,
     town_id             INTEGER NOT NULL REFERENCES town(id)          ON DELETE RESTRICT,
-    night_weather_id    INTEGER NOT NULL REFERENCES night_weather(id) ON DELETE RESTRICT,
     emotion_id          INTEGER          REFERENCES emotion(id)       ON DELETE RESTRICT,
     timer_mode          TEXT    NOT NULL CHECK (timer_mode IN ('simple', 'pomodoro')),
     study_date          TEXT    NOT NULL,   -- 'YYYY-MM-DD'（学習日）
@@ -249,7 +251,6 @@ CREATE TABLE study_session (
 
 CREATE INDEX idx_study_session_user_date ON study_session(user_id, study_date);
 CREATE INDEX idx_study_session_town      ON study_session(town_id);
-CREATE INDEX idx_study_session_weather   ON study_session(night_weather_id);
 CREATE INDEX idx_study_session_emotion   ON study_session(emotion_id);
 
 -- =====================================================================
@@ -352,11 +353,12 @@ CREATE TABLE user_sound_preference (
 --     ・break_suggest_threshold_minutes : 次回の休憩提案を表示する基準
 --       （その学習日の実績合計・分）。初期値は一日の学習目標時間から算出し、
 --       「継続」選択で+60、延長宣言で「現在の実績合計+宣言時間」へ更新する
+--     ・夜の天気は本テーブルに持たない。タイマー設定（3.1）で選んだ天気は
+--       開始時に daily_night_weather へ確定する（要件2.5）
 -- =====================================================================
 CREATE TABLE active_session (
     user_id                         INTEGER PRIMARY KEY REFERENCES user(id) ON DELETE CASCADE,
     town_id                         INTEGER NOT NULL REFERENCES town(id)          ON DELETE RESTRICT,
-    night_weather_id                INTEGER NOT NULL REFERENCES night_weather(id) ON DELETE RESTRICT,
     timer_mode                      TEXT    NOT NULL CHECK (timer_mode IN ('simple', 'pomodoro')),
     planned_minutes                 INTEGER CHECK (planned_minutes IS NULL OR planned_minutes > 0),
     pomodoro_work_minutes           INTEGER CHECK (pomodoro_work_minutes  IS NULL OR pomodoro_work_minutes  BETWEEN 5 AND 120),
@@ -405,14 +407,18 @@ CREATE TABLE daily_goal_achievement (
 --     ・ホーム画面の背景演出・環境音の参照先（要件8章）。
 --       行が無い学習日は「天気未選択」＝ニュートラルな夜空とする
 --       （前日以前の天気は引き継がない）
---     ・学習を開始せずホーム画面から天気だけ選べるようにするため、
---       セッションから独立して保持する（要件2.5）。
---       旧版は当学習日の study_session / active_session から導出していたが、
---       その方式では学習を開始しない限り天気を選べなかった
---     ・複合主キーにより1学習日1行。選び直した場合は上書きする（履歴は持たない）
---     ・study_session.night_weather_id とは役割が異なる。あちらは
---       「その学習に紐づく記録」であり、本テーブルの更新では書き換えない
---       （夜の天気アルバムは study_session を集計するため）
+--     ・本テーブルが「その夜の天気」の唯一の正。演出も記録の表示も
+--       すべてここを参照する（study_session / active_session は天気を持たない）
+--     ・複合主キーにより1学習日1行（＝1晩＝1天気）。選び直した場合は上書きし、
+--       最後に選択された天気がその夜の天気として残る（履歴は持たない）
+--     ・旧版は天気を study_session / active_session が個別に持っていたため、
+--       学習を開始しない限り天気を選べず、1晩に複数セッションがあると
+--       その夜の天気が複数存在し得た。天気は「その夜がどんな夜だったか」を
+--       表す心象風景（要件3.4）であり1晩に1つのため、学習日をキーとする
+--       独立したテーブルへ移した（要件2.5）
+--     ・夜の天気アルバム・月次サマリー（要件4.2）は本テーブルを集計するが、
+--       対象は学習記録が存在する学習日のみ（天気だけ選んで学習しなかった夜は
+--       含めない）。これにより「最も多かった夜の天気」は夜の数で数えられる
 -- =====================================================================
 CREATE TABLE daily_night_weather (
     user_id             INTEGER NOT NULL REFERENCES user(id)          ON DELETE CASCADE,
@@ -433,10 +439,12 @@ CREATE INDEX idx_daily_night_weather_weather ON daily_night_weather(night_weathe
 --   npc_message / ambient_sound / growth_level_threshold）は削除されず、
 --   初回起動時と同じ状態に戻る。削除完了後はアプリ側で初期設定画面へ
 --   即時遷移する（要件10.10）。
--- ・夜の天気アルバムは専用テーブルを持たず、study_session と
+-- ・夜の天気アルバムは専用テーブルを持たず、daily_night_weather と
 --   night_weather を集計して動的に算出する（アプリ側ロジック）。
---   ホーム画面の演出用天気は「当学習日の study_session / active_session の
---   night_weather_id」を参照する（前日以前の天気は引き継がない：要件8章）。
+--   対象は study_session が存在する学習日のみ（天気だけ選んで学習しなかった
+--   夜はアルバムに含めない：要件4.2）。
+--   ホーム画面の演出用天気も「当学習日の daily_night_weather」を参照する
+--   （前日以前の天気は引き継がない：要件8章）。
 -- ・疑似マルチプレイ人数・通知送信履歴は永続化しない（アプリ側メモリ管理）。
 -- ・BGMミニプレイヤー（曲名・アーティスト表示、一時停止/スキップ/頭出し）の
 --   再生状態は永続化しない（アプリ側メモリ管理）。BGMプールは ambient_sound の

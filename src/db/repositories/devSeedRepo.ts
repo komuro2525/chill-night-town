@@ -29,10 +29,7 @@ export async function addDummySession(
     const town = await db.getFirstAsync<{ town_id: number }>(
       "SELECT town_id FROM town_progress WHERE is_selected = 1 LIMIT 1",
     );
-    const weather = await db.getFirstAsync<{ id: number }>(
-      "SELECT id FROM night_weather ORDER BY display_order LIMIT 1",
-    );
-    if (!user || !town || !weather) {
+    if (!user || !town) {
       throw new Error("ダミー記録の作成に必要なデータが揃っていません");
     }
 
@@ -40,12 +37,11 @@ export async function addDummySession(
     const start = new Date(now.getTime() - durationMinutes * 60 * 1000);
     await db.runAsync(
       `INSERT INTO study_session
-         (user_id, town_id, night_weather_id, timer_mode, study_date,
+         (user_id, town_id, timer_mode, study_date,
           start_time, end_time, planned_minutes, duration_minutes)
-       VALUES (?, ?, ?, 'simple', ?, ?, ?, ?, ?)`,
+       VALUES (?, ?, 'simple', ?, ?, ?, ?, ?)`,
       user.id,
       town.town_id,
-      weather.id,
       studyDate,
       start.toISOString(),
       now.toISOString(),
