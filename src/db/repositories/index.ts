@@ -11,5 +11,6 @@ export * as tagRepo from "./tagRepo";
 export * as weatherRepo from "./weatherRepo";
 export * as extensionRepo from "./extensionRepo";
 export * as growthRepo from "./growthRepo";
+export * as calendarRepo from "./calendarRepo";
 // 開発用（__DEV__限定）。リリース前に削除する。docs/開発用テストボタン.md 参照
 export * as devRepo from "./devRepo";
