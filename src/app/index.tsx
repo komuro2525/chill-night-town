@@ -27,6 +27,8 @@ import { BgmMiniPlayer } from "@/components/bgm-mini-player";
 import { ClockButton } from "@/components/clock-button";
 import { GrowthHintCard } from "@/components/growth-hint-card";
 import { LevelBadge } from "@/components/level-badge";
+import { NpcMessageCard } from "@/components/npc-message-card";
+import { RecordModal, type RecordValues } from "@/components/record-modal";
 import { RestoreSessionCard } from "@/components/restore-session-card";
 import { RoundIconButton } from "@/components/round-icon-button";
 import { StudyDayStatus } from "@/components/study-day-status";
@@ -42,8 +44,8 @@ import { useSettings } from "@/contexts/SettingsContext";
 import { useTimer } from "@/contexts/TimerContext";
 import {
   activeSessionRepo,
-  devSeedRepo,
   maintenanceRepo,
+  masterRepo,
   sessionRepo,
   townProgressRepo,
   userRepo,
@@ -94,6 +96,12 @@ export default function HomeScreen() {
   const [discardedNote, setDiscardedNote] = useState(false);
   // 中断からの復元（要件3.2 / UC 1.1）。復元した実績（分）。null なら復元なし
   const [restoreMinutes, setRestoreMinutes] = useState<number | null>(null);
+  // S6 学習成果記録。終了後に確定済みのセッションへ任意項目を書き足す（要件3.4）
+  const [record, setRecord] = useState<{ id: number; minutes: number } | null>(
+    null,
+  );
+  // 記録の保存後にかけるNPCの一言（要件7.1）。選ばれた感情に応じて出し分ける
+  const [npcMessage, setNpcMessage] = useState<string | null>(null);
   // 復元の判定が済んだか。済むまでは自動終了の見張りを動かさない
   // （5:00を過ぎた状態で起動したとき、案内より先に黙って終了させないため）
   const [restoreChecked, setRestoreChecked] = useState(false);
@@ -199,9 +207,12 @@ export default function HomeScreen() {
       if (result.kind === "discarded") {
         setDiscardedNote(true);
       } else {
-        // TODO(P3-5): 終了演出（3.3）→ 学習成果記録（S6）へ。
-        // 現状は感情・タグ・メモを空のまま確定する（要件3.4 の離脱時と同じ扱い）
+        // セッションはここで確定済み。以降の成果記録は任意項目の追記であり、
+        // 画面から離脱しても学習した時間は失われない（要件3.4）
         await reloadSummary();
+        // TODO(Phase 7): 終了演出（要件3.3）— 鐘の音とダッキング。
+        //   音源は assets/audio/ambient/The sound of the bell.mp3
+        setRecord({ id: result.sessionId, minutes: result.minutes });
       }
     } catch (e) {
       console.error("学習の終了に失敗しました", e);
@@ -251,6 +262,30 @@ export default function HomeScreen() {
     await handleFinish();
   }, [handleFinish]);
 
+  // 成果記録の任意項目を保存する（要件3.4）
+  const handleSaveRecord = useCallback(
+    async (v: RecordValues) => {
+      if (!record) return;
+      try {
+        await sessionRepo.updateRecordDetails({
+          sessionId: record.id,
+          emotionId: v.emotionId,
+          memo: v.memo,
+          tagIds: v.tagIds,
+        });
+        // 感情に応じた一言をかける（要件7.1 / 3.4 のステップ8）。
+        // TODO(Phase 4): 目標達成が成立した夜は 'goal_achieved' を優先する。
+        //   達成判定（6.2①）は成長処理と一緒に実装する。文面は投入済み
+        setNpcMessage(await masterRepo.pickNpcMessage("study_end", v.emotionId));
+      } catch (e) {
+        console.error("成果記録の保存に失敗しました", e);
+      } finally {
+        setRecord(null);
+      }
+    },
+    [record],
+  );
+
   // 表示に使うレベル（開発用プレビュー中はその値）。背景アートとLv表示の両方に効かせる
   const level = devLevelOverride ?? selected?.progress.current_level ?? 1;
   const art = selected ? getTownArt(selected.town.code, level) : undefined;
@@ -282,7 +317,7 @@ export default function HomeScreen() {
       {/* 鑑賞モード中はすべてのUIを隠す（鑑賞モードボタン自身を含む）。
           タイマー設定モーダル表示中も同様に隠し、背景は夜の街だけを透かす
           （ボタン類が透けるとごちゃついて見えるため） */}
-      {!immersive && !setupOpen && !timerOpen ? (
+      {!immersive && !setupOpen && !timerOpen && !record ? (
         <>
           {selected ? (
             <TopOverlay
@@ -344,6 +379,24 @@ export default function HomeScreen() {
           onAutoFinish={() => void handleAutoFinish()}
         />
       ) : null}
+
+      {/* S6 学習成果記録（要件3.4）。セッションは確定済みのため、
+          保存せず閉じても学習した時間は失われない */}
+      {record && user ? (
+        <RecordModal
+          userId={user.id}
+          studyDate={getStudyDate()}
+          minutes={record.minutes}
+          weather={weather}
+          emotionEnabled={user.emotion_record_enabled === 1}
+          onChangeWeather={(w) => void handleSelectWeather(w)}
+          onSave={(v) => void handleSaveRecord(v)}
+          onClose={() => setRecord(null)}
+        />
+      ) : null}
+
+      {/* 記録の保存後にかけるNPCの一言（要件7.1） */}
+      <NpcMessageCard message={npcMessage} onClose={() => setNpcMessage(null)} />
 
       {/* 中断からの復元（要件3.2 / UC 1.1） */}
       <RestoreSessionCard
@@ -462,8 +515,6 @@ function ImmersiveButton({ onPress }: { onPress: () => void }) {
 const CLOCK_SIZE = 155;
 // 開発用パネルの下端位置。BGMミニプレイヤー（bottom: Spacing.six ＋ 高さ約80）を避ける
 const DEV_PANEL_BOTTOM = 176;
-// 開発用: ダミー学習記録1件あたりの実績分数（既定の目標60分に2回で届く値）
-const DEV_DUMMY_SESSION_MINUTES = 35;
 // 開発用: 時刻を進める幅（分）。5:00自動終了やポモドーロの進行の確認に使う
 const DEV_ADVANCE_MINUTES = 30;
 
@@ -673,33 +724,10 @@ function DevPanel({
   onCycleDevHour: () => void;
 }) {
   const router = useRouter();
-  const { reload, user } = useSettings();
+  const { reload } = useSettings();
 
   if (!__DEV__) return null;
 
-  // 本物の学習記録は Phase 3 のタイマーで作る。それまでの表示確認用
-  async function handleAddDummySession() {
-    if (!user) return;
-    try {
-      await devSeedRepo.addDummySession(
-        getStudyDate(),
-        DEV_DUMMY_SESSION_MINUTES,
-        user.daily_goal_minutes,
-      );
-      await onSessionsChanged();
-    } catch (e) {
-      console.error("ダミー記録の追加に失敗しました", e);
-    }
-  }
-
-  async function handleClearSessions() {
-    try {
-      await devSeedRepo.clearSessions(getStudyDate());
-      await onSessionsChanged();
-    } catch (e) {
-      console.error("ダミー記録の削除に失敗しました", e);
-    }
-  }
 
   async function handleReset() {
     try {
@@ -732,17 +760,6 @@ function DevPanel({
       >
         <ThemedText type="small" style={styles.devButtonText}>
           時刻を+{DEV_ADVANCE_MINUTES}分進める
-        </ThemedText>
-      </Pressable>
-      {/* 当学習日にダミーの学習記録を足す（Phase 3 のタイマー実装まで表示確認用） */}
-      <Pressable onPress={handleAddDummySession} style={styles.devButton}>
-        <ThemedText type="small" style={styles.devButtonText}>
-          学習記録+{DEV_DUMMY_SESSION_MINUTES}分
-        </ThemedText>
-      </Pressable>
-      <Pressable onPress={handleClearSessions} style={styles.devButton}>
-        <ThemedText type="small" style={styles.devButtonText}>
-          今夜の記録を消す
         </ThemedText>
       </Pressable>
       {/* 全ユーザーデータを削除して初期設定へ（正式版は Phase 6 の設定画面） */}

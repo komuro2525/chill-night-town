@@ -31,7 +31,7 @@ type Migration = {
 
 // 現在のスキーマバージョン（db/*.sql が表す「最新」の版）。
 // スキーマを変更したら、スキーマSQLを更新しつつ本値を+1し、DELTA_MIGRATIONS に差分を追加する。
-const SCHEMA_VERSION = 6;
+const SCHEMA_VERSION = 8;
 
 // 既存DB（過去バージョン）向けの差分マイグレーション（version >= 2）。
 // 新規インストールはスキーマSQL（=最新）を適用して一気に SCHEMA_VERSION まで上がるため、
@@ -195,6 +195,76 @@ const DELTA_MIGRATIONS: Migration[] = [
       await db.execAsync(
         "ALTER TABLE user ADD COLUMN planned_minutes INTEGER NOT NULL DEFAULT 60 CHECK (planned_minutes BETWEEN 10 AND 660)",
       );
+    },
+  },
+  {
+    version: 7,
+    up: async (db) => {
+      // 標準タグから「その他」を外す（要件3.4）。
+      // タグは任意項目で何も選ばずに保存できるため、「その他」と無選択の情報量が同じで
+      // 振り返りの役に立たない。分類しきれない内容はマイタグで具体的に名付けられる。
+      //
+      // 過去の記録から参照されている場合、study_tag は ON DELETE RESTRICT のため
+      // 削除できない。その場合は非表示（is_active = 0）にして、選択肢から消しつつ
+      // 過去の記録の表示は壊さない。
+      await db.execAsync(`
+        UPDATE study_tag
+           SET is_active = 0
+         WHERE user_id IS NULL AND name = 'その他'
+           AND EXISTS (SELECT 1 FROM session_tag WHERE study_tag_id = study_tag.id);
+
+        DELETE FROM study_tag
+         WHERE user_id IS NULL AND name = 'その他'
+           AND NOT EXISTS (SELECT 1 FROM session_tag WHERE study_tag_id = study_tag.id);
+      `);
+    },
+  },
+  {
+    version: 8,
+    up: async (db) => {
+      // 学習終了・目標達成のメッセージを感情に応じて出し分ける（要件7.1）。
+      // NULL は「感情を問わない」候補で、感情未選択・感情記録OFFのときの受け皿。
+      // 既存の study_end(9) / goal_achieved(6) はそのまま NULL として残る
+      await db.execAsync(
+        "ALTER TABLE npc_message ADD COLUMN emotion_id INTEGER REFERENCES emotion(id) ON DELETE RESTRICT",
+      );
+      await db.execAsync(`
+        DROP INDEX IF EXISTS idx_npc_message_trigger;
+        CREATE INDEX idx_npc_message_trigger ON npc_message(npc_id, trigger_type, emotion_id);
+      `);
+
+      // 感情ごとのメッセージ22本を投入する（新規インストールはシードで入る）
+      await db.execAsync(`
+        -- 学習終了・感情ごと（study_end × emotion）
+        --   目標に届かなかった夜。感情に寄り添い、責めない・励ましすぎない
+        INSERT INTO npc_message (npc_id, trigger_type, emotion_id, message) VALUES
+            (1, 'study_end', (SELECT id FROM emotion WHERE code = 'achievement'), 'やり切りましたね。その手応えは、しばらく残ります。'),
+            (1, 'study_end', (SELECT id FROM emotion WHERE code = 'focused'), '深く潜れた夜でしたね。そういう夜は、そう多くありません。'),
+            (1, 'study_end', (SELECT id FROM emotion WHERE code = 'persevered'), 'よく踏ん張りましたね。頑張れた夜は、自分で覚えておくものです。'),
+            (1, 'study_end', (SELECT id FROM emotion WHERE code = 'enjoyed'), '楽しめたのなら、それがいちばん長続きします。'),
+            (1, 'study_end', (SELECT id FROM emotion WHERE code = 'calm'), '穏やかにいられた夜は、それだけで上出来です。'),
+            (1, 'study_end', (SELECT id FROM emotion WHERE code = 'as_usual'), 'いつも通り。それを続けられることが、いちばん難しいのですよ。'),
+            (1, 'study_end', (SELECT id FROM emotion WHERE code = 'sleepy'), '眠い中、よく来ましたね。今夜はもう休んでください。'),
+            (1, 'study_end', (SELECT id FROM emotion WHERE code = 'tired'), 'お疲れさまでした。今夜はもう、何もしなくていい夜です。'),
+            (1, 'study_end', (SELECT id FROM emotion WHERE code = 'down'), 'そういう夜もあります。街は、明日も同じ場所にありますよ。'),
+            (1, 'study_end', (SELECT id FROM emotion WHERE code = 'anxious'), '不安なまま机に向かえたなら、それは強さです。'),
+            (1, 'study_end', (SELECT id FROM emotion WHERE code = 'stuck'), '進まない夜も、進んだ夜と同じだけ必要なものです。');
+        
+        -- 目標達成・感情ごと（goal_achieved × emotion）
+        --   目標に届いた夜。ただし手応えが無いこともあるため、達成だけを祝わない
+        INSERT INTO npc_message (npc_id, trigger_type, emotion_id, message) VALUES
+            (1, 'goal_achieved', (SELECT id FROM emotion WHERE code = 'achievement'), '目標に届いて、手応えもある。今夜は言うことなしですね。'),
+            (1, 'goal_achieved', (SELECT id FROM emotion WHERE code = 'focused'), '集中したまま目標まで。理想的な夜でした。'),
+            (1, 'goal_achieved', (SELECT id FROM emotion WHERE code = 'persevered'), '頑張った分だけ、きちんと目標に届きましたね。'),
+            (1, 'goal_achieved', (SELECT id FROM emotion WHERE code = 'enjoyed'), '楽しみながら目標まで。それがいちばん強いやり方です。'),
+            (1, 'goal_achieved', (SELECT id FROM emotion WHERE code = 'calm'), '力まずに目標へ。いちばん美しい達成の仕方です。'),
+            (1, 'goal_achieved', (SELECT id FROM emotion WHERE code = 'as_usual'), 'いつも通りにしていたら、目標に届いていた。それが実力です。'),
+            (1, 'goal_achieved', (SELECT id FROM emotion WHERE code = 'sleepy'), '眠いのに目標まで来ましたか。今夜はもう、迷わず休んでください。'),
+            (1, 'goal_achieved', (SELECT id FROM emotion WHERE code = 'tired'), '目標に届きました。疲れて当然です。今夜はここまでに。'),
+            (1, 'goal_achieved', (SELECT id FROM emotion WHERE code = 'down'), '気持ちは晴れなくとも、やるべきことはやりました。それは事実です。'),
+            (1, 'goal_achieved', (SELECT id FROM emotion WHERE code = 'anxious'), '不安を抱えたまま、目標まで来ましたね。それは立派なことです。'),
+            (1, 'goal_achieved', (SELECT id FROM emotion WHERE code = 'stuck'), '手応えがなくとも、時間は確かに積み上がりました。届いていますよ。');
+      `);
     },
   },
 ];

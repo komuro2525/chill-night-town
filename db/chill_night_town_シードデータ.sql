@@ -52,15 +52,17 @@ INSERT INTO emotion (code, emoji, name, category, display_order) VALUES
     ('stuck',       '😣', '思うように進まなかった', 'negative', 11);
 
 -- =====================================================================
--- study_tag : 標準タグ（6種。user_id=NULL / is_custom=0）
+-- study_tag : 標準タグ（5種。user_id=NULL / is_custom=0）
+--   「その他」は置かない。タグは任意項目で何も選ばずに保存できるため、
+--   「その他」と無選択の情報量が同じで振り返りの役に立たない（要件3.4）。
+--   分類しきれない内容はマイタグとして具体的な名前で登録できる
 -- =====================================================================
 INSERT INTO study_tag (user_id, name, is_custom, display_order) VALUES
     (NULL, '資格勉強',       0, 1),
     (NULL, 'レポート・課題', 0, 2),
     (NULL, '暗記・復習',     0, 3),
     (NULL, 'プログラミング', 0, 4),
-    (NULL, '読書',           0, 5),
-    (NULL, 'その他',         0, 6);
+    (NULL, '読書',           0, 5);
 
 -- =====================================================================
 -- growth_level_threshold : レベルアップ閾値（習慣型・必要累計経験値）
@@ -101,8 +103,11 @@ INSERT INTO npc (name, description) VALUES
     ('夜の街の住人（仮）', '知的で落ち着いた、夜の街の住人。深夜の書店の店主・喫茶店のマスター・天文台の管理人のような佇まい。名前・立ち絵は素材制作時に確定する');
 
 -- =====================================================================
--- npc_message : NPCメッセージ（計30本）
---   trigger_type: study_start(9) / study_end(9) / goal_achieved(6) / goodnight(6)
+-- npc_message : NPCメッセージ（計52本）
+--   trigger_type: study_start(9) / study_end(9+11) / goal_achieved(6+11) / goodnight(6)
+--   ・emotion_id が NULL の行は「感情を問わない」候補。感情未選択・感情記録OFFの受け皿
+--   ・emotion_id を持つ行は、その感情が選ばれたときの候補（要件7.1）。
+--     現状は感情ごと1件だが、行を追加すれば候補を増やせる（ランダムに1件選ぶ）
 -- =====================================================================
 
 -- 学習開始（study_start）
@@ -137,6 +142,36 @@ INSERT INTO npc_message (npc_id, trigger_type, message) VALUES
     (1, 'goal_achieved', '達成おめでとうございます。ただし、休むのも仕事のうちです。'),
     (1, 'goal_achieved', '継続は、静かな才能です。あなたにはそれがある。'),
     (1, 'goal_achieved', 'この積み重ねが、街を育てていくのです。');
+
+-- 学習終了・感情ごと（study_end × emotion）
+--   目標に届かなかった夜。感情に寄り添い、責めない・励ましすぎない
+INSERT INTO npc_message (npc_id, trigger_type, emotion_id, message) VALUES
+    (1, 'study_end', (SELECT id FROM emotion WHERE code = 'achievement'), 'やり切りましたね。その手応えは、しばらく残ります。'),
+    (1, 'study_end', (SELECT id FROM emotion WHERE code = 'focused'), '深く潜れた夜でしたね。そういう夜は、そう多くありません。'),
+    (1, 'study_end', (SELECT id FROM emotion WHERE code = 'persevered'), 'よく踏ん張りましたね。頑張れた夜は、自分で覚えておくものです。'),
+    (1, 'study_end', (SELECT id FROM emotion WHERE code = 'enjoyed'), '楽しめたのなら、それがいちばん長続きします。'),
+    (1, 'study_end', (SELECT id FROM emotion WHERE code = 'calm'), '穏やかにいられた夜は、それだけで上出来です。'),
+    (1, 'study_end', (SELECT id FROM emotion WHERE code = 'as_usual'), 'いつも通り。それを続けられることが、いちばん難しいのですよ。'),
+    (1, 'study_end', (SELECT id FROM emotion WHERE code = 'sleepy'), '眠い中、よく来ましたね。今夜はもう休んでください。'),
+    (1, 'study_end', (SELECT id FROM emotion WHERE code = 'tired'), 'お疲れさまでした。今夜はもう、何もしなくていい夜です。'),
+    (1, 'study_end', (SELECT id FROM emotion WHERE code = 'down'), 'そういう夜もあります。街は、明日も同じ場所にありますよ。'),
+    (1, 'study_end', (SELECT id FROM emotion WHERE code = 'anxious'), '不安なまま机に向かえたなら、それは強さです。'),
+    (1, 'study_end', (SELECT id FROM emotion WHERE code = 'stuck'), '進まない夜も、進んだ夜と同じだけ必要なものです。');
+
+-- 目標達成・感情ごと（goal_achieved × emotion）
+--   目標に届いた夜。ただし手応えが無いこともあるため、達成だけを祝わない
+INSERT INTO npc_message (npc_id, trigger_type, emotion_id, message) VALUES
+    (1, 'goal_achieved', (SELECT id FROM emotion WHERE code = 'achievement'), '目標に届いて、手応えもある。今夜は言うことなしですね。'),
+    (1, 'goal_achieved', (SELECT id FROM emotion WHERE code = 'focused'), '集中したまま目標まで。理想的な夜でした。'),
+    (1, 'goal_achieved', (SELECT id FROM emotion WHERE code = 'persevered'), '頑張った分だけ、きちんと目標に届きましたね。'),
+    (1, 'goal_achieved', (SELECT id FROM emotion WHERE code = 'enjoyed'), '楽しみながら目標まで。それがいちばん強いやり方です。'),
+    (1, 'goal_achieved', (SELECT id FROM emotion WHERE code = 'calm'), '力まずに目標へ。いちばん美しい達成の仕方です。'),
+    (1, 'goal_achieved', (SELECT id FROM emotion WHERE code = 'as_usual'), 'いつも通りにしていたら、目標に届いていた。それが実力です。'),
+    (1, 'goal_achieved', (SELECT id FROM emotion WHERE code = 'sleepy'), '眠いのに目標まで来ましたか。今夜はもう、迷わず休んでください。'),
+    (1, 'goal_achieved', (SELECT id FROM emotion WHERE code = 'tired'), '目標に届きました。疲れて当然です。今夜はここまでに。'),
+    (1, 'goal_achieved', (SELECT id FROM emotion WHERE code = 'down'), '気持ちは晴れなくとも、やるべきことはやりました。それは事実です。'),
+    (1, 'goal_achieved', (SELECT id FROM emotion WHERE code = 'anxious'), '不安を抱えたまま、目標まで来ましたね。それは立派なことです。'),
+    (1, 'goal_achieved', (SELECT id FROM emotion WHERE code = 'stuck'), '手応えがなくとも、時間は確かに積み上がりました。届いていますよ。');
 
 -- おやすみ（goodnight）
 INSERT INTO npc_message (npc_id, trigger_type, message) VALUES

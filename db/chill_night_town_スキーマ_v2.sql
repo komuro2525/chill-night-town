@@ -272,19 +272,24 @@ CREATE INDEX idx_session_tag_tag ON session_tag(study_tag_id);
 --     MVPでの trigger_type : 'study_start' / 'study_end' / 'goal_achieved' / 'goodnight'
 --     学習終了と目標達成が同時に成立した場合は 'goal_achieved' を優先表示。
 --     'goodnight'（おやすみ機能・要件13章）のメッセージは暗転画面に表示する。
+--     ・emotion_id : 学習終了・目標達成は成果記録で選ばれた感情に応じて出し分ける
+--       （要件7.1）。NULL は感情を問わない候補で、感情未選択・感情記録OFFのときに使う。
+--       感情ごとに複数行を持てる（行を追加するだけで候補を増やせる）
 --     街完成演出用のメッセージを持たせる場合は 'town_completed' 等を
 --     追加すればよい（構造変更不要）
 -- =====================================================================
 CREATE TABLE npc_message (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
-    npc_id          INTEGER NOT NULL REFERENCES npc(id) ON DELETE CASCADE,
+    npc_id          INTEGER NOT NULL REFERENCES npc(id)     ON DELETE CASCADE,
     trigger_type    TEXT    NOT NULL,
+    -- この感情のときに表示する。NULL = 感情を問わない（感情未選択・感情記録OFFの受け皿）
+    emotion_id      INTEGER          REFERENCES emotion(id) ON DELETE RESTRICT,
     message         TEXT    NOT NULL,
     is_active       INTEGER NOT NULL DEFAULT 1 CHECK (is_active IN (0, 1)),
     created_at      TEXT    NOT NULL DEFAULT (datetime('now'))
 );
 
-CREATE INDEX idx_npc_message_trigger ON npc_message(npc_id, trigger_type);
+CREATE INDEX idx_npc_message_trigger ON npc_message(npc_id, trigger_type, emotion_id);
 
 -- =====================================================================
 -- 13. notification_setting : 通知設定（ユーザー単位・1:1）

@@ -84,6 +84,44 @@ export async function createFromActive(
   return insertedId;
 }
 
+/**
+ * 学習記録の任意項目（感情・タグ・メモ）を後から書き込む（要件3.4）。
+ *
+ * セッション自体は終了時に createFromActive() で確定済みのため、
+ * 成果記録画面から離脱しても学習した時間は失われない。
+ * 本関数は「入力された分だけを上書きする」役割を持つ。
+ */
+export async function updateRecordDetails(input: {
+  sessionId: number;
+  emotionId: number | null;
+  memo: string | null;
+  tagIds: number[];
+}): Promise<void> {
+  const db = await getDatabase();
+  await db.withTransactionAsync(async () => {
+    await db.runAsync(
+      `UPDATE study_session
+          SET emotion_id = ?, memo = ?, updated_at = datetime('now')
+        WHERE id = ?`,
+      input.emotionId,
+      input.memo && input.memo.length > 0 ? input.memo : null,
+      input.sessionId,
+    );
+    // タグは付け替え。毎回消してから入れ直す（差分計算より単純で取りこぼしがない）
+    await db.runAsync(
+      "DELETE FROM session_tag WHERE study_session_id = ?",
+      input.sessionId,
+    );
+    for (const tagId of input.tagIds) {
+      await db.runAsync(
+        "INSERT INTO session_tag (study_session_id, study_tag_id) VALUES (?, ?)",
+        input.sessionId,
+        tagId,
+      );
+    }
+  });
+}
+
 export type StudyDaySummary = {
   studyDate: string;
   totalMinutes: number;

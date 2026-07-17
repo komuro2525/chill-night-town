@@ -101,6 +101,8 @@ export type NpcMessage = {
   id: number;
   npc_id: number;
   trigger_type: NpcTriggerType;
+  /** この感情のときに表示する。null = 感情を問わない（感情未選択・感情記録OFFの受け皿） */
+  emotion_id: number | null;
   message: string;
   is_active: Bool;
   created_at: string;

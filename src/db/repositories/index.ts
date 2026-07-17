@@ -9,4 +9,3 @@ export * as townProgressRepo from "./townProgressRepo";
 export * as sessionRepo from "./sessionRepo";
 export * as tagRepo from "./tagRepo";
 export * as weatherRepo from "./weatherRepo";
-export * as devSeedRepo from "./devSeedRepo";
