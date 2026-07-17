@@ -4,7 +4,7 @@
 // ユーザー作成（初期設定）は Phase 1、設定更新は各Phaseで追加する。
 
 import { getDatabase } from "../database";
-import type { User } from "../types";
+import type { GrowthMethod, User } from "../types";
 
 /** ユーザーが存在するか（初期設定完了判定。要件1.1） */
 export async function hasUser(): Promise<boolean> {
@@ -65,4 +65,58 @@ export async function updateTimerPreferences(prefs: {
 export async function markGrowthHintDismissed(): Promise<void> {
   const db = await getDatabase();
   await db.runAsync("UPDATE user SET growth_hint_dismissed = 1");
+}
+
+// --- 設定変更（要件10章）。user は単一行のため WHERE は不要 ---
+// 値の形式検証（空文字・値域）は呼び出し側で validation.ts を通すこと。
+
+/** ニックネームを変更する（要件10.1）。稼働中も可 */
+export async function updateNickname(nickname: string): Promise<void> {
+  const db = await getDatabase();
+  await db.runAsync(
+    "UPDATE user SET nickname = ?, updated_at = datetime('now')",
+    nickname.trim(),
+  );
+}
+
+/** 一日の学習目標時間を変更する（要件10.2）。稼働中不可はUI側で制御 */
+export async function updateDailyGoalMinutes(minutes: number): Promise<void> {
+  const db = await getDatabase();
+  await db.runAsync(
+    "UPDATE user SET daily_goal_minutes = ?, updated_at = datetime('now')",
+    minutes,
+  );
+}
+
+/**
+ * 成長方式を変更する（要件10.6 / 6.2）。稼働中不可はUI側で制御。
+ * 累計学習時間・経験値は保持したまま、以後の判定に使う方式だけを切り替える。
+ * 切り替え後の選択街のレベル再判定は growthRepo.recomputeTownLevel で行う。
+ */
+export async function updateGrowthMethod(method: GrowthMethod): Promise<void> {
+  const db = await getDatabase();
+  await db.runAsync(
+    "UPDATE user SET growth_method = ?, updated_at = datetime('now')",
+    method,
+  );
+}
+
+/** 感情記録のON/OFF（要件10.7）。稼働中も可。過去の記録済み感情には影響しない */
+export async function updateEmotionRecordEnabled(enabled: boolean): Promise<void> {
+  const db = await getDatabase();
+  await db.runAsync(
+    "UPDATE user SET emotion_record_enabled = ?, updated_at = datetime('now')",
+    enabled ? 1 : 0,
+  );
+}
+
+/** 頑張りすぎ防止（休憩提案）のON/OFF（要件10.8）。稼働中も可 */
+export async function updateOverworkPreventionEnabled(
+  enabled: boolean,
+): Promise<void> {
+  const db = await getDatabase();
+  await db.runAsync(
+    "UPDATE user SET overwork_prevention_enabled = ?, updated_at = datetime('now')",
+    enabled ? 1 : 0,
+  );
 }

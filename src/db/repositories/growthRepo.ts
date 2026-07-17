@@ -131,3 +131,57 @@ export async function applyGrowth(params: {
 
   return result;
 }
+
+/**
+ * 実績値を変えずに、選択中の成長方式で街のレベルだけを再判定する（要件6.1 / UC 6.2・6.3）。
+ *
+ * 成長方式の変更（10.6）・プロジェクト型目標学習時間の変更（6.4）で判定基準が変わったときに呼ぶ。
+ * 累計学習時間・経験値は保持し、`computeLevel`（`resolveNextLevel` 内包）で
+ * **上がる方向にのみ**動かす（レベルは下がらない）。基準が緩くなって新たに条件を
+ * 満たしたレベルへは即時上昇し、厳しくなっても現在のレベルを維持する。
+ *
+ * @param method 判定に使う成長方式（変更後の値を渡す）
+ * @returns 再判定後の進捗（対象が無ければ null）
+ */
+export async function recomputeTownLevel(
+  userId: number,
+  townId: number,
+  method: GrowthMethod,
+): Promise<TownProgress | null> {
+  const db = await getDatabase();
+  const habitThresholds = await getGrowthThresholds("habit");
+
+  let updated: TownProgress | null = null;
+
+  await db.withTransactionAsync(async () => {
+    const before = await db.getFirstAsync<TownProgress>(
+      "SELECT * FROM town_progress WHERE user_id = ? AND town_id = ?",
+      userId,
+      townId,
+    );
+    if (!before) return;
+
+    const toLevel = computeLevel({
+      method,
+      currentLevel: before.current_level,
+      exp: before.experience_points,
+      cumulativeMinutes: before.cumulative_study_minutes,
+      habitThresholds,
+      projectTargetMinutes: before.project_target_minutes,
+    });
+
+    if (toLevel !== before.current_level) {
+      await db.runAsync(
+        `UPDATE town_progress SET current_level = ?, updated_at = datetime('now')
+          WHERE user_id = ? AND town_id = ?`,
+        toLevel,
+        userId,
+        townId,
+      );
+    }
+
+    updated = { ...before, current_level: toLevel };
+  });
+
+  return updated;
+}

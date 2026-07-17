@@ -103,6 +103,69 @@ export async function createMyTag(
   return { ok: true, tag: created, revived: false };
 }
 
+/** 管理画面（S10）に出す有効なマイタグ一覧（要件10.9 手順1。論理削除済みは除く） */
+export async function listMyTags(): Promise<StudyTag[]> {
+  const db = await getDatabase();
+  return db.getAllAsync<StudyTag>(
+    `SELECT * FROM study_tag
+      WHERE is_custom = 1 AND is_active = 1
+      ORDER BY display_order, id`,
+  );
+}
+
+export type RenameMyTagResult =
+  | { ok: true; tag: StudyTag }
+  /** 標準タグ、または（論理削除済みを含む）他のマイタグと同名 */
+  | { ok: false; reason: "duplicate" };
+
+/**
+ * マイタグの名称を変更する（要件10.9 手順2・3）。
+ *
+ * 名前の形式（必須・20文字以内）は validateTagName で先に検証すること。
+ * 重複判定は「自分以外に同名の行があるか」で行う。標準タグ（user_id IS NULL）との
+ * 衝突はDBのユニーク索引では防げないためここで弾き、マイタグ同士の衝突は
+ * idx_study_tag_custom_name（論理削除済みも含む）に一致させて弾く。
+ * 同じ行を更新するため、過去の学習記録の表示にも新名称が自然に反映される。
+ */
+export async function renameMyTag(
+  id: number,
+  rawName: string,
+): Promise<RenameMyTagResult> {
+  const db = await getDatabase();
+  const name = rawName.trim();
+
+  const conflict = await db.getFirstAsync<{ id: number }>(
+    "SELECT id FROM study_tag WHERE name = ? AND id != ? LIMIT 1",
+    name,
+    id,
+  );
+  if (conflict) return { ok: false, reason: "duplicate" };
+
+  await db.runAsync(
+    "UPDATE study_tag SET name = ? WHERE id = ? AND is_custom = 1",
+    name,
+    id,
+  );
+  const tag = await db.getFirstAsync<StudyTag>(
+    "SELECT * FROM study_tag WHERE id = ?",
+    id,
+  );
+  if (!tag) throw new Error("マイタグの更新に失敗しました");
+  return { ok: true, tag };
+}
+
+/**
+ * マイタグを論理削除する（要件10.9 手順4）。以後の選択肢から外れるが、
+ * 過去の学習記録では表示され続ける（is_active=0）。上限20件のカウントにも数えない。
+ */
+export async function deactivateMyTag(id: number): Promise<void> {
+  const db = await getDatabase();
+  await db.runAsync(
+    "UPDATE study_tag SET is_active = 0 WHERE id = ? AND is_custom = 1",
+    id,
+  );
+}
+
 /** 指定セッションに紐づくタグ（カレンダー・記録表示用。論理削除済みも表示する） */
 export async function getTagsBySessionId(
   studySessionId: number,
