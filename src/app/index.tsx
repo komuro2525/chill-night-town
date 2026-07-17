@@ -27,6 +27,7 @@ import { BreakSuggestionCard } from "@/components/break-suggestion-card";
 import { BreakSuggestionWatcher } from "@/components/break-suggestion-watcher";
 import { BgmMiniPlayer } from "@/components/bgm-mini-player";
 import { ClockButton } from "@/components/clock-button";
+import { GrowthCard } from "@/components/growth-card";
 import { GrowthHintCard } from "@/components/growth-hint-card";
 import { LevelBadge } from "@/components/level-badge";
 import { MeasuringIndicator } from "@/components/measuring-indicator";
@@ -49,6 +50,7 @@ import {
   activeSessionRepo,
   devRepo,
   extensionRepo,
+  growthRepo,
   maintenanceRepo,
   masterRepo,
   sessionRepo,
@@ -56,6 +58,11 @@ import {
   userRepo,
   weatherRepo,
 } from "@/db/repositories";
+import type { GrowthResult } from "@/db/repositories/growthRepo";
+import {
+  HABIT_STEP_PRODUCTION,
+  HABIT_STEP_TEST,
+} from "@/db/repositories/devRepo";
 import type { StudyDaySummary } from "@/db/repositories/sessionRepo";
 import type { SelectedTown } from "@/db/repositories/townProgressRepo";
 import type { ActiveSession, NightWeather } from "@/db/types";
@@ -108,8 +115,17 @@ export default function HomeScreen() {
   );
   // 記録の保存後にかけるNPCの一言（要件7.1）。選ばれた感情に応じて出し分ける
   const [npcMessage, setNpcMessage] = useState<string | null>(null);
+  // 直近の成長結果（要件6.1）。NPCメッセージの出し分けと演出に使う
+  const [growth, setGrowth] = useState<GrowthResult | null>(null);
+  // レベルアップ・完成の演出（要件6.1）。到達レベル。null なら表示しない
+  const [growthCard, setGrowthCard] = useState<{
+    level: number;
+    completed: boolean;
+  } | null>(null);
   // S5 休憩提案（要件5.1）。表示中の実績合計（分）。null なら非表示
   const [breakTotal, setBreakTotal] = useState<number | null>(null);
+  // 開発用: 習慣型のレベルアップ閾値（1レベルあたりの必要経験値）。本番=5 / テスト=1
+  const [habitStep, setHabitStep] = useState(HABIT_STEP_PRODUCTION);
   // 復元の判定が済んだか。済むまでは自動終了の見張りを動かさない
   // （5:00を過ぎた状態で起動したとき、案内より先に黙って終了させないため）
   const [restoreChecked, setRestoreChecked] = useState(false);
@@ -236,6 +252,41 @@ export default function HomeScreen() {
     [user, selected, timer, reloadSettings],
   );
 
+  // 街の成長処理（要件6.1 / UC 6.1）。学習記録の保存を契機に一度だけ実行する。
+  // 判定に使う実績合計は保存済みの記録から取り直す（1日に複数セッションなら合算される）
+  const applyGrowth = useCallback(
+    async (actualMinutes: number) => {
+      if (!user || !selected) return;
+      try {
+        const studyDate = getStudyDate();
+        const dayTotal = await sessionRepo.getStudyDayTotalMinutes(studyDate);
+        const result = await growthRepo.applyGrowth({
+          userId: user.id,
+          townId: selected.town.id,
+          method: user.growth_method,
+          studyDate,
+          actualMinutes,
+          dayTotalMinutes: dayTotal,
+          goalMinutes: user.daily_goal_minutes,
+        });
+        setGrowth(result);
+        // レベルが上がったら演出を出す（要件6.1）。
+        // 完成（Lv5への初到達）はレベルが下がらないため本質的に一度きりで、
+        // 専用のフラグは持たない
+        if (result?.leveledUp) {
+          setGrowthCard({ level: result.toLevel, completed: result.completed });
+        }
+        // 街のレベル表示・背景アートへ反映する
+        const town = await townProgressRepo.getSelectedTown();
+        setSelected(town);
+        // 目標達成の表示（ホームの学習状況）も更新する
+        await reloadSummary();
+      } catch (e) {
+        console.error("街の成長処理に失敗しました", e);
+      }
+    },
+    [user, selected, reloadSummary],
+  );
   // 学習を終える（要件3.2）。実績1分未満なら保存せず破棄する。
   // 手動の■と自動終了（5:00到達・ポモドーロ全ループ完了）で同じ経路を通す
   const handleFinish = useCallback(async () => {
@@ -247,7 +298,12 @@ export default function HomeScreen() {
       } else {
         // セッションはここで確定済み。以降の成果記録は任意項目の追記であり、
         // 画面から離脱しても学習した時間は失われない（要件3.4）
+        //
+        // 成長処理（要件6.1）もこの時点で一度だけ走らせる。契機は「学習記録の保存」で
+        // あり、成果記録（S6）は任意項目の追記にすぎないため。S6から離脱しても
+        // 街は育つ（要件3.4 の「離脱時も成長処理を実行する」の担保）
         await reloadSummary();
+        await applyGrowth(result.minutes);
         // TODO(Phase 7): 終了演出（要件3.3）— 鐘の音とダッキング。
         //   音源は assets/audio/ambient/The sound of the bell.mp3
         setRecord({ id: result.sessionId, minutes: result.minutes });
@@ -255,7 +311,7 @@ export default function HomeScreen() {
     } catch (e) {
       console.error("学習の終了に失敗しました", e);
     }
-  }, [timer, reloadSummary]);
+  }, [timer, reloadSummary, applyGrowth]);
 
   // 自動終了（要件3.2）。鑑賞モード中に起きた場合はUIを復帰させてから表示する（要件2.4）
   const handleAutoFinish = useCallback(async () => {
@@ -369,16 +425,20 @@ export default function HomeScreen() {
           tagIds: v.tagIds,
         });
         // 感情に応じた一言をかける（要件7.1 / 3.4 のステップ8）。
-        // TODO(Phase 4): 目標達成が成立した夜は 'goal_achieved' を優先する。
-        //   達成判定（6.2①）は成長処理と一緒に実装する。文面は投入済み
-        setNpcMessage(await masterRepo.pickNpcMessage("study_end", v.emotionId));
+        // 学習終了と目標達成が同時に成立した場合は「目標達成」を優先する（要件7.1）
+        setNpcMessage(
+          await masterRepo.pickNpcMessage(
+            growth?.goalAchieved ? "goal_achieved" : "study_end",
+            v.emotionId,
+          ),
+        );
       } catch (e) {
         console.error("成果記録の保存に失敗しました", e);
       } finally {
         setRecord(null);
       }
     },
-    [record],
+    [record, growth?.goalAchieved],
   );
 
   // 開発用: 今夜の学習記録を消して、合計を0へ戻す（__DEV__ 限定）。
@@ -391,6 +451,37 @@ export default function HomeScreen() {
       console.error("今夜の学習記録の初期化に失敗しました", e);
     }
   }, [reloadSummary]);
+  // 開発用: 現在の閾値を起動時に読む（マスタはデータ初期化で戻らないため、状態を合わせる）
+  useEffect(() => {
+    if (!__DEV__) return;
+    devRepo
+      .getHabitLevelStep()
+      .then(setHabitStep)
+      .catch(() => {});
+  }, []);
+
+  // 開発用: レベルアップ閾値を 本番(5回/Lv) ⇄ テスト(1回/Lv) で切り替える。
+  // 本番は目標達成5回で1レベルのため、演出の確認に手数がかかる
+  const handleToggleHabitStep = useCallback(async () => {
+    const next = habitStep === HABIT_STEP_TEST ? HABIT_STEP_PRODUCTION : HABIT_STEP_TEST;
+    try {
+      await devRepo.setHabitLevelStep(next);
+      setHabitStep(next);
+    } catch (e) {
+      console.error("レベルアップ閾値の切り替えに失敗しました", e);
+    }
+  }, [habitStep]);
+  // 開発用: 選択中の街の育成をやり直す（__DEV__ 限定）。
+  // レベルアップ演出は上がる瞬間にしか出ず、レベルは下がらないため、
+  // 戻せないと二度と確認できない
+  const handleResetTown = useCallback(async () => {
+    try {
+      await devRepo.resetTownProgress();
+      setSelected(await townProgressRepo.getSelectedTown());
+    } catch (e) {
+      console.error("街の育成の初期化に失敗しました", e);
+    }
+  }, []);
   // 表示に使うレベル（開発用プレビュー中はその値）。背景アートとLv表示の両方に効かせる
   const level = devLevelOverride ?? selected?.progress.current_level ?? 1;
   const art = selected ? getTownArt(selected.town.code, level) : undefined;
@@ -452,6 +543,9 @@ export default function HomeScreen() {
               )
             }
             onClearStudyDay={() => void handleClearStudyDay()}
+            onResetTown={() => void handleResetTown()}
+            habitStep={habitStep}
+            onToggleHabitStep={() => void handleToggleHabitStep()}
             devHour={devHour}
             onCycleDevHour={() => {
               const i = DEV_CLOCK_HOURS.indexOf(devHour);
@@ -533,6 +627,13 @@ export default function HomeScreen() {
         onContinue={() => void handleBreakContinue()}
         onExtend={(m) => void handleBreakExtend(m)}
       />
+      {/* レベルアップ・完成の演出（要件6.1）。成長の事実 → NPCの言葉、の順に見せる */}
+      <GrowthCard
+        level={growthCard?.level ?? null}
+        completed={growthCard?.completed ?? false}
+        onClose={() => setGrowthCard(null)}
+      />
+
       {/* 記録の保存後にかけるNPCの一言（要件7.1） */}
       <NpcMessageCard message={npcMessage} onClose={() => setNpcMessage(null)} />
 
@@ -861,11 +962,17 @@ function TownBackground({
 function DevPanel({
   onToggleLevel,
   onClearStudyDay,
+  onResetTown,
+  habitStep,
+  onToggleHabitStep,
   devHour,
   onCycleDevHour,
 }: {
   onToggleLevel: () => void;
   onClearStudyDay: () => void;
+  onResetTown: () => void;
+  habitStep: number;
+  onToggleHabitStep: () => void;
   devHour: number | null;
   onCycleDevHour: () => void;
 }) {
@@ -903,6 +1010,18 @@ function DevPanel({
       <Pressable onPress={onClearStudyDay} style={styles.devButton}>
         <ThemedText type="small" style={styles.devButtonText}>
           今夜の学習時間を初期化
+        </ThemedText>
+      </Pressable>
+      {/* 街の育成をやり直す。レベルアップ演出を繰り返し確認するため */}
+      <Pressable onPress={onResetTown} style={styles.devButton}>
+        <ThemedText type="small" style={styles.devButtonText}>
+          街の育成をやり直す
+        </ThemedText>
+      </Pressable>
+      {/* 習慣型のレベルアップ閾値: 本番=5回/Lv ⇄ テスト=1回/Lv */}
+      <Pressable onPress={onToggleHabitStep} style={styles.devButton}>
+        <ThemedText type="small" style={styles.devButtonText}>
+          レベルアップ: {habitStep === 1 ? "1回/Lv(テスト)" : `${habitStep}回/Lv(本番)`}
         </ThemedText>
       </Pressable>
       {/* 5:00自動終了・ポモドーロの進行を、実際に待たずに確認するため時刻を進める */}
