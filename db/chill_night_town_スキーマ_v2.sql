@@ -21,7 +21,9 @@ PRAGMA foreign_keys = ON;
 --                       'habit'   = 習慣型（目標達成日に経験値+1）
 --                       'project' = プロジェクト型（街ごとの目標時間へ累計加算）
 --    ・timer_mode 〜 pomodoro_loop_count : 前回のタイマー設定の記憶
---      （タイマー設定モーダルの初期表示に使用。開始時に最新値へ更新）
+--      （タイマー設定モーダルの初期表示に使用。開始時に最新値へ更新）。
+--      毎回同じ時間を設定し直す手間を省くため、既定値は初回のみ使用する
+--    ・planned_minutes は黙々モードの予定学習時間の前回値
 --    将来Firebase連携時に uuid カラムを追加予定（現時点では未作成）
 -- =====================================================================
 CREATE TABLE user (
@@ -32,6 +34,7 @@ CREATE TABLE user (
     overwork_prevention_enabled INTEGER NOT NULL DEFAULT 1 CHECK (overwork_prevention_enabled IN (0, 1)),
     growth_method               TEXT    NOT NULL DEFAULT 'habit' CHECK (growth_method IN ('habit', 'project')),
     timer_mode                  TEXT    NOT NULL DEFAULT 'simple' CHECK (timer_mode IN ('simple', 'pomodoro')),
+    planned_minutes             INTEGER NOT NULL DEFAULT 60 CHECK (planned_minutes BETWEEN 10 AND 660),
     pomodoro_work_minutes       INTEGER NOT NULL DEFAULT 25 CHECK (pomodoro_work_minutes BETWEEN 5 AND 120),
     pomodoro_break_minutes      INTEGER NOT NULL DEFAULT 5  CHECK (pomodoro_break_minutes BETWEEN 1 AND 30),
     pomodoro_loop_count         INTEGER NOT NULL DEFAULT 1  CHECK (pomodoro_loop_count BETWEEN 1 AND 10),

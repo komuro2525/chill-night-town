@@ -34,6 +34,8 @@ export type User = {
   overwork_prevention_enabled: Bool;
   growth_method: GrowthMethod;
   timer_mode: TimerMode;
+  /** 黙々モード: 前回の予定学習時間（分） */
+  planned_minutes: number;
   pomodoro_work_minutes: number;
   pomodoro_break_minutes: number;
   pomodoro_loop_count: number;

@@ -1,5 +1,10 @@
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
+// 終了予定を示す針の色。控えめな赤にして、白い針の邪魔をしない
+const END_COLOR = "rgba(226,110,110,0.85)";
+// 予定を過ぎた後の色（Lvの灯りと同じ琥珀）。予定より長く学習したことを責めない
+const GOAL_PASSED_COLOR = "rgba(255,206,138,0.85)";
+
 // 右上のアナログ時計。現在時刻を表示しつつ、タップでタイマー機能へ入るボタンを兼ねる。
 // 遷移先（タイマー設定モーダル S3）は Phase 3 で実装する。
 // デザインは後で本格的に差し替える前提の暫定版。size で大きさを可変にする。
@@ -43,18 +48,35 @@ export function ClockButton({
   now,
   onPress,
   disabled = false,
+  endAt = null,
 }: {
   size?: number;
   now: Date;
   onPress: () => void;
   /** 夜間帯外は非活性にする（要件2.3） */
   disabled?: boolean;
+  /**
+   * 学習の終了予定時刻。計測中のみ渡す。
+   * カウントダウンで急かすのではなく、文字盤に「終わりの位置」を置いて示す。
+   * 白い針が重なったら終わり。長針だけでは60分を超える先を指せないため、
+   * 短針も合わせて描く（例: 21:00開始・90分なら、21:30に長針は重なるが短針は重ならない）。
+   */
+  endAt?: Date | null;
 }) {
   const center = size / 2;
   const hours = now.getHours() % 12;
   const minutes = now.getMinutes();
   const hourAngle = hours * 30 + minutes * 0.5;
   const minuteAngle = minutes * 6;
+
+  // 終了予定の針。予定を過ぎたら灯りの琥珀色にする
+  // （予定より長く学習したのは良いことなので、赤のままだと「遅れている」ように見えるため）
+  const passed = endAt !== null && now.getTime() >= endAt.getTime();
+  const endColor = passed ? GOAL_PASSED_COLOR : END_COLOR;
+  const endHourAngle = endAt
+    ? (endAt.getHours() % 12) * 30 + endAt.getMinutes() * 0.5
+    : 0;
+  const endMinuteAngle = endAt ? endAt.getMinutes() * 6 : 0;
 
   const numFont = Math.round(size * 0.1);
   const dot = size * 0.035;
@@ -105,6 +127,26 @@ export function ClockButton({
       >
         IX
       </Text>
+
+      {/* 終了予定の針（白い針の下に描く）。針が行き着く先の影として見せる */}
+      {endAt ? (
+        <>
+          <Hand
+            size={size}
+            angle={endHourAngle}
+            length={size * 0.22}
+            thickness={Math.max(1.5, size * 0.009)}
+            color={endColor}
+          />
+          <Hand
+            size={size}
+            angle={endMinuteAngle}
+            length={size * 0.33}
+            thickness={Math.max(1, size * 0.009)}
+            color={endColor}
+          />
+        </>
+      ) : null}
 
       {/* 短針: 細く、円に収まる長さ */}
       <Hand

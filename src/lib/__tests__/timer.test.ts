@@ -12,6 +12,7 @@ import {
   getAutoEndMs,
   getElapsedSeconds,
   getEndMs,
+  getPlannedEndMs,
   getPlannedMinutes,
   getPomodoroPhase,
   isAutoEndReached,
@@ -235,6 +236,48 @@ describe("shouldAutoFinish（自動終了の判定）", () => {
   it("一時停止中に5:00へ到達した場合も自動終了する（要件3.2）", () => {
     const s = simple({ pause_started_at: "2026-01-10T23:30:00" });
     expect(shouldAutoFinish(s, at("2026-01-11T05:00:00"))).toBe(true);
+  });
+});
+
+describe("getPlannedEndMs（時計に示す終わりの位置）", () => {
+  it("黙々モードは開始＋予定時間", () => {
+    // 23:00開始・予定60分 → 24:00
+    expect(getPlannedEndMs(simple(), at("2026-01-10T23:10:00"))).toBe(
+      at("2026-01-11T00:00:00"),
+    );
+  });
+
+  it("ポモドーロは開始＋全体の長さ（作業×n＋休憩×(n−1)）", () => {
+    // 23:00開始・作業25/休憩5/2ループ = 55分 → 23:55
+    expect(getPlannedEndMs(pomodoro(), at("2026-01-10T23:10:00"))).toBe(
+      at("2026-01-10T23:55:00"),
+    );
+  });
+
+  it("一時停止した分だけ終わりが後ろへずれる", () => {
+    // 10分停止していれば 24:00 → 翌0:10
+    const s = simple({ paused_accumulated_seconds: 600 });
+    expect(getPlannedEndMs(s, at("2026-01-10T23:30:00"))).toBe(
+      at("2026-01-11T00:10:00"),
+    );
+  });
+
+  it("一時停止中は、止めている間ずっと終わりが後ろへ動き続ける", () => {
+    const s = simple({ pause_started_at: "2026-01-10T23:10:00" });
+    // 23:20時点（10分停止中）→ 24:10
+    expect(getPlannedEndMs(s, at("2026-01-10T23:20:00"))).toBe(
+      at("2026-01-11T00:10:00"),
+    );
+    // 23:40時点（30分停止中）→ 24:30
+    expect(getPlannedEndMs(s, at("2026-01-10T23:40:00"))).toBe(
+      at("2026-01-11T00:30:00"),
+    );
+  });
+
+  it("5:00を過ぎる予定なら5:00を示す（そこが本当の終わりのため）", () => {
+    // 23:00開始・予定600分 → 翌9:00になるはずだが、5:00で頭打ち
+    const s = simple({ planned_minutes: 600 });
+    expect(getPlannedEndMs(s, at("2026-01-10T23:10:00"))).toBe(getAutoEndMs(s));
   });
 });
 

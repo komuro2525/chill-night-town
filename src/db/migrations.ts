@@ -31,7 +31,7 @@ type Migration = {
 
 // 現在のスキーマバージョン（db/*.sql が表す「最新」の版）。
 // スキーマを変更したら、スキーマSQLを更新しつつ本値を+1し、DELTA_MIGRATIONS に差分を追加する。
-const SCHEMA_VERSION = 5;
+const SCHEMA_VERSION = 6;
 
 // 既存DB（過去バージョン）向けの差分マイグレーション（version >= 2）。
 // 新規インストールはスキーマSQL（=最新）を適用して一気に SCHEMA_VERSION まで上がるため、
@@ -184,6 +184,17 @@ const DELTA_MIGRATIONS: Migration[] = [
         DROP TABLE active_session;
         ALTER TABLE active_session_new RENAME TO active_session;
       `);
+    },
+  },
+  {
+    version: 6,
+    up: async (db) => {
+      // 黙々モードの予定学習時間の前回値（要件3.1）。
+      // ポモドーロの3値は前回値を保持していたが、黙々モードだけ保存先が無く
+      // 毎回既定値へ戻っていた
+      await db.execAsync(
+        "ALTER TABLE user ADD COLUMN planned_minutes INTEGER NOT NULL DEFAULT 60 CHECK (planned_minutes BETWEEN 10 AND 660)",
+      );
     },
   },
 ];

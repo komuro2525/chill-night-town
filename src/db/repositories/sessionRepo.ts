@@ -4,7 +4,10 @@
 //
 // セッションの作成は Phase 3（タイマー）で追加する。ここでは集計の参照のみ。
 
+import { getStudyDate } from "@/lib/study-day";
+import { getActualStudyMinutes, getEndMs, getPlannedMinutes } from "@/lib/timer";
 import { getDatabase } from "../database";
+import type { ActiveSession } from "../types";
 
 /**
  * 指定学習日の実績学習時間の合計（分）。
@@ -37,6 +40,48 @@ export async function isGoalAchieved(studyDate: string): Promise<boolean> {
     studyDate,
   );
   return (row?.count ?? 0) > 0;
+}
+
+/**
+ * 計測中セッションを学習記録として確定し、計測状態を削除する（要件3.4）。
+ *
+ * 感情・タグ・メモは任意項目のため、ここでは空で保存する。
+ * 成果記録画面（S6）はこの後に入力を上書きする形で実装する
+ * （画面から離脱した場合もセッションは失わない、という要件3.4の担保）。
+ *
+ * 実績1分未満のセッションはここへ来ない（呼び出し側で破棄する。要件3.2）。
+ *
+ * @returns 作成した学習記録のID
+ */
+export async function createFromActive(
+  session: ActiveSession,
+  atMs: number,
+): Promise<number> {
+  const db = await getDatabase();
+  const endMs = getEndMs(session, atMs);
+  const studyDate = getStudyDate(new Date(Date.parse(session.start_time)));
+
+  let insertedId = 0;
+  await db.withTransactionAsync(async () => {
+    const result = await db.runAsync(
+      `INSERT INTO study_session
+         (user_id, town_id, timer_mode, study_date,
+          start_time, end_time, planned_minutes, duration_minutes)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      session.user_id,
+      session.town_id,
+      session.timer_mode,
+      studyDate,
+      session.start_time,
+      new Date(endMs).toISOString(),
+      getPlannedMinutes(session),
+      getActualStudyMinutes(session, atMs),
+    );
+    insertedId = result.lastInsertRowId;
+    // 学習記録へ変換できた時点で計測状態は不要になる
+    await db.runAsync("DELETE FROM active_session WHERE user_id = ?", session.user_id);
+  });
+  return insertedId;
 }
 
 export type StudyDaySummary = {

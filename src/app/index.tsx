@@ -2,7 +2,7 @@ import { Image } from "expo-image";
 import { useKeepAwake } from "expo-keep-awake";
 import { useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -21,35 +21,58 @@ import Animated, {
 } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { AutoFinishWatcher } from "@/components/auto-finish-watcher";
 import { BatteryIndicator } from "@/components/battery-indicator";
 import { BgmMiniPlayer } from "@/components/bgm-mini-player";
 import { ClockButton } from "@/components/clock-button";
 import { GrowthHintCard } from "@/components/growth-hint-card";
 import { LevelBadge } from "@/components/level-badge";
+import { RestoreSessionCard } from "@/components/restore-session-card";
 import { RoundIconButton } from "@/components/round-icon-button";
 import { StudyDayStatus } from "@/components/study-day-status";
+import { TimerDisplay, formatDuration } from "@/components/timer-display";
+import { TimerSetupModal, type TimerSetupValues } from "@/components/timer-setup-modal";
+import { WeatherPicker } from "@/components/weather-picker";
+import { WeatherRow } from "@/components/weather-row";
 import { ThemedText } from "@/components/themed-text";
-import { GROWTH, STUDY_DAY } from "@/constants/domain";
+import { GROWTH, MIN_SAVE_MINUTES, STUDY_DAY } from "@/constants/domain";
 import { Spacing } from "@/constants/theme";
 import { getTownArt } from "@/constants/townArt";
 import { useSettings } from "@/contexts/SettingsContext";
+import { useTimer } from "@/contexts/TimerContext";
 import {
+  activeSessionRepo,
   devSeedRepo,
   maintenanceRepo,
   sessionRepo,
   townProgressRepo,
+  userRepo,
+  weatherRepo,
 } from "@/db/repositories";
 import type { StudyDaySummary } from "@/db/repositories/sessionRepo";
 import type { SelectedTown } from "@/db/repositories/townProgressRepo";
-import { setDevTimeToHour, useAppNow } from "@/lib/clock";
+import type { ActiveSession, NightWeather } from "@/db/types";
+import {
+  advanceDevTime,
+  now as appNow,
+  nowMs,
+  setDevTimeToHour,
+  useAppNow,
+} from "@/lib/clock";
 import { getPseudoOnlineCount } from "@/lib/pseudo-online";
-import { getStudyDate, isNightTime } from "@/lib/study-day";
+import { formatStudyDateLabel, getStudyDate, isNightTime } from "@/lib/study-day";
+import {
+  getActualStudyMinutes,
+  getActualStudySeconds,
+  getPlannedEndMs,
+} from "@/lib/timer";
 
 // S2 ホーム画面（夜の街）。
 // Phase 2-1: 選択中の街の背景（レベル連動）＋スワイプ探索（要件2.2）＋OSステータスバー非表示。
 // 上部UI（日付・レベル・時計＝タイマー、各アイコン、BGMミニプレイヤー等）は後続の P2 で載せる。
 export default function HomeScreen() {
-  const { user } = useSettings();
+  const { user, reload: reloadSettings } = useSettings();
+  const timer = useTimer();
   const [selected, setSelected] = useState<SelectedTown | null>(null);
   const [summary, setSummary] = useState<StudyDaySummary | null>(null);
   const [loading, setLoading] = useState(true);
@@ -59,11 +82,32 @@ export default function HomeScreen() {
   const [immersive, setImmersive] = useState(false);
   // 開発用: 時刻の上書き（null = 実時間）。夜間帯判定の確認に使う。__DEV__ でのみ切り替える
   const [devHour, setDevHour] = useState<number | null>(null);
+  // その学習日に選択済みの天気（未選択は null）。演出・記録の参照先は daily_night_weather
+  const [weather, setWeather] = useState<NightWeather | null>(null);
+  // ホームの天気の行から開く選択欄（要件2.5）
+  const [weatherPickerOpen, setWeatherPickerOpen] = useState(false);
+  // S3 タイマー設定モーダル（要件3.1）
+  const [setupOpen, setSetupOpen] = useState(false);
+  // S4 タイマー表示。×で折りたたむとホームへ戻るが計測は続く（要件3.2）
+  const [timerOpen, setTimerOpen] = useState(false);
+  // 実績1分未満で破棄したときの控えめなメッセージ（要件3.2）
+  const [discardedNote, setDiscardedNote] = useState(false);
+  // 中断からの復元（要件3.2 / UC 1.1）。復元した実績（分）。null なら復元なし
+  const [restoreMinutes, setRestoreMinutes] = useState<number | null>(null);
+  // 復元の判定が済んだか。済むまでは自動終了の見張りを動かさない
+  // （5:00を過ぎた状態で起動したとき、案内より先に黙って終了させないため）
+  const [restoreChecked, setRestoreChecked] = useState(false);
 
   // 当学習日の集計を読み直す。学習日は共通関数で算出する（要件0章 / CLAUDE.md）
   const reloadSummary = useCallback(async () => {
     const s = await sessionRepo.getStudyDaySummary(getStudyDate());
     setSummary(s);
+  }, []);
+
+  // その夜の天気を読み直す（1晩＝1天気。要件2.5）
+  const reloadWeather = useCallback(async () => {
+    const w = await weatherRepo.getWeatherByStudyDate(getStudyDate());
+    setWeather(w);
   }, []);
 
   useEffect(() => {
@@ -73,6 +117,7 @@ export default function HomeScreen() {
         const [town] = await Promise.all([
           townProgressRepo.getSelectedTown(),
           reloadSummary(),
+          reloadWeather(),
         ]);
         if (mounted) setSelected(town);
       } catch (e) {
@@ -84,7 +129,127 @@ export default function HomeScreen() {
     return () => {
       mounted = false;
     };
-  }, [reloadSummary]);
+  }, [reloadSummary, reloadWeather]);
+
+  // その夜の天気を選ぶ（要件2.5: 1晩＝1天気・最後の選択が残る）。
+  // ホームの天気の行から選んだ場合は、その場で確定して演出へ反映する
+  const handleSelectWeather = useCallback(
+    async (w: NightWeather) => {
+      if (!user) return;
+      try {
+        await weatherRepo.setWeather(user.id, getStudyDate(), w.id);
+        setWeather(w);
+      } catch (e) {
+        console.error("今夜の天気の保存に失敗しました", e);
+      } finally {
+        setWeatherPickerOpen(false);
+      }
+    },
+    [user],
+  );
+
+  // 学習を開始する（UC 3.1 のステップ8〜9）。
+  // 天気の確定・設定の保存・計測開始をこの順で行う
+  const handleStart = useCallback(
+    async (v: TimerSetupValues) => {
+      if (!user || !selected) return;
+      try {
+        const studyDate = getStudyDate();
+        // 天気は開始した時点で確定する（モーダルを閉じただけでは確定しない）
+        await weatherRepo.setWeather(user.id, studyDate, v.weather.id);
+        // 次回の設定モーダルへ引き継ぐため、選んだモードを記憶する
+        await userRepo.updateTimerPreferences({
+          timerMode: v.mode,
+          plannedMinutes: v.plannedMinutes ?? undefined,
+          pomodoroWorkMinutes: v.workMinutes ?? undefined,
+          pomodoroBreakMinutes: v.breakMinutes ?? undefined,
+          pomodoroLoopCount: v.loopCount ?? undefined,
+        });
+        // 記憶した設定を読み直す。これをしないと同じ起動中は前回値が反映されない
+        await reloadSettings();
+        await activeSessionRepo.create({
+          userId: user.id,
+          townId: selected.town.id,
+          timerMode: v.mode,
+          plannedMinutes: v.plannedMinutes,
+          pomodoroWorkMinutes: v.workMinutes,
+          pomodoroBreakMinutes: v.breakMinutes,
+          pomodoroLoopCount: v.loopCount,
+          startTime: appNow().toISOString(),
+          // 最初の休憩提案は一日の目標時間で出す（要件5.1）
+          breakSuggestThresholdMinutes: user.daily_goal_minutes,
+        });
+        setWeather(v.weather);
+        await timer.reload();
+        setSetupOpen(false);
+        setTimerOpen(true);
+      } catch (e) {
+        console.error("学習の開始に失敗しました", e);
+      }
+    },
+    [user, selected, timer, reloadSettings],
+  );
+
+  // 学習を終える（要件3.2）。実績1分未満なら保存せず破棄する。
+  // 手動の■と自動終了（5:00到達・ポモドーロ全ループ完了）で同じ経路を通す
+  const handleFinish = useCallback(async () => {
+    try {
+      const result = await timer.finish();
+      setTimerOpen(false);
+      if (result.kind === "discarded") {
+        setDiscardedNote(true);
+      } else {
+        // TODO(P3-5): 終了演出（3.3）→ 学習成果記録（S6）へ。
+        // 現状は感情・タグ・メモを空のまま確定する（要件3.4 の離脱時と同じ扱い）
+        await reloadSummary();
+      }
+    } catch (e) {
+      console.error("学習の終了に失敗しました", e);
+    }
+  }, [timer, reloadSummary]);
+
+  // 自動終了（要件3.2）。鑑賞モード中に起きた場合はUIを復帰させてから表示する（要件2.4）
+  const handleAutoFinish = useCallback(async () => {
+    setImmersive(false);
+    await handleFinish();
+  }, [handleFinish]);
+
+  // 中断からの復元（要件3.2 / UC 1.1）。
+  // 強制終了・クラッシュ・端末再起動で終了処理を経ずに中断された場合、
+  // 起動時に計測状態が残っている。時刻差分方式のため経過時間はそのまま引き継がれる。
+  // 5:00を過ぎていれば5:00終了として扱う（getActualStudyMinutes が頭打ちにする）。
+  const restoreCheckedRef = useRef(false);
+  useEffect(() => {
+    if (!timer.ready || restoreCheckedRef.current) return;
+    restoreCheckedRef.current = true;
+
+    const session = timer.session;
+    if (!session) {
+      setRestoreChecked(true);
+      return;
+    }
+
+    (async () => {
+      const minutes = getActualStudyMinutes(session, nowMs());
+      // 実績1分未満は復元時も破棄する（要件3.2）
+      if (minutes < MIN_SAVE_MINUTES) {
+        await timer.finish();
+        setDiscardedNote(true);
+      } else {
+        setRestoreMinutes(minutes);
+      }
+      setRestoreChecked(true);
+    })().catch((e) => {
+      console.error("中断セッションの復元に失敗しました", e);
+      setRestoreChecked(true);
+    });
+  }, [timer]);
+
+  // 復元したセッションを記録して閉じる
+  const handleRestoreFinish = useCallback(async () => {
+    setRestoreMinutes(null);
+    await handleFinish();
+  }, [handleFinish]);
 
   // 表示に使うレベル（開発用プレビュー中はその値）。背景アートとLv表示の両方に効かせる
   const level = devLevelOverride ?? selected?.progress.current_level ?? 1;
@@ -114,14 +279,23 @@ export default function HomeScreen() {
         <ActivityIndicator style={styles.centerLoader} color="#ffffff" />
       ) : null}
 
-      {/* 鑑賞モード中はすべてのUIを隠す（鑑賞モードボタン自身を含む） */}
-      {!immersive ? (
+      {/* 鑑賞モード中はすべてのUIを隠す（鑑賞モードボタン自身を含む）。
+          タイマー設定モーダル表示中も同様に隠し、背景は夜の街だけを透かす
+          （ボタン類が透けるとごちゃついて見えるため） */}
+      {!immersive && !setupOpen && !timerOpen ? (
         <>
           {selected ? (
             <TopOverlay
               level={level}
               summary={summary}
               goalMinutes={user?.daily_goal_minutes ?? null}
+              weather={weather}
+              onPressWeather={() => setWeatherPickerOpen(true)}
+              onPressTimer={() =>
+                // 計測中なら設定ではなくタイマー表示を開く（要件2.1のインジケータ相当）
+                timer.session ? setTimerOpen(true) : setSetupOpen(true)
+              }
+              session={timer.session}
             />
           ) : null}
           <SideIcons />
@@ -147,7 +321,79 @@ export default function HomeScreen() {
               setDevTimeToHour(next);
             }}
           />
+
+          {/* ホームの天気の行から開く選択欄（選んだ時点で確定する。要件2.5） */}
+          <WeatherPicker
+            visible={weatherPickerOpen}
+            selectedId={weather?.id ?? null}
+            studyDateLabel={formatStudyDateLabel(getStudyDate())}
+            onSelect={handleSelectWeather}
+            onClose={() => setWeatherPickerOpen(false)}
+          />
         </>
+      ) : null}
+
+      {/* 計測中（一時停止中を含む）はスリープを防止する（要件3.2） */}
+      {timer.session ? <KeepScreenAwake /> : null}
+
+      {/* 5:00到達・ポモドーロ全ループ完了を見張り、自動的に終了処理へ移す（要件3.2）。
+          復元の案内が出ている間は動かさない（案内より先に黙って終了させないため） */}
+      {timer.session && restoreChecked && restoreMinutes === null ? (
+        <AutoFinishWatcher
+          session={timer.session}
+          onAutoFinish={() => void handleAutoFinish()}
+        />
+      ) : null}
+
+      {/* 中断からの復元（要件3.2 / UC 1.1） */}
+      <RestoreSessionCard
+        visible={restoreMinutes !== null}
+        minutes={restoreMinutes ?? 0}
+        onFinish={() => void handleRestoreFinish()}
+      />
+
+      {/* S4 タイマー表示。×で折りたたむとホームへ戻るが、計測は続く */}
+      {timerOpen && timer.session ? (
+        <TimerDisplay
+          session={timer.session}
+          weather={weather}
+          dateTimeLabel={formatDateTimeLabel(appNow())}
+          onPause={() => void timer.pause()}
+          onResume={() => void timer.resume()}
+          onFinish={handleFinish}
+          onCollapse={() => setTimerOpen(false)}
+        />
+      ) : null}
+
+      {/* 実績1分未満で破棄したときの控えめな知らせ（要件3.2） */}
+      {discardedNote ? (
+        <Pressable
+          style={styles.discardedBackdrop}
+          onPress={() => setDiscardedNote(false)}
+        >
+          <View style={styles.discardedCard}>
+            <Text style={styles.discardedText}>
+              1分未満のため、記録は残していません
+            </Text>
+          </View>
+        </Pressable>
+      ) : null}
+
+      {/* S3 タイマー設定モーダル。街の上に重ねる（背景の街と位置はそのまま透ける）。
+          ホームのUIは隠してあるため、透けるのは夜の街だけ */}
+      {setupOpen && user ? (
+        <TimerSetupModal
+          studyDate={getStudyDate()}
+          dateTimeLabel={formatDateTimeLabel(appNow())}
+          initialMode={user.timer_mode}
+          initialPlanned={user.planned_minutes}
+          initialWork={user.pomodoro_work_minutes}
+          initialBreak={user.pomodoro_break_minutes}
+          initialLoop={user.pomodoro_loop_count}
+          initialWeather={weather}
+          onStart={handleStart}
+          onClose={() => setSetupOpen(false)}
+        />
       ) : null}
     </View>
   );
@@ -218,6 +464,8 @@ const CLOCK_SIZE = 155;
 const DEV_PANEL_BOTTOM = 176;
 // 開発用: ダミー学習記録1件あたりの実績分数（既定の目標60分に2回で届く値）
 const DEV_DUMMY_SESSION_MINUTES = 35;
+// 開発用: 時刻を進める幅（分）。5:00自動終了やポモドーロの進行の確認に使う
+const DEV_ADVANCE_MINUTES = 30;
 
 // 開発用の時刻上書き。夜間帯判定（要件2.3）の両側を実機で確認するために使う。
 // null = 実時間 / 21 = 夜間帯内（開始できる） / 12 = 夜間帯外（開始できない）
@@ -248,10 +496,19 @@ function TopOverlay({
   level,
   summary,
   goalMinutes,
+  weather,
+  onPressWeather,
+  onPressTimer,
+  session,
 }: {
   level: number;
   summary: StudyDaySummary | null;
   goalMinutes: number | null;
+  weather: NightWeather | null;
+  onPressWeather: () => void;
+  onPressTimer: () => void;
+  /** 計測中セッション（非計測時は null） */
+  session: ActiveSession | null;
 }) {
   const insets = useSafeAreaInsets();
   // アプリ内の現在時刻（開発用の上書きが効く）。時計・日時表示・夜間帯判定で共有する
@@ -264,14 +521,6 @@ function TopOverlay({
   // useNow が定期的に更新されるため、時刻の変化時にも判定し直される
   const canStart = isNightTime(now);
 
-  function handleTimerPress() {
-    // TODO(Phase 3): タイマー設定モーダル（S3）を開く。
-    // 仮のダイアログは開発時のみ。本番では何も起きない（Phase 3 で置き換える）
-    if (__DEV__) {
-      Alert.alert("タイマー", "タイマー機能はこの後の段階で実装します。");
-    }
-  }
-
   return (
     <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
       {/* 左上: バッテリー・日時・仲間 */}
@@ -279,6 +528,8 @@ function TopOverlay({
         <BatteryIndicator />
         <View style={styles.infoBlock}>
           <Text style={styles.dateText}>{dateLabel}</Text>
+          {/* 今夜の天気（要件2.5: 専用の常設ボタンは設けず、情報の並びに置く） */}
+          <WeatherRow weather={weather} onPress={onPressWeather} />
           <Text style={styles.onlineText}>今夜の学習仲間 … {online}人</Text>
         </View>
         {/* 当学習日の学習時間・目標達成状況（要件2.1） */}
@@ -296,10 +547,16 @@ function TopOverlay({
         <ClockButton
           size={CLOCK_SIZE}
           now={now}
-          onPress={handleTimerPress}
-          disabled={!canStart}
+          onPress={onPressTimer}
+          disabled={!canStart && !session}
+          // 計測中は文字盤に「終わりの位置」を示す（カウントダウンで急かさない）
+          endAt={session ? new Date(getPlannedEndMs(session, now.getTime())) : null}
         />
-        {!canStart ? (
+        {session ? (
+          <Text style={styles.measuringText}>
+            {formatDuration(getActualStudySeconds(session, now.getTime()))} 学習中
+          </Text>
+        ) : !canStart ? (
           <Text style={styles.closedText}>
             この街が目覚めるのは {STUDY_DAY.START_HOUR}:00 から
           </Text>
@@ -468,6 +725,15 @@ function DevPanel({
           時刻: {devHourLabel(devHour)}
         </ThemedText>
       </Pressable>
+      {/* 5:00自動終了・ポモドーロの進行を、実際に待たずに確認するため時刻を進める */}
+      <Pressable
+        onPress={() => advanceDevTime(DEV_ADVANCE_MINUTES * 60 * 1000)}
+        style={styles.devButton}
+      >
+        <ThemedText type="small" style={styles.devButtonText}>
+          時刻を+{DEV_ADVANCE_MINUTES}分進める
+        </ThemedText>
+      </Pressable>
       {/* 当学習日にダミーの学習記録を足す（Phase 3 のタイマー実装まで表示確認用） */}
       <Pressable onPress={handleAddDummySession} style={styles.devButton}>
         <ThemedText type="small" style={styles.devButtonText}>
@@ -519,6 +785,35 @@ const styles = StyleSheet.create({
     fontWeight: "500",
     textShadowColor: "rgba(0,0,0,0.6)",
     textShadowRadius: 4,
+  },
+  measuringText: {
+    marginTop: Spacing.two,
+    width: CLOCK_SIZE,
+    textAlign: "center",
+    color: "rgba(255,206,138,0.95)",
+    fontSize: 11,
+    fontWeight: "500",
+    textShadowColor: "rgba(0,0,0,0.6)",
+    textShadowRadius: 4,
+  },
+  discardedBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(3,6,15,0.6)",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: Spacing.four,
+  },
+  discardedCard: {
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.18)",
+    backgroundColor: "rgba(18,26,46,0.98)",
+    paddingVertical: Spacing.four,
+    paddingHorizontal: Spacing.five,
+  },
+  discardedText: {
+    color: "rgba(255,255,255,0.85)",
+    fontSize: 14,
   },
   closedText: {
     marginTop: Spacing.two,

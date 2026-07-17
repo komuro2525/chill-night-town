@@ -23,6 +23,42 @@ export async function getUser(): Promise<User | null> {
 }
 
 /**
+ * 前回のタイマー設定を記憶する（要件3.1: 次回は選択済みの状態で表示する）。
+ * 学習開始時に呼ぶ。ポモドーロの値は黙々モードで開始した場合も前回値を保つため、
+ * 呼び出し側が渡した値のみを更新する。
+ */
+export async function updateTimerPreferences(prefs: {
+  timerMode: "simple" | "pomodoro";
+  /** 黙々モードで開始した場合のみ */
+  plannedMinutes?: number;
+  /** 以下3つはポモドーロモードで開始した場合のみ */
+  pomodoroWorkMinutes?: number;
+  pomodoroBreakMinutes?: number;
+  pomodoroLoopCount?: number;
+}): Promise<void> {
+  const db = await getDatabase();
+  // 使わなかったモードの値は前回値のまま残す（次にそのモードを選んだとき復元するため）
+  if (prefs.timerMode === "pomodoro") {
+    await db.runAsync(
+      `UPDATE user
+          SET timer_mode = ?, pomodoro_work_minutes = ?, pomodoro_break_minutes = ?,
+              pomodoro_loop_count = ?, updated_at = datetime('now')`,
+      prefs.timerMode,
+      prefs.pomodoroWorkMinutes ?? 25,
+      prefs.pomodoroBreakMinutes ?? 5,
+      prefs.pomodoroLoopCount ?? 1,
+    );
+    return;
+  }
+  await db.runAsync(
+    `UPDATE user
+        SET timer_mode = ?, planned_minutes = ?, updated_at = datetime('now')`,
+    prefs.timerMode,
+    prefs.plannedMinutes ?? 60,
+  );
+}
+
+/**
  * 「育て方のお知らせ」を表示済みとして記録する。
  * 初回ホーム表示で一度だけ案内し、以降は二度と表示しない（要件6.2の周知）。
  */

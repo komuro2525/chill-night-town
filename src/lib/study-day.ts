@@ -47,6 +47,20 @@ export function isNightTime(instant: Date = now()): boolean {
   return hour >= STUDY_DAY.START_HOUR || hour < STUDY_DAY.END_HOUR;
 }
 
+const WEEKDAY_LABELS = ["日", "月", "火", "水", "木", "金", "土"];
+
+/**
+ * 学習日（'YYYY-MM-DD'）を「1/10（金）の夜」の形にする。
+ *
+ * どの夜の記録として扱われるかをユーザーへ明示するために使う（要件2.5）。
+ * 深夜1時に開いても「その夜」は前日付になるため、この表示が食い違いを防ぐ。
+ */
+export function formatStudyDateLabel(studyDate: string): string {
+  const [y, m, d] = studyDate.split("-").map(Number);
+  const weekday = WEEKDAY_LABELS[new Date(y, m - 1, d).getDay()];
+  return `${m}/${d}（${weekday}）の夜`;
+}
+
 /**
  * 学習時間（分）を日本語の表示用文字列にする。
  * 例: 0 → '0分' / 45 → '45分' / 60 → '1時間' / 95 → '1時間35分'

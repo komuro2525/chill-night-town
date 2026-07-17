@@ -15,7 +15,7 @@ import { AudioProvider } from "@/contexts/AudioContext";
 import { SettingsProvider } from "@/contexts/SettingsContext";
 import { TimerProvider } from "@/contexts/TimerContext";
 import { getDatabase } from "@/db/database";
-import { activeSessionRepo, userRepo } from "@/db/repositories";
+import { userRepo } from "@/db/repositories";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -60,17 +60,16 @@ function RootNavigator() {
       try {
         await getDatabase(); // DBオープン＋マイグレーション（初回のみ）
         const hasUser = await userRepo.hasUser();
-        const hasActive = hasUser
-          ? await activeSessionRepo.hasActiveSession()
-          : false;
         if (!mounted) return;
         if (!hasUser) {
           router.replace("/setup");
-        } else if (hasActive) {
-          // TODO(Phase 3): active_session を復元して終了処理へ。現状は成果記録の空ルートへ遷移する
-          router.replace("/record");
         }
-        // hasUser かつ未終了なし → index に留まる
+        // TODO(P3-4): 未終了セッションがある場合の復元（要件3.2「中断からの復元」）。
+        //   保存済みの時刻情報からセッションを復元し、「前回のセッションが終了して
+        //   いません」として終了処理（成果記録）へ誘導する。5:00を過ぎていれば
+        //   5:00終了として扱い、実績1分未満なら破棄する。
+        //   現状は TimerContext が active_session を読み込み、ホーム画面に
+        //   計測中インジケータが出る状態まで復帰する（計測自体は時刻差分方式のため継続している）
       } catch (e) {
         console.error("起動時のDB初期化に失敗しました", e);
       }

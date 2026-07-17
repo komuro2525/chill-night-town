@@ -191,6 +191,31 @@ export function getPlannedMinutes(session: ActiveSession): number {
 }
 
 /**
+ * 予定どおりに進んだ場合の終了時刻（ミリ秒）。ホーム画面の時計に「終わりの位置」として示す。
+ *
+ * 一時停止した分だけ後ろへずれる（止めれば終わりも遅くなる、という正直な表示にする）。
+ * 5:00 を過ぎる予定なら 5:00 を返す（そこが本当の終わりのため。要件3.2）。
+ *
+ * 黙々モードは予定を超えても計測が続くため、この時刻は「上限」ではなく「目安」。
+ */
+export function getPlannedEndMs(session: ActiveSession, atMs: number): number {
+  const plannedSec =
+    session.timer_mode === "simple"
+      ? (session.planned_minutes ?? 0) * 60
+      : getLayout(session).totalSec;
+
+  // これまでに止めていた時間（一時停止中は今回の分も含む）
+  const pausedSec =
+    session.paused_accumulated_seconds +
+    (session.pause_started_at
+      ? clampNonNegativeSeconds((atMs - Date.parse(session.pause_started_at)) / 1000)
+      : 0);
+
+  const end = Date.parse(session.start_time) + (plannedSec + pausedSec) * 1000;
+  return Math.min(end, getAutoEndMs(session));
+}
+
+/**
  * セッションを終了すべきか（自動終了の判定）。
  * - 5:00 到達（一時停止中も含む）
  * - ポモドーロの全ループ完了
