@@ -6,6 +6,7 @@ import { getDatabase } from "../database";
 import type {
   AmbientSound,
   Emotion,
+  GrowthMethod,
   NightWeather,
   NpcMessage,
   NpcTriggerType,
@@ -90,4 +91,27 @@ export async function pickNpcMessage(
     triggerType,
   );
   return fallback?.message ?? null;
+}
+
+/**
+ * レベルアップ閾値（要件6.1 / 6.2①）。レベル → 到達に必要な値。
+ *
+ * 習慣型は本マスタの値（必要累計経験値）を使う。要件6.2は「基準値はマスタデータとして
+ * 保持し、実装後のバランス調整で変更できるようにする」としているため、
+ * 定数ではなくここから読む（constants の GROWTH.HABIT_CUMULATIVE_EXP は写しであり参照しない）。
+ *
+ * プロジェクト型は街ごとの目標学習時間から動的に算出するため本マスタを使わない
+ * （テーブル定義書: project 行は投入不要）。src/lib/growth.ts の getProjectThresholds を使う。
+ */
+export async function getGrowthThresholds(
+  method: GrowthMethod,
+): Promise<Record<number, number>> {
+  const db = await getDatabase();
+  const rows = await db.getAllAsync<{ level: number; required_value: number }>(
+    "SELECT level, required_value FROM growth_level_threshold WHERE method = ? ORDER BY level",
+    method,
+  );
+  const thresholds: Record<number, number> = {};
+  for (const r of rows) thresholds[r.level] = r.required_value;
+  return thresholds;
 }
