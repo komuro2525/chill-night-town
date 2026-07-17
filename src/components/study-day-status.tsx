@@ -5,7 +5,7 @@ import { formatMinutes } from "@/lib/study-day";
 
 // 当学習日の学習時間・目標達成状況（要件2.1）。
 // コンセプト準拠: 未達成を「不足」「あと◯分」と煽らない。静かに事実だけを置く。
-const BAR_WIDTH = 108;
+const BAR_WIDTH = 76;
 const BAR_HEIGHT = 3;
 const LIGHT_COLOR = "rgba(255,206,138,0.95)";
 
