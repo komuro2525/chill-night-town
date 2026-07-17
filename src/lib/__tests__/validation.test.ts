@@ -13,6 +13,7 @@ import {
   validatePomodoroBreakMinutes,
   validatePomodoroLoopCount,
   validatePomodoroWorkMinutes,
+  validateProjectTargetHours,
   validateTagName,
 } from "../validation";
 
@@ -95,6 +96,24 @@ describe("validateExtensionMinutes（延長宣言・5〜120分）", () => {
     ["121", false],
   ])("%s分 → 通る:%s", (input, expected) => {
     expect(ok(validateExtensionMinutes(input))).toBe(expected);
+  });
+});
+
+describe("validateProjectTargetHours（プロジェクト型目標・1〜500時間）", () => {
+  it.each([
+    ["0時間は値域外", "0", false],
+    ["1時間ちょうどは通る", "1", true],
+    ["500時間ちょうどは通る", "500", true],
+    ["501時間は値域外", "501", false],
+  ])("%s", (_label, input, expected) => {
+    expect(ok(validateProjectTargetHours(input))).toBe(expected);
+  });
+
+  it("未入力・数字以外は弾く", () => {
+    expect(ok(validateProjectTargetHours(""))).toBe(false);
+    expect(ok(validateProjectTargetHours("十"))).toBe(false);
+    expect(ok(validateProjectTargetHours("10時間"))).toBe(false);
+    expect(ok(validateProjectTargetHours("-10"))).toBe(false);
   });
 });
 

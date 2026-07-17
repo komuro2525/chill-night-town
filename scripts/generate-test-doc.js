@@ -59,7 +59,7 @@ const MODULE_DOCS = {
   "validation.test.ts": {
     title: "入力値の検証",
     target: "src/lib/validation.ts",
-    requirements: "要件1.2／3.1／3.4／5.2／12章",
+    requirements: "要件1.2／3.1／3.4／5.2／6.2／12章",
     why: "値域はドキュメント（要件定義書）とスキーマのCHECK制約が正。境界値（ちょうど・1つ外側）を固定し、実装がドキュメントからずれたことを検出する。",
   },
 };

@@ -7,6 +7,7 @@ import {
   LIMITS,
   NOTIFICATION_WINDOW,
   POMODORO,
+  PROJECT_TARGET,
   SIMPLE_PLANNED_MINUTES,
 } from "@/constants/domain";
 
@@ -99,6 +100,21 @@ export function validateExtensionMinutes(raw: string): string | null {
     EXTENSION_MINUTES.MAX,
     "延長する時間",
   );
+}
+
+/**
+ * プロジェクト型の目標学習時間（必須・1〜500時間の整数）。要件6.2② / UC 6.2・6.3。
+ * 入力は時間単位。格納時に分へ変換する（分の値域はスキーマの CHECK が担保）。
+ */
+export function validateProjectTargetHours(raw: string): string | null {
+  const trimmed = raw.trim();
+  if (trimmed.length === 0) return "目標時間を入力してください";
+  if (!/^\d+$/.test(trimmed)) return "目標時間は数字で入力してください";
+  const value = Number(trimmed);
+  if (value < PROJECT_TARGET.HOURS.MIN || value > PROJECT_TARGET.HOURS.MAX) {
+    return `目標時間は${PROJECT_TARGET.HOURS.MIN}〜${PROJECT_TARGET.HOURS.MAX}時間で入力してください`;
+  }
+  return null;
 }
 
 /**
