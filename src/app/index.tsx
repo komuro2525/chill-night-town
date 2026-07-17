@@ -657,6 +657,10 @@ const DEV_PANEL_BOTTOM = 176;
 // 開発用: 時刻を進める幅（分）。5:00自動終了やポモドーロの進行の確認に使う
 const DEV_ADVANCE_MINUTES = 30;
 
+// タップとして成立させる指の移動量の上限（ポイント）。
+// これを超えて動いたらスワイプ（街探索）とみなし、鑑賞モードから復帰させない（要件2.4）
+const TAP_MAX_DISTANCE = 10;
+
 // 開発用の時刻上書き。夜間帯判定（要件2.3）の両側を実機で確認するために使う。
 // null = 実時間 / 21 = 夜間帯内（開始できる） / 12 = 夜間帯外（開始できない）
 // 上書きの実体は src/lib/clock.ts にあり、計測・5:00判定にも同じ時刻が効く。
@@ -810,12 +814,17 @@ function TownBackground({
       savedY.value = translateY.value;
     });
 
-  // タップ（動きのないときだけ成立）。ドラッグ時はパンが動くので競合しない。
+  // タップ（鑑賞モードからの復帰）。要件2.4では復帰の操作は「画面をタップ」のみで、
+  // スワイプによる街探索では復帰させない。そのため次の2点が要る:
+  //   ・指が少しでも動いたらタップとして成立させない（既定の許容量は緩く、
+  //     スワイプしただけでも成立してしまう）
+  //   ・onEnd は成立しなかったときにも呼ばれるため、success を必ず見る
   // コールバックはJSスレッドで実行する（worklet から直接JS関数を呼ばないため）
   const tap = Gesture.Tap()
+    .maxDistance(TAP_MAX_DISTANCE)
     .runOnJS(true)
-    .onEnd(() => {
-      onTap?.();
+    .onEnd((_event, success) => {
+      if (success) onTap?.();
     });
 
   const gesture = Gesture.Simultaneous(pan, tap);
