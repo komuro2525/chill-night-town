@@ -1,6 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useEffect, useState } from "react";
 import {
+  Keyboard,
   Pressable,
   StyleSheet,
   Text,
@@ -28,9 +29,11 @@ import { WeatherRow } from "./weather-row";
 // 独立した画面ではなく、ホーム画面（夜の街）の上に重ねる表示とする（要件3章）。
 // 背景の街はそのまま透けて見え、スワイプで動かしていた位置も保たれる。
 //
-// 開始するまで何も確定しない（要件3.1 備考）:
-//   閉じた場合、モーダル内で変更した設定（天気の変更を含む）はすべて破棄する。
-//   ホーム画面で既に選択済みだった天気は維持される。
+// 設定値の記憶と天気の確定は、扱いが違う（要件3.1 備考）:
+//   ・タイマーモード・時間の値は**入力を終えた時点**で記憶する（開始しなくても引き継ぐ）。
+//     設定を見直しただけで閉じた場合にも覚えていてほしいため。値域外は記憶しない
+//   ・天気は**開始を押すまで確定しない**。背景演出・環境音へ反映され、1晩＝1天気として
+//     記録に残る確定行為のため。閉じた場合は変更を破棄し、ホーム画面で選択済みだった天気が残る
 
 const CIRCLE_MAX = 320;
 const START_BUTTON_SIZE = 76;
@@ -57,6 +60,7 @@ export function TimerSetupModal({
   initialLoop,
   initialWeather,
   onStart,
+  onRememberSettings,
   onClose,
 }: {
   studyDate: string;
@@ -71,6 +75,14 @@ export function TimerSetupModal({
   /** その学習日に選択済みの天気（未選択は null） */
   initialWeather: NightWeather | null;
   onStart: (values: TimerSetupValues) => void;
+  /** 設定値を次回のために記憶する。入力を終えた時点で呼ぶ（値域外では呼ばない） */
+  onRememberSettings: (prefs: {
+    mode: TimerMode;
+    plannedMinutes?: number;
+    workMinutes?: number;
+    breakMinutes?: number;
+    loopCount?: number;
+  }) => void;
   onClose: () => void;
 }) {
   const insets = useSafeAreaInsets();
@@ -92,10 +104,39 @@ export function TimerSetupModal({
     if (weather) setError(null);
   }, [weather]);
 
+  // 入力を終えた時点で、その値を次回のために記憶する（要件3.1）。
+  // 値域外は記憶しない（次回に開始できない値が入った状態で開くのを避けるため）。
+  // 1文字ごとではなく入力の終了時に呼ぶことで、書き込みを1回にまとめている
+  function rememberSimple(value: string) {
+    if (validatePlannedMinutes(value)) return;
+    onRememberSettings({ mode: "simple", plannedMinutes: Number(value) });
+  }
+
+  function rememberPomodoro(next: { work?: string; brk?: string; loop?: number }) {
+    const w = next.work ?? work;
+    const b = next.brk ?? brk;
+    const l = next.loop ?? loop;
+    if (
+      validatePomodoroWorkMinutes(w) ??
+      validatePomodoroBreakMinutes(b) ??
+      validatePomodoroLoopCount(String(l))
+    ) {
+      return;
+    }
+    onRememberSettings({
+      mode: "pomodoro",
+      workMinutes: Number(w),
+      breakMinutes: Number(b),
+      loopCount: l,
+    });
+  }
+
   function handleStart() {
-    // 天気はその学習日で未選択なら必須（要件3.1）
+    // 天気はその学習日で未選択なら必須（要件3.1）。
+    // 「選んでください」と告げるだけでは選択欄を開き直す手間が増えるため、
+    // その場で選択欄を出す（責めるより、次にすべきことを示す）
     if (!weather) {
-      setError("今夜の天気を選んでください");
+      setPickerOpen(true);
       return;
     }
 
@@ -133,7 +174,13 @@ export function TimerSetupModal({
       {/* 街を隠しきらず、うっすら透かす（学習中も夜の街に留まる。要件3章） */}
       <View style={styles.scrim} pointerEvents="none" />
 
-      <View style={[styles.content, { paddingTop: insets.top + Spacing.three }]}>
+      {/* 入力欄の外をタップしたら入力を終了する（要件3.1 備考）。
+          Pressable は子のタップを妨げないため、ボタン類はそのまま押せる */}
+      <Pressable
+        style={[styles.content, { paddingTop: insets.top + Spacing.three }]}
+        onPress={Keyboard.dismiss}
+        accessible={false}
+      >
         {/* ヘッダー: タイトル＋閉じる */}
         <View style={styles.header}>
           <Text style={styles.title}>今夜の学習</Text>
@@ -155,16 +202,20 @@ export function TimerSetupModal({
             label="黙々モード"
             active={mode === "simple"}
             onPress={() => {
+              Keyboard.dismiss();
               setMode("simple");
               setError(null);
+              rememberSimple(planned);
             }}
           />
           <SegmentButton
             label="ポモドーロモード"
             active={mode === "pomodoro"}
             onPress={() => {
+              Keyboard.dismiss();
               setMode("pomodoro");
               setError(null);
+              rememberPomodoro({});
             }}
           />
         </View>
@@ -184,7 +235,12 @@ export function TimerSetupModal({
           {mode === "simple" ? (
             <View style={[styles.circleInner, styles.circleInnerSimple]}>
               <Text style={styles.fieldLabel}>予定学習時間（分）</Text>
-              <MinutesInput value={planned} onChangeText={setPlanned} wide />
+              <MinutesInput
+                value={planned}
+                onChangeText={setPlanned}
+                onEndEditing={() => rememberSimple(planned)}
+                wide
+              />
               <Text style={styles.hint}>
                 {SIMPLE_PLANNED_MINUTES.MIN}〜{SIMPLE_PLANNED_MINUTES.MAX}分
               </Text>
@@ -197,18 +253,29 @@ export function TimerSetupModal({
                 min={POMODORO.LOOP_COUNT.MIN}
                 max={POMODORO.LOOP_COUNT.MAX}
                 onChange={(v) => {
+                  Keyboard.dismiss();
                   setLoop(v);
                   setError(null);
+                  // 入力欄ではないので、押した瞬間に記憶する
+                  rememberPomodoro({ loop: v });
                 }}
               />
               <View style={styles.pomodoroRow}>
                 <View style={styles.pomodoroField}>
                   <Text style={styles.fieldLabel}>作業</Text>
-                  <MinutesInput value={work} onChangeText={setWork} />
+                  <MinutesInput
+                    value={work}
+                    onChangeText={setWork}
+                    onEndEditing={() => rememberPomodoro({ work })}
+                  />
                 </View>
                 <View style={styles.pomodoroField}>
                   <Text style={styles.fieldLabel}>休憩</Text>
-                  <MinutesInput value={brk} onChangeText={setBrk} />
+                  <MinutesInput
+                    value={brk}
+                    onChangeText={setBrk}
+                    onEndEditing={() => rememberPomodoro({ brk })}
+                  />
                 </View>
               </View>
             </View>
@@ -234,7 +301,7 @@ export function TimerSetupModal({
         <Text style={styles.note}>
           {STUDY_DAY.END_HOUR}:00 になると、夜は静かに眠ります
         </Text>
-      </View>
+      </Pressable>
 
       <WeatherPicker
         visible={pickerOpen}
@@ -277,16 +344,21 @@ function SegmentButton({
 function MinutesInput({
   value,
   onChangeText,
+  onEndEditing,
   wide = false,
 }: {
   value: string;
   onChangeText: (v: string) => void;
+  /** 入力を終えた時点（キーボードを閉じた・他をタップした）で呼ばれる */
+  onEndEditing?: () => void;
   wide?: boolean;
 }) {
   return (
     <TextInput
       value={value}
       onChangeText={(t) => onChangeText(t.replace(/[^\d]/g, ""))}
+      onEndEditing={onEndEditing}
+      onBlur={onEndEditing}
       keyboardType="number-pad"
       maxLength={3}
       style={[styles.input, wide && styles.inputWide]}

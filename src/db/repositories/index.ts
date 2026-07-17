@@ -9,3 +9,6 @@ export * as townProgressRepo from "./townProgressRepo";
 export * as sessionRepo from "./sessionRepo";
 export * as tagRepo from "./tagRepo";
 export * as weatherRepo from "./weatherRepo";
+export * as extensionRepo from "./extensionRepo";
+// 開発用（__DEV__限定）。リリース前に削除する。docs/開発用テストボタン.md 参照
+export * as devRepo from "./devRepo";

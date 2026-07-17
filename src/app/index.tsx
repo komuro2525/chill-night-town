@@ -23,16 +23,19 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { AutoFinishWatcher } from "@/components/auto-finish-watcher";
 import { BatteryIndicator } from "@/components/battery-indicator";
+import { BreakSuggestionCard } from "@/components/break-suggestion-card";
+import { BreakSuggestionWatcher } from "@/components/break-suggestion-watcher";
 import { BgmMiniPlayer } from "@/components/bgm-mini-player";
 import { ClockButton } from "@/components/clock-button";
 import { GrowthHintCard } from "@/components/growth-hint-card";
 import { LevelBadge } from "@/components/level-badge";
+import { MeasuringIndicator } from "@/components/measuring-indicator";
 import { NpcMessageCard } from "@/components/npc-message-card";
 import { RecordModal, type RecordValues } from "@/components/record-modal";
 import { RestoreSessionCard } from "@/components/restore-session-card";
 import { RoundIconButton } from "@/components/round-icon-button";
 import { StudyDayStatus } from "@/components/study-day-status";
-import { TimerDisplay, formatDuration } from "@/components/timer-display";
+import { TimerDisplay } from "@/components/timer-display";
 import { TimerSetupModal, type TimerSetupValues } from "@/components/timer-setup-modal";
 import { WeatherPicker } from "@/components/weather-picker";
 import { WeatherRow } from "@/components/weather-row";
@@ -44,6 +47,8 @@ import { useSettings } from "@/contexts/SettingsContext";
 import { useTimer } from "@/contexts/TimerContext";
 import {
   activeSessionRepo,
+  devRepo,
+  extensionRepo,
   maintenanceRepo,
   masterRepo,
   sessionRepo,
@@ -63,11 +68,12 @@ import {
 } from "@/lib/clock";
 import { getPseudoOnlineCount } from "@/lib/pseudo-online";
 import { formatStudyDateLabel, getStudyDate, isNightTime } from "@/lib/study-day";
+import { getActualStudyMinutes, getPlannedEndMs } from "@/lib/timer";
 import {
-  getActualStudyMinutes,
-  getActualStudySeconds,
-  getPlannedEndMs,
-} from "@/lib/timer";
+  getContinueThreshold,
+  getExtensionThreshold,
+  getStudyDayTotalMinutes,
+} from "@/lib/break-suggestion";
 
 // S2 ホーム画面（夜の街）。
 // Phase 2-1: 選択中の街の背景（レベル連動）＋スワイプ探索（要件2.2）＋OSステータスバー非表示。
@@ -102,6 +108,8 @@ export default function HomeScreen() {
   );
   // 記録の保存後にかけるNPCの一言（要件7.1）。選ばれた感情に応じて出し分ける
   const [npcMessage, setNpcMessage] = useState<string | null>(null);
+  // S5 休憩提案（要件5.1）。表示中の実績合計（分）。null なら非表示
+  const [breakTotal, setBreakTotal] = useState<number | null>(null);
   // 復元の判定が済んだか。済むまでは自動終了の見張りを動かさない
   // （5:00を過ぎた状態で起動したとき、案内より先に黙って終了させないため）
   const [restoreChecked, setRestoreChecked] = useState(false);
@@ -155,6 +163,36 @@ export default function HomeScreen() {
     },
     [user],
   );
+
+  // タイマー設定の値を記憶する（要件3.1）。入力を終えた時点で呼ばれる。
+  // 開始しなくても次回へ引き継ぐため、ここで即座にDBへ書く。
+  // 設定の再読込はモーダルを閉じるときにまとめて行う（1回で足りるため）
+  const handleRememberSettings = useCallback(
+    (prefs: {
+      mode: "simple" | "pomodoro";
+      plannedMinutes?: number;
+      workMinutes?: number;
+      breakMinutes?: number;
+      loopCount?: number;
+    }) => {
+      userRepo
+        .updateTimerPreferences({
+          timerMode: prefs.mode,
+          plannedMinutes: prefs.plannedMinutes,
+          pomodoroWorkMinutes: prefs.workMinutes,
+          pomodoroBreakMinutes: prefs.breakMinutes,
+          pomodoroLoopCount: prefs.loopCount,
+        })
+        .catch((e) => console.error("タイマー設定の記憶に失敗しました", e));
+    },
+    [],
+  );
+
+  // 設定モーダルを閉じる。記憶した値を読み直してから閉じる
+  const handleCloseSetup = useCallback(async () => {
+    setSetupOpen(false);
+    await reloadSettings();
+  }, [reloadSettings]);
 
   // 学習を開始する（UC 3.1 のステップ8〜9）。
   // 天気の確定・設定の保存・計測開始をこの順で行う
@@ -262,6 +300,63 @@ export default function HomeScreen() {
     await handleFinish();
   }, [handleFinish]);
 
+  // 休憩提案の3つの選択肢（要件5.1 / 5.2）。
+  // いずれも「次に提案する基準」を動かすことで、以後の表示を制御する
+
+  // 休憩提案の選択肢（要件5.1 / 5.2）。
+  //
+  // どのハンドラも、非同期の処理を終えてから最後に setBreakTotal(null) で閉じる。
+  // 先に閉じると、処理を待つ間だけ見張りの抑制（suppressed）が外れ、
+  // 条件を満たしたままの状態で再発火して提案が二重に出るため。
+  //
+  // また、続けることを選んだ場合は必ず次の基準を先送りする。休憩は実績に加算されず、
+  // 基準を上げないと閉じた瞬間に表示条件を満たしたままとなり再び出てしまう（要件5.1）。
+
+  // 今夜はここまでにする: 終了処理へ移る。タイマー表示の終了操作と同じ
+  const handleBreakFinish = useCallback(async () => {
+    await handleFinish();
+    setBreakTotal(null);
+  }, [handleFinish]);
+
+  // 休憩する: 一時停止する。再開はユーザーの操作による。次の基準は超過60分後
+  const handleBreakPause = useCallback(async () => {
+    const current = timer.session?.break_suggest_threshold_minutes;
+    if (current !== null && current !== undefined) {
+      await activeSessionRepo.updateBreakThreshold(getContinueThreshold(current));
+    }
+    await timer.pause();
+    setBreakTotal(null);
+  }, [timer]);
+
+  // このまま続ける: 基準を+60分し、超過60分ごとに再表示する
+  const handleBreakContinue = useCallback(async () => {
+    const current = timer.session?.break_suggest_threshold_minutes;
+    if (current !== null && current !== undefined) {
+      await activeSessionRepo.updateBreakThreshold(getContinueThreshold(current));
+      await timer.reload();
+    }
+    setBreakTotal(null);
+  }, [timer]);
+
+  // 時間を決めて続ける: 宣言時間内は再表示しない（要件5.2）。
+  // 宣言は休憩提案の表示制御にのみ使い、目標達成・経験値の判定には影響しない
+  const handleBreakExtend = useCallback(
+    async (declared: number) => {
+      if (user) {
+        try {
+          await extensionRepo.declare(user.id, getStudyDate(), declared);
+          await activeSessionRepo.updateBreakThreshold(
+            getExtensionThreshold(breakTotal ?? 0, declared),
+          );
+          await timer.reload();
+        } catch (e) {
+          console.error("延長宣言に失敗しました", e);
+        }
+      }
+      setBreakTotal(null);
+    },
+    [user, timer, breakTotal],
+  );
   // 成果記録の任意項目を保存する（要件3.4）
   const handleSaveRecord = useCallback(
     async (v: RecordValues) => {
@@ -286,6 +381,16 @@ export default function HomeScreen() {
     [record],
   );
 
+  // 開発用: 今夜の学習記録を消して、合計を0へ戻す（__DEV__ 限定）。
+  // 目標達成・休憩提案はその学習日の実績合計に依存するため、確認をやり直すのに使う
+  const handleClearStudyDay = useCallback(async () => {
+    try {
+      await devRepo.clearStudyDayRecords(getStudyDate());
+      await reloadSummary();
+    } catch (e) {
+      console.error("今夜の学習記録の初期化に失敗しました", e);
+    }
+  }, [reloadSummary]);
   // 表示に使うレベル（開発用プレビュー中はその値）。背景アートとLv表示の両方に効かせる
   const level = devLevelOverride ?? selected?.progress.current_level ?? 1;
   const art = selected ? getTownArt(selected.town.code, level) : undefined;
@@ -346,7 +451,7 @@ export default function HomeScreen() {
                 prev === GROWTH.MAX_LEVEL ? null : GROWTH.MAX_LEVEL,
               )
             }
-            onSessionsChanged={reloadSummary}
+            onClearStudyDay={() => void handleClearStudyDay()}
             devHour={devHour}
             onCycleDevHour={() => {
               const i = DEV_CLOCK_HOURS.indexOf(devHour);
@@ -395,6 +500,39 @@ export default function HomeScreen() {
         />
       ) : null}
 
+      {/* 休憩提案の見張り（要件5.1）。頑張りすぎ防止がOFFなら動かない。
+          復元の案内中・成果記録中・既に提案中のときは重ねて出さない */}
+      {timer.session && user && restoreChecked && restoreMinutes === null ? (
+        <BreakSuggestionWatcher
+          session={timer.session}
+          savedMinutes={summary?.totalMinutes ?? 0}
+          enabled={user.overwork_prevention_enabled === 1}
+          suppressed={breakTotal !== null || record !== null}
+          onSuggest={() => {
+            // 鑑賞モード中はUIを復帰させてから表示する（要件2.4）
+            setImmersive(false);
+            setBreakTotal(
+              getStudyDayTotalMinutes(
+                summary?.totalMinutes ?? 0,
+                timer.session,
+                nowMs(),
+              ),
+            );
+          }}
+        />
+      ) : null}
+
+      {/* S5 休憩提案（要件5.1 / 5.2） */}
+      <BreakSuggestionCard
+        // 表示のたびに1段目から始める
+        key={breakTotal === null ? "closed" : "open"}
+        visible={breakTotal !== null}
+        totalMinutes={breakTotal ?? 0}
+        onFinish={() => void handleBreakFinish()}
+        onBreak={() => void handleBreakPause()}
+        onContinue={() => void handleBreakContinue()}
+        onExtend={(m) => void handleBreakExtend(m)}
+      />
       {/* 記録の保存後にかけるNPCの一言（要件7.1） */}
       <NpcMessageCard message={npcMessage} onClose={() => setNpcMessage(null)} />
 
@@ -445,7 +583,8 @@ export default function HomeScreen() {
           initialLoop={user.pomodoro_loop_count}
           initialWeather={weather}
           onStart={handleStart}
-          onClose={() => setSetupOpen(false)}
+          onRememberSettings={handleRememberSettings}
+          onClose={() => void handleCloseSetup()}
         />
       ) : null}
     </View>
@@ -604,9 +743,7 @@ function TopOverlay({
           endAt={session ? new Date(getPlannedEndMs(session, now.getTime())) : null}
         />
         {session ? (
-          <Text style={styles.measuringText}>
-            {formatDuration(getActualStudySeconds(session, now.getTime()))} 学習中
-          </Text>
+          <MeasuringIndicator session={session} width={CLOCK_SIZE} />
         ) : !canStart ? (
           <Text style={styles.closedText}>
             この街が目覚めるのは {STUDY_DAY.START_HOUR}:00 から
@@ -714,12 +851,12 @@ function TownBackground({
 // 詳細は docs/開発用テストボタン.md を参照。
 function DevPanel({
   onToggleLevel,
-  onSessionsChanged,
+  onClearStudyDay,
   devHour,
   onCycleDevHour,
 }: {
   onToggleLevel: () => void;
-  onSessionsChanged: () => Promise<void>;
+  onClearStudyDay: () => void;
   devHour: number | null;
   onCycleDevHour: () => void;
 }) {
@@ -751,6 +888,12 @@ function DevPanel({
       <Pressable onPress={onCycleDevHour} style={styles.devButton}>
         <ThemedText type="small" style={styles.devButtonText}>
           時刻: {devHourLabel(devHour)}
+        </ThemedText>
+      </Pressable>
+      {/* 今夜の学習記録を消す。目標達成・休憩提案の確認をやり直すため */}
+      <Pressable onPress={onClearStudyDay} style={styles.devButton}>
+        <ThemedText type="small" style={styles.devButtonText}>
+          今夜の学習時間を初期化
         </ThemedText>
       </Pressable>
       {/* 5:00自動終了・ポモドーロの進行を、実際に待たずに確認するため時刻を進める */}
@@ -799,16 +942,6 @@ const styles = StyleSheet.create({
   dateText: {
     color: "#ffffff",
     fontSize: 13,
-    fontWeight: "500",
-    textShadowColor: "rgba(0,0,0,0.6)",
-    textShadowRadius: 4,
-  },
-  measuringText: {
-    marginTop: Spacing.two,
-    width: CLOCK_SIZE,
-    textAlign: "center",
-    color: "rgba(255,206,138,0.95)",
-    fontSize: 11,
     fontWeight: "500",
     textShadowColor: "rgba(0,0,0,0.6)",
     textShadowRadius: 4,
