@@ -3,7 +3,10 @@
 // 本番の機能ではない。リリース前に本ファイルごと削除する。
 // 詳細・撤去時期は docs/開発用テストボタン.md を参照。
 
+import { getProjectThresholds } from "@/lib/growth";
 import { getDatabase } from "../database";
+import type { GrowthMethod } from "../types";
+import { getGrowthThresholds } from "./masterRepo";
 
 /**
  * 指定学習日の学習記録を消す（開発用）。
@@ -34,25 +37,72 @@ export async function clearStudyDayRecords(studyDate: string): Promise<void> {
 }
 
 /**
- * 選択中の街の育成をやり直す（開発用）。
+ * 選択中の街のレベルを 1→2→3→4→5→1 と循環させる（開発用）。
  *
- * 目的: レベルアップ演出（要件6.1）は経験値が閾値に達した瞬間にしか出ない。
- *   一度上がるとレベルは下がらないため、そのままでは二度と確認できない。
- *   本来のデータ初期化（要件10.10）は全データを消してしまい、確認のたびに
- *   初期設定からやり直すことになる。
+ * 目的: 各レベルの見た目（灯り・背景アート）の確認と、レベルアップ・完成演出の
+ *   やり直しを1つのボタンで賄う。演出は上がる瞬間にしか出ず、レベルは下がらない
+ *   （要件6.1）ため、戻せないと確認できない。
  *
- * 戻すもの: 選択中の街の 累計学習時間・経験値・レベル（0 / 0 / Lv1）。
+ * **本ボタンは開発用として、要件6.1「レベルは下がらない」を意図的に破る**（5→1へ戻す）。
+ *
+ * レベルに応じて選択中の成長方式の実績値も辻褄を合わせる（表示レベルと実データが
+ * 食い違い、次の学習で成長処理により表示が戻るのを防ぐため）:
+ *   ・習慣型:       経験値をそのレベルの閾値ちょうどにする
+ *   ・プロジェクト型: 累計学習時間をそのレベルの閾値ちょうどにする（目標未設定なら
+ *                    判定不能のためレベルのみ動かす）
+ *   ・Lv1（5→1）:   累計・経験値をともに0へ戻す（完全リセット）
+ *
  * 戻さないもの: 学習記録（study_session）・達成記録・天気・ユーザー設定。
  *   学習記録も消したい場合は「今夜の学習時間を初期化」と併用する。
  */
-export async function resetTownProgress(): Promise<void> {
+export async function cycleTownLevel(
+  method: GrowthMethod,
+  projectTargetMinutes: number | null,
+): Promise<void> {
   const db = await getDatabase();
-  await db.runAsync(
-    `UPDATE town_progress
-        SET cumulative_study_minutes = 0, experience_points = 0, current_level = 1,
-            updated_at = datetime('now')
-      WHERE is_selected = 1`,
+  const progress = await db.getFirstAsync<{ current_level: number }>(
+    "SELECT current_level FROM town_progress WHERE is_selected = 1",
   );
+  if (!progress) return;
+  const next = progress.current_level >= 5 ? 1 : progress.current_level + 1;
+
+  if (next === 1) {
+    await db.runAsync(
+      `UPDATE town_progress
+          SET current_level = 1, experience_points = 0, cumulative_study_minutes = 0,
+              updated_at = datetime('now')
+        WHERE is_selected = 1`,
+    );
+    return;
+  }
+
+  if (method === "habit") {
+    const thresholds = await getGrowthThresholds("habit");
+    await db.runAsync(
+      `UPDATE town_progress
+          SET current_level = ?, experience_points = ?, updated_at = datetime('now')
+        WHERE is_selected = 1`,
+      next,
+      thresholds[next] ?? 0,
+    );
+  } else if (projectTargetMinutes !== null) {
+    const thresholds = getProjectThresholds(projectTargetMinutes);
+    await db.runAsync(
+      `UPDATE town_progress
+          SET current_level = ?, cumulative_study_minutes = ?, updated_at = datetime('now')
+        WHERE is_selected = 1`,
+      next,
+      thresholds[next] ?? 0,
+    );
+  } else {
+    // プロジェクト型で目標未設定: 累計では判定できないためレベルのみ動かす
+    await db.runAsync(
+      `UPDATE town_progress
+          SET current_level = ?, updated_at = datetime('now')
+        WHERE is_selected = 1`,
+      next,
+    );
+  }
 }
 
 /** 本番の閾値（シードと同じ）。経験値一律5でレベルアップ（要件6.2①） */

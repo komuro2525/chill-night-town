@@ -41,7 +41,7 @@ import { TimerSetupModal, type TimerSetupValues } from "@/components/timer-setup
 import { WeatherPicker } from "@/components/weather-picker";
 import { WeatherRow } from "@/components/weather-row";
 import { ThemedText } from "@/components/themed-text";
-import { GROWTH, MIN_SAVE_MINUTES, STUDY_DAY } from "@/constants/domain";
+import { MIN_SAVE_MINUTES, STUDY_DAY } from "@/constants/domain";
 import { Spacing } from "@/constants/theme";
 import { getTownArt } from "@/constants/townArt";
 import { useSettings } from "@/contexts/SettingsContext";
@@ -91,8 +91,6 @@ export default function HomeScreen() {
   const [selected, setSelected] = useState<SelectedTown | null>(null);
   const [summary, setSummary] = useState<StudyDaySummary | null>(null);
   const [loading, setLoading] = useState(true);
-  // 開発用: レベル表示のプレビュー切替（Lv5 ⇄ 実際のレベル）。__DEV__ でのみ使う
-  const [devLevelOverride, setDevLevelOverride] = useState<number | null>(null);
   // 鑑賞モード（要件2.4）: UIを一括非表示にして夜の街だけを眺める。状態は保存しない
   const [immersive, setImmersive] = useState(false);
   // 開発用: 時刻の上書き（null = 実時間）。夜間帯判定の確認に使う。__DEV__ でのみ切り替える
@@ -129,6 +127,8 @@ export default function HomeScreen() {
   // 復元の判定が済んだか。済むまでは自動終了の見張りを動かさない
   // （5:00を過ぎた状態で起動したとき、案内より先に黙って終了させないため）
   const [restoreChecked, setRestoreChecked] = useState(false);
+  // レベルアップ演出を閉じた後にNPCへ渡す感情（記録の保存時=選択値／離脱時=null）
+  const pendingNpcEmotion = useRef<number | null>(null);
 
   // 当学習日の集計を読み直す。学習日は共通関数で算出する（要件0章 / CLAUDE.md）
   const reloadSummary = useCallback(async () => {
@@ -270,12 +270,10 @@ export default function HomeScreen() {
           goalMinutes: user.daily_goal_minutes,
         });
         setGrowth(result);
-        // レベルが上がったら演出を出す（要件6.1）。
-        // 完成（Lv5への初到達）はレベルが下がらないため本質的に一度きりで、
-        // 専用のフラグは持たない
-        if (result?.leveledUp) {
-          setGrowthCard({ level: result.toLevel, completed: result.completed });
-        }
+        // 演出（レベルアップ・NPCの言葉）はここでは出さない。記録画面（S6）を
+        // 閉じた後に出す（showPostRecord）。記録画面と同時に出すと、演出は Modal で
+        // 最前面に来るため記録画面を覆い、操作できなくなるため。
+        // 成長処理（DB）自体はこの時点で確定済みなので、S6から離脱しても街は育つ。
         // 街のレベル表示・背景アートへ反映する
         const town = await townProgressRepo.getSelectedTown();
         setSelected(town);
@@ -413,6 +411,37 @@ export default function HomeScreen() {
     },
     [user, timer, breakTotal],
   );
+  // 感情に応じたNPCの一言を出す（要件7.1 / 3.4 のステップ8）。
+  // 学習終了と目標達成が同時に成立した場合は「目標達成」を優先する（要件7.1）
+  const showNpcMessage = useCallback(
+    async (emotionId: number | null) => {
+      setNpcMessage(
+        await masterRepo.pickNpcMessage(
+          growth?.goalAchieved ? "goal_achieved" : "study_end",
+          emotionId,
+        ),
+      );
+    },
+    [growth?.goalAchieved],
+  );
+
+  // 記録画面を閉じた後の流れ（要件6.1 / 7.1）。
+  // レベルが上がっていれば演出を先に出し、閉じたらNPCの言葉（成長の事実 → 言葉の順）。
+  // 上がっていなければNPCの言葉だけを出す。保存・離脱のどちらからも通す。
+  const showPostRecord = useCallback(
+    (emotionId: number | null) => {
+      setRecord(null);
+      if (growth?.leveledUp) {
+        // 演出を閉じたときにNPCを出すため、感情を保持しておく
+        pendingNpcEmotion.current = emotionId;
+        setGrowthCard({ level: growth.toLevel, completed: growth.completed });
+      } else {
+        void showNpcMessage(emotionId);
+      }
+    },
+    [growth, showNpcMessage],
+  );
+
   // 成果記録の任意項目を保存する（要件3.4）
   const handleSaveRecord = useCallback(
     async (v: RecordValues) => {
@@ -424,21 +453,13 @@ export default function HomeScreen() {
           memo: v.memo,
           tagIds: v.tagIds,
         });
-        // 感情に応じた一言をかける（要件7.1 / 3.4 のステップ8）。
-        // 学習終了と目標達成が同時に成立した場合は「目標達成」を優先する（要件7.1）
-        setNpcMessage(
-          await masterRepo.pickNpcMessage(
-            growth?.goalAchieved ? "goal_achieved" : "study_end",
-            v.emotionId,
-          ),
-        );
+        showPostRecord(v.emotionId);
       } catch (e) {
         console.error("成果記録の保存に失敗しました", e);
-      } finally {
         setRecord(null);
       }
     },
-    [record, growth?.goalAchieved],
+    [record, showPostRecord],
   );
 
   // 開発用: 今夜の学習記録を消して、合計を0へ戻す（__DEV__ 限定）。
@@ -471,19 +492,23 @@ export default function HomeScreen() {
       console.error("レベルアップ閾値の切り替えに失敗しました", e);
     }
   }, [habitStep]);
-  // 開発用: 選択中の街の育成をやり直す（__DEV__ 限定）。
-  // レベルアップ演出は上がる瞬間にしか出ず、レベルは下がらないため、
-  // 戻せないと二度と確認できない
-  const handleResetTown = useCallback(async () => {
+  // 開発用: 選択中の街のレベルを 1→2→3→4→5→1 と循環させる（__DEV__ 限定）。
+  // 各レベルの見た目の確認と、レベルアップ・完成演出のやり直しを兼ねる。
+  // レベルに応じて実績値も辻褄を合わせる（devRepo 側）
+  const handleCycleLevel = useCallback(async () => {
+    if (!user) return;
     try {
-      await devRepo.resetTownProgress();
+      await devRepo.cycleTownLevel(
+        user.growth_method,
+        selected?.progress.project_target_minutes ?? null,
+      );
       setSelected(await townProgressRepo.getSelectedTown());
     } catch (e) {
-      console.error("街の育成の初期化に失敗しました", e);
+      console.error("レベルの切り替えに失敗しました", e);
     }
-  }, []);
-  // 表示に使うレベル（開発用プレビュー中はその値）。背景アートとLv表示の両方に効かせる
-  const level = devLevelOverride ?? selected?.progress.current_level ?? 1;
+  }, [user, selected?.progress.project_target_minutes]);
+  // 背景アートとLv表示に使うレベル
+  const level = selected?.progress.current_level ?? 1;
   const art = selected ? getTownArt(selected.town.code, level) : undefined;
 
   return (
@@ -537,13 +562,9 @@ export default function HomeScreen() {
           {/* 初回ホーム表示で一度だけ案内する（要件6.2） */}
           <GrowthHintCard />
           <DevPanel
-            onToggleLevel={() =>
-              setDevLevelOverride((prev) =>
-                prev === GROWTH.MAX_LEVEL ? null : GROWTH.MAX_LEVEL,
-              )
-            }
+            townLevel={selected?.progress.current_level ?? 1}
+            onCycleLevel={() => void handleCycleLevel()}
             onClearStudyDay={() => void handleClearStudyDay()}
-            onResetTown={() => void handleResetTown()}
             habitStep={habitStep}
             onToggleHabitStep={() => void handleToggleHabitStep()}
             devHour={devHour}
@@ -590,7 +611,8 @@ export default function HomeScreen() {
           emotionEnabled={user.emotion_record_enabled === 1}
           onChangeWeather={(w) => void handleSelectWeather(w)}
           onSave={(v) => void handleSaveRecord(v)}
-          onClose={() => setRecord(null)}
+          // 保存せず離脱した場合も、成長処理は実行済み。感情は空でNPC/演出へ進む（要件3.4）
+          onClose={() => showPostRecord(null)}
         />
       ) : null}
 
@@ -627,11 +649,15 @@ export default function HomeScreen() {
         onContinue={() => void handleBreakContinue()}
         onExtend={(m) => void handleBreakExtend(m)}
       />
-      {/* レベルアップ・完成の演出（要件6.1）。成長の事実 → NPCの言葉、の順に見せる */}
+      {/* レベルアップ・完成の演出（要件6.1）。成長の事実 → NPCの言葉、の順に見せる。
+          演出を閉じたら、保持しておいた感情でNPCの言葉を出す */}
       <GrowthCard
         level={growthCard?.level ?? null}
         completed={growthCard?.completed ?? false}
-        onClose={() => setGrowthCard(null)}
+        onClose={() => {
+          setGrowthCard(null);
+          void showNpcMessage(pendingNpcEmotion.current);
+        }}
       />
 
       {/* 記録の保存後にかけるNPCの一言（要件7.1） */}
@@ -960,17 +986,17 @@ function TownBackground({
 // 開発用の操作パネル。__DEV__ 限定（本番には表示しない）。
 // 詳細は docs/開発用テストボタン.md を参照。
 function DevPanel({
-  onToggleLevel,
+  townLevel,
+  onCycleLevel,
   onClearStudyDay,
-  onResetTown,
   habitStep,
   onToggleHabitStep,
   devHour,
   onCycleDevHour,
 }: {
-  onToggleLevel: () => void;
+  townLevel: number;
+  onCycleLevel: () => void;
   onClearStudyDay: () => void;
-  onResetTown: () => void;
   habitStep: number;
   onToggleHabitStep: () => void;
   devHour: number | null;
@@ -994,10 +1020,10 @@ function DevPanel({
 
   return (
     <View style={styles.devArea} pointerEvents="box-none">
-      {/* Lv5プレビュー ⇄ 実レベル（背景アートも連動。DBは変更しない） */}
-      <Pressable onPress={onToggleLevel} style={styles.devButton}>
+      {/* レベルを 1→2→3→4→5→1 と循環（背景アート・Lv表示に反映。実績値も辻褄を合わせる） */}
+      <Pressable onPress={onCycleLevel} style={styles.devButton}>
         <ThemedText type="small" style={styles.devButtonText}>
-          Lv切り替え
+          レベル: Lv{townLevel}
         </ThemedText>
       </Pressable>
       {/* 時刻の上書き: 実時間 → 21:00（夜間帯内）→ 12:00（夜間帯外）を順に切り替える */}
@@ -1010,12 +1036,6 @@ function DevPanel({
       <Pressable onPress={onClearStudyDay} style={styles.devButton}>
         <ThemedText type="small" style={styles.devButtonText}>
           今夜の学習時間を初期化
-        </ThemedText>
-      </Pressable>
-      {/* 街の育成をやり直す。レベルアップ演出を繰り返し確認するため */}
-      <Pressable onPress={onResetTown} style={styles.devButton}>
-        <ThemedText type="small" style={styles.devButtonText}>
-          街の育成をやり直す
         </ThemedText>
       </Pressable>
       {/* 習慣型のレベルアップ閾値: 本番=5回/Lv ⇄ テスト=1回/Lv */}
