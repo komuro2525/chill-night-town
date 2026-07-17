@@ -507,6 +507,17 @@ export default function HomeScreen() {
       console.error("レベルの切り替えに失敗しました", e);
     }
   }, [user, selected?.progress.project_target_minutes]);
+  // 開発用: カレンダー確認用に過去数日分のダミー記録を入れる（__DEV__ 限定）
+  const handleSeedCalendar = useCallback(async () => {
+    try {
+      await devRepo.seedCalendarSampleData();
+      await reloadSummary();
+      await reloadWeather();
+      if (__DEV__) Alert.alert("ダミー記録", "過去数日分のダミー記録を入れました。カレンダーで確認できます。");
+    } catch (e) {
+      console.error("ダミー記録の投入に失敗しました", e);
+    }
+  }, [reloadSummary, reloadWeather]);
   // 背景アートとLv表示に使うレベル
   const level = selected?.progress.current_level ?? 1;
   const art = selected ? getTownArt(selected.town.code, level) : undefined;
@@ -565,6 +576,7 @@ export default function HomeScreen() {
             townLevel={selected?.progress.current_level ?? 1}
             onCycleLevel={() => void handleCycleLevel()}
             onClearStudyDay={() => void handleClearStudyDay()}
+            onSeedCalendar={() => void handleSeedCalendar()}
             habitStep={habitStep}
             onToggleHabitStep={() => void handleToggleHabitStep()}
             devHour={devHour}
@@ -989,6 +1001,7 @@ function DevPanel({
   townLevel,
   onCycleLevel,
   onClearStudyDay,
+  onSeedCalendar,
   habitStep,
   onToggleHabitStep,
   devHour,
@@ -997,6 +1010,7 @@ function DevPanel({
   townLevel: number;
   onCycleLevel: () => void;
   onClearStudyDay: () => void;
+  onSeedCalendar: () => void;
   habitStep: number;
   onToggleHabitStep: () => void;
   devHour: number | null;
@@ -1036,6 +1050,12 @@ function DevPanel({
       <Pressable onPress={onClearStudyDay} style={styles.devButton}>
         <ThemedText type="small" style={styles.devButtonText}>
           今夜の学習時間を初期化
+        </ThemedText>
+      </Pressable>
+      {/* カレンダー確認用に過去数日分のダミー記録を入れる */}
+      <Pressable onPress={onSeedCalendar} style={styles.devButton}>
+        <ThemedText type="small" style={styles.devButtonText}>
+          カレンダー用のダミー記録を入れる
         </ThemedText>
       </Pressable>
       {/* 習慣型のレベルアップ閾値: 本番=5回/Lv ⇄ テスト=1回/Lv */}

@@ -7,6 +7,7 @@ import { getProjectThresholds } from "@/lib/growth";
 import { getDatabase } from "../database";
 import type { GrowthMethod } from "../types";
 import { getGrowthThresholds } from "./masterRepo";
+import { formatDateKey } from "@/lib/study-day";
 
 /**
  * 指定学習日の学習記録を消す（開発用）。
@@ -147,4 +148,78 @@ export async function getHabitLevelStep(): Promise<number> {
     "SELECT required_value FROM growth_level_threshold WHERE method = 'habit' AND level = 2",
   );
   return row?.required_value ?? HABIT_STEP_PRODUCTION;
+}
+
+/**
+ * 過去数日ぶんのダミー学習記録を入れる（開発用）。
+ *
+ * 目的: カレンダー（要件4章）は過去日付の記録が無いと確認しづらい。
+ *   本番のタイマーでは当日ぶんしか作れないため、確認用に散らした記録を投入する。
+ *
+ * 各日: 実績時間・感情・天気を変えた1〜2件のセッションと、その夜の天気を作る。
+ * 目標（一日の目標時間）に達した日は達成記録も残す。街の成長には反映しない
+ * （成長は本番フローの確認用。ここではカレンダー表示の確認だけが目的）。
+ */
+export async function seedCalendarSampleData(): Promise<void> {
+  const db = await getDatabase();
+  const user = await db.getFirstAsync<{ id: number; daily_goal_minutes: number }>(
+    "SELECT id, daily_goal_minutes FROM user LIMIT 1",
+  );
+  const town = await db.getFirstAsync<{ town_id: number }>(
+    "SELECT town_id FROM town_progress WHERE is_selected = 1 LIMIT 1",
+  );
+  if (!user || !town) return;
+
+  // 感情・天気のIDはシード順（emotion 1〜11 / night_weather 1〜11）
+  // [遡る日数, 実績分, 感情id(null可), 天気id, セッション数]
+  const plan: [number, number, number | null, number, number][] = [
+    [1, 75, 2, 6, 2], // 昨夜: 集中できた・雨音の夜・2セッション
+    [2, 40, 5, 1, 1], // 星空の夜・穏やかだった
+    [3, 90, 3, 3, 1], // 満月の夜・頑張れた
+    [5, 20, null, 9, 1], // 静寂の夜・感情なし
+    [6, 120, 8, 7, 1], // 嵐の夜・疲れた
+    [9, 60, 2, 6, 1], // 雨音の夜・集中できた
+    [12, 55, 1, 1, 1], // 星空の夜・達成感
+  ];
+
+  await db.withTransactionAsync(async () => {
+    for (const [daysAgo, minutes, emotionId, weatherId, sessions] of plan) {
+      const base = new Date();
+      base.setDate(base.getDate() - daysAgo);
+      base.setHours(21, 0, 0, 0);
+      // 学習日は21時開始なのでその日付（18時以降＝当日帰属）
+      const studyDate = formatDateKey(base);
+
+      let dayTotal = 0;
+      for (let i = 0; i < sessions; i++) {
+        const start = new Date(base.getTime() + i * 90 * 60 * 1000);
+        const dur = i === 0 ? minutes : Math.round(minutes / 2);
+        const end = new Date(start.getTime() + dur * 60 * 1000);
+        dayTotal += dur;
+        await db.runAsync(
+          `INSERT INTO study_session
+             (user_id, town_id, emotion_id, timer_mode, study_date,
+              start_time, end_time, planned_minutes, duration_minutes)
+           VALUES (?, ?, ?, 'simple', ?, ?, ?, ?, ?)`,
+          user.id, town.town_id, emotionId, studyDate,
+          start.toISOString(), end.toISOString(), dur, dur,
+        );
+      }
+
+      await db.runAsync(
+        `INSERT INTO daily_night_weather (user_id, study_date, night_weather_id)
+         VALUES (?, ?, ?)
+         ON CONFLICT (user_id, study_date)
+         DO UPDATE SET night_weather_id = excluded.night_weather_id`,
+        user.id, studyDate, weatherId,
+      );
+
+      if (dayTotal >= user.daily_goal_minutes) {
+        await db.runAsync(
+          "INSERT OR IGNORE INTO daily_goal_achievement (user_id, study_date) VALUES (?, ?)",
+          user.id, studyDate,
+        );
+      }
+    }
+  });
 }
