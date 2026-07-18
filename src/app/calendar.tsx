@@ -1,5 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import {
+  Directions,
+  Gesture,
+  GestureDetector,
+} from "react-native-gesture-handler";
+import { runOnJS } from "react-native-reanimated";
 
 import { CalendarDayDetail } from "@/components/calendar-day-detail";
 import { MonthSummaryCard } from "@/components/month-summary-card";
@@ -61,6 +67,17 @@ export default function CalendarScreen() {
 
   const grid = getMonthGrid(ym.year, ym.month);
 
+  // 横スワイプでタブ切替（左＝ふりかえりへ / 右＝カレンダーへ）。
+  // 2タブなので方向でそのまま行き先が決まる
+  const swipeTabs = Gesture.Race(
+    Gesture.Fling()
+      .direction(Directions.LEFT)
+      .onEnd(() => runOnJS(setTab)("summary")),
+    Gesture.Fling()
+      .direction(Directions.RIGHT)
+      .onEnd(() => runOnJS(setTab)("calendar")),
+  );
+
   return (
     <View style={styles.container}>
       <ScrollView contentContainerStyle={styles.scroll}>
@@ -111,6 +128,8 @@ export default function CalendarScreen() {
           </Pressable>
         </View>
 
+        <GestureDetector gesture={swipeTabs}>
+          <View style={styles.swipeArea}>
         {tab === "calendar" ? (
           <>
             {/* 曜日の見出し */}
@@ -171,6 +190,8 @@ export default function CalendarScreen() {
           /* 月次サマリー・天気アルバム（要件4.2） */
           <MonthSummaryCard summary={summary} />
         )}
+          </View>
+        </GestureDetector>
       </ScrollView>
 
       <CalendarDayDetail detail={detail} onClose={() => setDetail(null)} />
@@ -182,7 +203,10 @@ const LIGHT_COLOR = "rgba(255,206,138,0.95)";
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#05070f" },
-  scroll: { padding: Spacing.four, paddingBottom: Spacing.six },
+  // flexGrow で内容が短くてもビューポート全体を占め、空欄でも横スワイプが効くようにする
+  scroll: { padding: Spacing.four, paddingBottom: Spacing.six, flexGrow: 1 },
+  // スワイプ判定を画面いっぱいに広げる（記録の無い余白でもタブ切替できる）
+  swipeArea: { flex: 1 },
   monthBar: {
     flexDirection: "row",
     alignItems: "center",

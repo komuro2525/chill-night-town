@@ -1,4 +1,26 @@
-import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { useCallback, useEffect } from "react";
+import {
+  Modal,
+  Pressable,
+  StyleSheet,
+  Text,
+  useWindowDimensions,
+  View,
+} from "react-native";
+import {
+  Gesture,
+  GestureDetector,
+  GestureHandlerRootView,
+} from "react-native-gesture-handler";
+import Animated, {
+  Extrapolation,
+  interpolate,
+  runOnJS,
+  useAnimatedScrollHandler,
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+} from "react-native-reanimated";
 
 import { Spacing } from "@/constants/theme";
 import type { DayDetail } from "@/db/repositories/calendarRepo";
@@ -8,6 +30,11 @@ import { formatMinutes, formatStudyDateLabel } from "@/lib/study-day";
 //
 // その学習日の全セッション（複数なら全部）・天気・感情・タグ・メモを表示する。
 // 記録が無い日は静かなデフォルト表示にする（責めない・急かさない）。
+//
+// ボトムシートは2段階（既定＝画面の約55% / 拡大＝約90%）で、シートのどこを掴んでも
+// 上スワイプで拡大・下スワイプで既定/閉、背景タップで閉じる。中身の ScrollView とは
+// 「最上部から下へ引くときだけシートを動かす」という定番の協調で両立させる
+// （スクロール位置が上端以外なら、下スワイプは中身のスクロールに回す）。
 
 function formatTimeRange(startIso: string, endIso: string): string {
   const t = (iso: string) => {
@@ -26,32 +53,152 @@ export function CalendarDayDetail({
   detail: DayDetail | null;
   onClose: () => void;
 }) {
+  const { height: windowHeight } = useWindowDimensions();
+  const expandedHeight = Math.round(windowHeight * 0.9);
+  const collapsedHeight = Math.round(windowHeight * 0.55);
+  // シートの高さは expandedHeight 固定で、translateY で下げて既定の高さに見せる。
+  // translateY: 0 = 拡大 / collapsedTranslate = 既定 / expandedHeight = 画面外（閉）
+  const collapsedTranslate = expandedHeight - collapsedHeight;
+
+  const translateY = useSharedValue(expandedHeight);
+  const startY = useSharedValue(0);
+  // 中身のスクロール位置と、いまシート自体をドラッグ中かどうか（協調判定に使う）
+  const scrollY = useSharedValue(0);
+  const draggingSheet = useSharedValue(false);
+  const scrollHandler = useAnimatedScrollHandler((e) => {
+    scrollY.value = e.contentOffset.y;
+  });
+  // ScrollView の native ジェスチャ。pan と同時成立させて両立を図る
+  const scrollGesture = Gesture.Native();
+
   const hasRecord = detail !== null && detail.sessions.length > 0;
+
+  // 開いたら既定の高さへスライドインする
+  useEffect(() => {
+    if (detail !== null) {
+      translateY.value = expandedHeight;
+      translateY.value = withTiming(collapsedTranslate, { duration: 260 });
+    }
+  }, [detail, expandedHeight, collapsedTranslate, translateY]);
+
+  // 下へスライドアウトしてから閉じる
+  const close = useCallback(() => {
+    translateY.value = withTiming(expandedHeight, { duration: 200 }, (finished) => {
+      if (finished) runOnJS(onClose)();
+    });
+  }, [expandedHeight, onClose, translateY]);
+
+  const pan = Gesture.Pan()
+    // ScrollView のスクロールと同時に成立させ、下の onUpdate でどちらが動くかを決める
+    .simultaneousWithExternalGesture(scrollGesture)
+    .onStart(() => {
+      startY.value = translateY.value;
+      draggingSheet.value = false;
+    })
+    .onUpdate((e) => {
+      // モーダル全体で挙動をそろえる:
+      //   ・既定サイズからは全方向でシートを動かす
+      //   ・拡大中でも「下スワイプ」はどこでも常にシートを動かす（縮む/閉じる）
+      //   ・拡大中の「上スワイプ」は最上部のときだけ動かし、それ以外は中身のスクロールへ
+      const canDragSheet =
+        startY.value > 0 || e.translationY > 0 || scrollY.value <= 0;
+      if (canDragSheet) {
+        draggingSheet.value = true;
+        translateY.value = Math.max(
+          0,
+          Math.min(expandedHeight, startY.value + e.translationY),
+        );
+      }
+    })
+    .onEnd((e) => {
+      // シートを動かしていない（＝中身のスクロールだった）ときは何もしない
+      if (!draggingSheet.value) return;
+      const snaps = [0, collapsedTranslate, expandedHeight]; // 拡大 / 既定 / 閉
+      // しっかりスワイプしたときだけ位置を変える（誤操作防止のデッドゾーン）。
+      // 小さい・遅い動きは開始位置へ戻す。速度の先読みも控えめにする
+      const MOVE_THRESHOLD = 80;
+      const VELOCITY_THRESHOLD = 800;
+      const movedEnough =
+        Math.abs(translateY.value - startY.value) > MOVE_THRESHOLD ||
+        Math.abs(e.velocityY) > VELOCITY_THRESHOLD;
+
+      let target = startY.value;
+      if (movedEnough) {
+        const projected = translateY.value + e.velocityY * 0.05;
+        target = snaps[0];
+        for (const s of snaps) {
+          if (Math.abs(s - projected) < Math.abs(target - projected)) target = s;
+        }
+      }
+
+      if (target === expandedHeight) {
+        translateY.value = withTiming(expandedHeight, { duration: 220 }, (finished) => {
+          if (finished) runOnJS(onClose)();
+        });
+      } else {
+        translateY.value = withTiming(target, { duration: 220 });
+      }
+    });
+
+  const sheetStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: translateY.value }],
+  }));
+  // 背景の暗さはシートの高さに連動させる（上げると濃く、下げると薄く）
+  const dimStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(
+      translateY.value,
+      [0, expandedHeight],
+      [1, 0],
+      Extrapolation.CLAMP,
+    ),
+  }));
 
   return (
     <Modal
       visible={detail !== null}
       transparent
-      animationType="slide"
-      onRequestClose={onClose}
+      animationType="none"
+      statusBarTranslucent
+      onRequestClose={close}
     >
-      <View style={styles.backdrop}>
-        <View style={styles.sheet}>
-          <View style={styles.handleRow}>
-            <View style={styles.handle} />
-          </View>
+      {/* Modal は別の native 階層に描画されるため、ジェスチャ用に Root を内側にも置く */}
+      <GestureHandlerRootView style={styles.flex}>
+        <Animated.View
+          style={[StyleSheet.absoluteFill, styles.dim, dimStyle]}
+          pointerEvents="none"
+        />
+        {/* シートの外側（上の余白）をタップで閉じる */}
+        <Pressable style={StyleSheet.absoluteFill} onPress={close} />
 
-          <View style={styles.header}>
-            <Text style={styles.date}>
-              {detail ? formatStudyDateLabel(detail.studyDate) : ""}
-            </Text>
-            <Pressable onPress={onClose} hitSlop={10} accessibilityLabel="閉じる">
-              <Text style={styles.close}>閉じる</Text>
-            </Pressable>
-          </View>
+        {/* シートのどこを掴んでもドラッグできる（中身のスクロールとは onUpdate で協調） */}
+        <GestureDetector gesture={pan}>
+          <Animated.View style={[styles.sheet, { height: expandedHeight }, sheetStyle]}>
+            <View style={styles.dragZone}>
+              <View style={styles.handleRow}>
+                <View style={styles.handle} />
+              </View>
+              <View style={styles.header}>
+                <Text style={styles.date}>
+                  {detail ? formatStudyDateLabel(detail.studyDate) : ""}
+                </Text>
+                <Pressable onPress={close} hitSlop={10} accessibilityLabel="閉じる">
+                  <Text style={styles.close}>閉じる</Text>
+                </Pressable>
+              </View>
+            </View>
 
-          {hasRecord ? (
-            <ScrollView contentContainerStyle={styles.scroll}>
+          {/* 記録の有無に関わらず常に ScrollView を置き、シート全体を同じように
+              掴んで引っ張れるようにする（データが無い日でも上スワイプで拡大できる） */}
+          <GestureDetector gesture={scrollGesture}>
+            <Animated.ScrollView
+              onScroll={scrollHandler}
+              scrollEventThrottle={16}
+              style={styles.flex}
+              contentContainerStyle={hasRecord ? styles.scroll : styles.scrollEmpty}
+              showsVerticalScrollIndicator={false}
+            >
+              {hasRecord ? (
+              <>
               {/* その夜の天気・合計・達成 */}
               <View style={styles.summary}>
                 {detail.weather ? (
@@ -94,14 +241,17 @@ export function CalendarDayDetail({
                   {s.memo ? <Text style={styles.memo}>{s.memo}</Text> : null}
                 </View>
               ))}
-            </ScrollView>
-          ) : (
-            <View style={styles.empty}>
-              <Text style={styles.emptyText}>この夜の記録はありません</Text>
-            </View>
-          )}
-        </View>
-      </View>
+              </>
+              ) : (
+              <View style={styles.empty}>
+                <Text style={styles.emptyText}>この夜の記録はありません</Text>
+              </View>
+              )}
+            </Animated.ScrollView>
+          </GestureDetector>
+          </Animated.View>
+        </GestureDetector>
+      </GestureHandlerRootView>
     </Modal>
   );
 }
@@ -109,13 +259,13 @@ export function CalendarDayDetail({
 const LIGHT_COLOR = "rgba(255,206,138,0.95)";
 
 const styles = StyleSheet.create({
-  backdrop: {
-    flex: 1,
-    backgroundColor: "rgba(3,6,15,0.6)",
-    justifyContent: "flex-end",
-  },
+  flex: { flex: 1 },
+  dim: { backgroundColor: "rgba(3,6,15,0.6)" },
   sheet: {
-    maxHeight: "80%",
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 0,
     borderTopLeftRadius: 22,
     borderTopRightRadius: 22,
     borderWidth: 1,
@@ -124,6 +274,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.four,
     paddingBottom: Spacing.six,
   },
+  dragZone: { paddingBottom: Spacing.one },
   handleRow: { alignItems: "center", paddingVertical: Spacing.two },
   handle: {
     width: 36,
@@ -147,6 +298,8 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
   scroll: { paddingBottom: Spacing.four },
+  // 記録が無い日: 中身を広げて中央寄せしつつ、全体を掴んで引っ張れるようにする
+  scrollEmpty: { flexGrow: 1, justifyContent: "center" },
   summary: {
     alignItems: "center",
     gap: 2,

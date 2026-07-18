@@ -8,6 +8,54 @@ import { formatMinutes } from "@/lib/study-day";
 //
 // 数字を並べて成績表にしないよう、静かなトーンでまとめる（コンセプト準拠）。
 // 「最も多かった感情・天気」は、その月がどんな夜の集まりだったかを映す。
+// 内訳は縦棒グラフで表す。その月に記録されたものだけを、多い順（左が高い）に並べ、
+// 本数が増減してもバーの幅を変えて一定の表示範囲に収める。
+
+// 夜の天気の総数（マスタは11種）。専用定数が無いためここに置く（シード投入数と一致）
+const WEATHER_KINDS = 11;
+
+// 棒グラフの描画領域の高さ（固定）。バーの高さは最大値に対する割合で決める
+const PLOT_HEIGHT = 150;
+// バーの上に置く回数ラベルのぶん、最大バー高はこの値を差し引いて収める
+const VALUE_LABEL_HEIGHT = 16;
+
+// 灯りの暖色（バーの色）。他画面のレベル表示・合計時間と同じトーン
+const LIGHT_COLOR = "rgba(255,206,138,0.95)";
+
+type BarDatum = { key: string; label: string; value: number };
+
+// 縦棒グラフ。列は flex で等分するため、本数が増減しても枠内に収まり幅だけ変わる。
+// 高さは最大値＝満杯になるよう正規化する（絶対値ではなく割合で見せる）。
+function BarChart({ data }: { data: BarDatum[] }) {
+  const max = Math.max(1, ...data.map((d) => d.value));
+  const usableHeight = PLOT_HEIGHT - VALUE_LABEL_HEIGHT;
+  return (
+    <View>
+      <View style={styles.plot}>
+        {data.map((d) => (
+          <View key={d.key} style={styles.barColumn}>
+            <Text style={styles.barValue}>{d.value}</Text>
+            <View
+              style={[
+                styles.bar,
+                { height: Math.max(3, Math.round((d.value / max) * usableHeight)) },
+              ]}
+            />
+          </View>
+        ))}
+      </View>
+      <View style={styles.labelRow}>
+        {data.map((d) => (
+          <View key={d.key} style={styles.labelCell}>
+            <Text style={styles.barLabel} numberOfLines={1}>
+              {d.label}
+            </Text>
+          </View>
+        ))}
+      </View>
+    </View>
+  );
+}
 
 export function MonthSummaryCard({ summary }: { summary: MonthSummary | null }) {
   // 全11種のうち何種の天気を集めたか（アルバムの充実度）
@@ -16,12 +64,27 @@ export function MonthSummaryCard({ summary }: { summary: MonthSummary | null }) 
   if (!summary || summary.sessionCount === 0) {
     return (
       <View style={styles.card}>
-        <Text style={styles.emptyText}>
-          この月は、まだ記録がありません
-        </Text>
+        <Text style={styles.emptyText}>この月は、まだ記録がありません</Text>
       </View>
     );
   }
+
+  // 多い順（左が高い）に並べる。ラベルは絵文字（列が細くなるため名前は入れない）
+  const emotionData: BarDatum[] = [...summary.emotionCounts]
+    .sort((a, b) => b.count - a.count)
+    .map((e) => ({
+      key: `e${e.emotion.id}`,
+      label: e.emotion.emoji ?? e.emotion.name,
+      value: e.count,
+    }));
+
+  const weatherData: BarDatum[] = [...summary.weatherAlbum]
+    .sort((a, b) => b.nights - a.nights)
+    .map((w) => ({
+      key: `w${w.weather.id}`,
+      label: w.weather.emoji ?? w.weather.name,
+      value: w.nights,
+    }));
 
   return (
     <View style={styles.card}>
@@ -51,32 +114,24 @@ export function MonthSummaryCard({ summary }: { summary: MonthSummary | null }) 
         />
       </View>
 
-      {/* 感情別の記録回数 */}
-      {summary.emotionCounts.length > 0 ? (
+      {/* 感情別の記録回数（縦棒グラフ・多い順） */}
+      {emotionData.length > 0 ? (
         <View style={styles.section}>
           <Text style={styles.sectionLabel}>気持ちの内訳</Text>
-          <View style={styles.chips}>
-            {summary.emotionCounts.map(({ emotion, count }) => (
-              <Text key={emotion.id} style={styles.chip}>
-                {emotion.emoji} {emotion.name} {count}
-              </Text>
-            ))}
-          </View>
+          <BarChart data={emotionData} />
         </View>
       ) : null}
 
-      {/* 夜の天気アルバム */}
+      {/* 夜の天気アルバム（縦棒グラフ・多い順） */}
       <View style={styles.section}>
         <Text style={styles.sectionLabel}>
           夜の天気アルバム（{collectedKinds}/{WEATHER_KINDS}）
         </Text>
-        <View style={styles.chips}>
-          {summary.weatherAlbum.map(({ weather, nights }) => (
-            <Text key={weather.id} style={styles.chip}>
-              {weather.emoji} {weather.name} {nights}
-            </Text>
-          ))}
-        </View>
+        {weatherData.length > 0 ? (
+          <BarChart data={weatherData} />
+        ) : (
+          <Text style={styles.emptyMini}>まだ集まっていません</Text>
+        )}
       </View>
     </View>
   );
@@ -90,9 +145,6 @@ function Stat({ label, value }: { label: string; value: string }) {
     </View>
   );
 }
-
-// 夜の天気の総数（マスタは11種）。専用定数が無いためここに置く（シード投入数と一致）
-const WEATHER_KINDS = 11;
 
 const styles = StyleSheet.create({
   card: {
@@ -127,24 +179,52 @@ const styles = StyleSheet.create({
     color: "rgba(255,255,255,0.5)",
     fontSize: 11,
   },
-  chips: {
+  plot: {
+    height: PLOT_HEIGHT,
     flexDirection: "row",
-    flexWrap: "wrap",
-    gap: Spacing.two,
+    alignItems: "flex-end",
+    gap: 6,
   },
-  chip: {
-    color: "rgba(255,255,255,0.8)",
-    fontSize: 12,
-    paddingVertical: 3,
-    paddingHorizontal: Spacing.two,
-    borderRadius: 999,
-    backgroundColor: "rgba(255,255,255,0.06)",
-    overflow: "hidden",
+  barColumn: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "flex-end",
+    gap: 3,
+  },
+  barValue: {
+    height: VALUE_LABEL_HEIGHT,
+    lineHeight: VALUE_LABEL_HEIGHT,
+    color: "rgba(255,255,255,0.75)",
+    fontSize: 10,
+  },
+  bar: {
+    width: "40%",
+    maxWidth: 16,
+    minWidth: 6,
+    borderRadius: 3,
+    backgroundColor: LIGHT_COLOR,
+  },
+  labelRow: {
+    flexDirection: "row",
+    gap: 6,
+    marginTop: 4,
+  },
+  labelCell: {
+    flex: 1,
+    alignItems: "center",
+  },
+  barLabel: {
+    fontSize: 16,
   },
   emptyText: {
     color: "rgba(255,255,255,0.45)",
     fontSize: 14,
     textAlign: "center",
     paddingVertical: Spacing.three,
+  },
+  emptyMini: {
+    color: "rgba(255,255,255,0.4)",
+    fontSize: 12,
+    paddingVertical: Spacing.two,
   },
 });
