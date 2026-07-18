@@ -31,7 +31,7 @@ type Migration = {
 
 // 現在のスキーマバージョン（db/*.sql が表す「最新」の版）。
 // スキーマを変更したら、スキーマSQLを更新しつつ本値を+1し、DELTA_MIGRATIONS に差分を追加する。
-const SCHEMA_VERSION = 8;
+const SCHEMA_VERSION = 9;
 
 // 既存DB（過去バージョン）向けの差分マイグレーション（version >= 2）。
 // 新規インストールはスキーマSQL（=最新）を適用して一気に SCHEMA_VERSION まで上がるため、
@@ -264,6 +264,42 @@ const DELTA_MIGRATIONS: Migration[] = [
             (1, 'goal_achieved', (SELECT id FROM emotion WHERE code = 'down'), '気持ちは晴れなくとも、やるべきことはやりました。それは事実です。'),
             (1, 'goal_achieved', (SELECT id FROM emotion WHERE code = 'anxious'), '不安を抱えたまま、目標まで来ましたね。それは立派なことです。'),
             (1, 'goal_achieved', (SELECT id FROM emotion WHERE code = 'stuck'), '手応えがなくとも、時間は確かに積み上がりました。届いていますよ。');
+      `);
+    },
+  },
+  {
+    version: 9,
+    up: async (db) => {
+      // プロジェクト型の目標学習時間の上限を 500時間(30000分) → 744時間(44640分) へ広げる。
+      // SQLite は列の CHECK 制約を ALTER で変更できないため、town_progress を作り直す。
+      // town_progress を参照する外部キーは無いため、DROP による連鎖削除は起きない。
+      // 索引は本テーブルに idx_town_progress_selected（部分ユニーク）のみ。作り直して張り直す。
+      await db.execAsync(`
+        CREATE TABLE town_progress_new (
+            id                          INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id                     INTEGER NOT NULL REFERENCES user(id)  ON DELETE CASCADE,
+            town_id                     INTEGER NOT NULL REFERENCES town(id)  ON DELETE RESTRICT,
+            current_level               INTEGER NOT NULL DEFAULT 1 CHECK (current_level BETWEEN 1 AND 5),
+            cumulative_study_minutes    INTEGER NOT NULL DEFAULT 0 CHECK (cumulative_study_minutes >= 0),
+            experience_points           INTEGER NOT NULL DEFAULT 0 CHECK (experience_points >= 0),
+            subtitle                    TEXT,
+            project_target_minutes      INTEGER CHECK (project_target_minutes IS NULL OR project_target_minutes BETWEEN 60 AND 44640),
+            is_selected                 INTEGER NOT NULL DEFAULT 0 CHECK (is_selected IN (0, 1)),
+            created_at                  TEXT    NOT NULL DEFAULT (datetime('now')),
+            updated_at                  TEXT    NOT NULL DEFAULT (datetime('now')),
+            UNIQUE (user_id, town_id)
+        );
+        INSERT INTO town_progress_new
+            (id, user_id, town_id, current_level, cumulative_study_minutes, experience_points,
+             subtitle, project_target_minutes, is_selected, created_at, updated_at)
+        SELECT id, user_id, town_id, current_level, cumulative_study_minutes, experience_points,
+               subtitle, project_target_minutes, is_selected, created_at, updated_at
+          FROM town_progress;
+        DROP TABLE town_progress;
+        ALTER TABLE town_progress_new RENAME TO town_progress;
+        CREATE UNIQUE INDEX idx_town_progress_selected
+            ON town_progress(user_id)
+            WHERE is_selected = 1;
       `);
     },
   },

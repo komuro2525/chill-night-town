@@ -124,7 +124,7 @@ CREATE TABLE ambient_sound (
 --    ・cumulative_study_minutes は成長方式に関わらず常に加算する
 --    ・experience_points は習慣型選択中のみ付与する
 --    ・project_target_minutes : プロジェクト型の目標学習時間（街ごと）。
---      入力は時間単位(1〜500時間)だが分で格納する（60〜30000）。
+--      入力は時間単位(1〜744時間)だが分で格納する（60〜44640）。
 --      レベル基準は本値を5段階で均等割してアプリ側で動的算出する
 -- =====================================================================
 CREATE TABLE town_progress (
@@ -135,7 +135,7 @@ CREATE TABLE town_progress (
     cumulative_study_minutes    INTEGER NOT NULL DEFAULT 0 CHECK (cumulative_study_minutes >= 0),
     experience_points           INTEGER NOT NULL DEFAULT 0 CHECK (experience_points >= 0),
     subtitle                    TEXT,               -- 街のサブタイトル（任意、上限20文字はアプリ側検証）
-    project_target_minutes      INTEGER CHECK (project_target_minutes IS NULL OR project_target_minutes BETWEEN 60 AND 30000),
+    project_target_minutes      INTEGER CHECK (project_target_minutes IS NULL OR project_target_minutes BETWEEN 60 AND 44640),
     is_selected                 INTEGER NOT NULL DEFAULT 0 CHECK (is_selected IN (0, 1)),
     created_at                  TEXT    NOT NULL DEFAULT (datetime('now')),
     updated_at                  TEXT    NOT NULL DEFAULT (datetime('now')),

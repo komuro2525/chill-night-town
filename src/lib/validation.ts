@@ -103,7 +103,7 @@ export function validateExtensionMinutes(raw: string): string | null {
 }
 
 /**
- * プロジェクト型の目標学習時間（必須・1〜500時間の整数）。要件6.2② / UC 6.2・6.3。
+ * プロジェクト型の目標学習時間（必須・1〜744時間の整数）。要件6.2② / UC 6.2・6.3。
  * 入力は時間単位。格納時に分へ変換する（分の値域はスキーマの CHECK が担保）。
  */
 export function validateProjectTargetHours(raw: string): string | null {

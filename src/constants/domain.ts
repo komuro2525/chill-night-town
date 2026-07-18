@@ -56,9 +56,9 @@ export const GROWTH = {
 
 /** プロジェクト型の街ごと目標学習時間。UC 6.2 / 6.3（入力は時間単位、格納は分） */
 export const PROJECT_TARGET = {
-  HOURS: { MIN: 1, MAX: 500, DEFAULT: 10 },
-  /** スキーマ CHECK: 60〜30000（分） */
-  MINUTES: { MIN: 60, MAX: 30000 },
+  HOURS: { MIN: 1, MAX: 744, DEFAULT: 10 },
+  /** スキーマ CHECK: 60〜44640（分）＝1〜744時間 */
+  MINUTES: { MIN: 60, MAX: 44640 },
 } as const;
 
 /** 実績学習時間がこの値未満のセッションは保存せず破棄する（分）。要件3.2 */

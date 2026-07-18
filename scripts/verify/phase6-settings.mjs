@@ -107,11 +107,13 @@ check("サブタイトルを設定できる", one("SELECT subtitle FROM town_pro
 run("UPDATE town_progress SET subtitle = ?, updated_at=datetime('now') WHERE town_id=?", null, townA);
 check("空サブタイトルは NULL になる", one("SELECT subtitle FROM town_progress WHERE town_id=?", townA).subtitle === null);
 
-// プロジェクト型目標: 値域内は保存、値域外は CHECK 違反
+// プロジェクト型目標: 値域内は保存、値域外は CHECK 違反（上限 744時間=44640分）
 run("UPDATE town_progress SET project_target_minutes = ? WHERE town_id=?", 600, townA);
 check("目標学習時間(分)を保存できる", one("SELECT project_target_minutes FROM town_progress WHERE town_id=?", townA).project_target_minutes === 600);
+run("UPDATE town_progress SET project_target_minutes = ? WHERE town_id=?", 44640, townA);
+check("44640分(744時間)ちょうどは保存できる", one("SELECT project_target_minutes FROM town_progress WHERE town_id=?", townA).project_target_minutes === 44640);
 throws("60分未満は CHECK 違反", () => run("UPDATE town_progress SET project_target_minutes=? WHERE town_id=?", 50, townA));
-throws("30000分超は CHECK 違反", () => run("UPDATE town_progress SET project_target_minutes=? WHERE town_id=?", 30001, townA));
+throws("44640分超は CHECK 違反", () => run("UPDATE town_progress SET project_target_minutes=? WHERE town_id=?", 44641, townA));
 
 console.log("C. growthRepo.recomputeTownLevel（下がらない／閾値到達で上がる）");
 function recompute(townId, method) {

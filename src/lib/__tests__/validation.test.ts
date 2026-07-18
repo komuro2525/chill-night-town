@@ -99,12 +99,12 @@ describe("validateExtensionMinutes（延長宣言・5〜120分）", () => {
   });
 });
 
-describe("validateProjectTargetHours（プロジェクト型目標・1〜500時間）", () => {
+describe("validateProjectTargetHours（プロジェクト型目標・1〜744時間）", () => {
   it.each([
     ["0時間は値域外", "0", false],
     ["1時間ちょうどは通る", "1", true],
-    ["500時間ちょうどは通る", "500", true],
-    ["501時間は値域外", "501", false],
+    ["744時間ちょうどは通る", "744", true],
+    ["745時間は値域外", "745", false],
   ])("%s", (_label, input, expected) => {
     expect(ok(validateProjectTargetHours(input))).toBe(expected);
   });
