@@ -122,6 +122,41 @@ export async function updateRecordDetails(input: {
   });
 }
 
+/**
+ * 学習記録のタグ・メモだけを後から編集する（要件4.1: カレンダーからの編集）。
+ *
+ * 感情はその夜のその時の気持ちのスナップショットのため**変更しない**
+ * （emotion_id に一切触れない）。学習時間・時刻・天気も対象外。
+ * タグは付け替え（毎回消して入れ直す。updateRecordDetails と同じ方針）。
+ */
+export async function updateSessionContent(input: {
+  sessionId: number;
+  memo: string | null;
+  tagIds: number[];
+}): Promise<void> {
+  const db = await getDatabase();
+  await db.withTransactionAsync(async () => {
+    await db.runAsync(
+      `UPDATE study_session
+          SET memo = ?, updated_at = datetime('now')
+        WHERE id = ?`,
+      input.memo && input.memo.length > 0 ? input.memo : null,
+      input.sessionId,
+    );
+    await db.runAsync(
+      "DELETE FROM session_tag WHERE study_session_id = ?",
+      input.sessionId,
+    );
+    for (const tagId of input.tagIds) {
+      await db.runAsync(
+        "INSERT INTO session_tag (study_session_id, study_tag_id) VALUES (?, ?)",
+        input.sessionId,
+        tagId,
+      );
+    }
+  });
+}
+
 export type StudyDaySummary = {
   studyDate: string;
   totalMinutes: number;
