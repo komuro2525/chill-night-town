@@ -1,4 +1,4 @@
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Modal,
   Pressable,
@@ -23,8 +23,9 @@ import Animated, {
 } from "react-native-reanimated";
 
 import { Spacing } from "@/constants/theme";
-import type { DayDetail } from "@/db/repositories/calendarRepo";
+import type { DayDetail, DaySessionRecord } from "@/db/repositories/calendarRepo";
 import { formatMinutes, formatStudyDateLabel } from "@/lib/study-day";
+import { SessionEditModal } from "./session-edit-modal";
 
 // カレンダーの日別詳細（要件4.1）。
 //
@@ -47,13 +48,21 @@ function formatTimeRange(startIso: string, endIso: string): string {
 
 export function CalendarDayDetail({
   detail,
+  userId,
   onClose,
+  onReload,
 }: {
   /** 表示する学習日の詳細。null なら閉じている */
   detail: DayDetail | null;
+  /** マイタグ作成に使うユーザーID */
+  userId: number;
   onClose: () => void;
+  /** 編集後にその学習日の詳細を読み直す（親が getDayDetail し直す） */
+  onReload: (studyDate: string) => void;
 }) {
   const { height: windowHeight } = useWindowDimensions();
+  // 長押しで編集中のセッション（null なら編集していない）
+  const [editingSession, setEditingSession] = useState<DaySessionRecord | null>(null);
   const expandedHeight = Math.round(windowHeight * 0.9);
   const collapsedHeight = Math.round(windowHeight * 0.55);
   // シートの高さは expandedHeight 固定で、translateY で下げて既定の高さに見せる。
@@ -73,12 +82,17 @@ export function CalendarDayDetail({
 
   const hasRecord = detail !== null && detail.sessions.length > 0;
 
-  // 開いたら既定の高さへスライドインする
+  // スライドインは「新規に開いたとき」だけ行う。
+  // 編集の保存後は detail を読み直すが、そのときシートを再アニメーションさせない
+  // （下から出直すと気持ち悪いため）。開いている間の内容更新は位置を保つ。
+  const wasOpenRef = useRef(false);
   useEffect(() => {
-    if (detail !== null) {
+    const isOpen = detail !== null;
+    if (isOpen && !wasOpenRef.current) {
       translateY.value = expandedHeight;
       translateY.value = withTiming(collapsedTranslate, { duration: 260 });
     }
+    wasOpenRef.current = isOpen;
   }, [detail, expandedHeight, collapsedTranslate, translateY]);
 
   // 下へスライドアウトしてから閉じる
@@ -215,7 +229,13 @@ export function CalendarDayDetail({
               </View>
 
               {detail.sessions.map((s) => (
-                <View key={s.id} style={styles.session}>
+                <Pressable
+                  key={s.id}
+                  onLongPress={() => setEditingSession(s)}
+                  delayLongPress={300}
+                  accessibilityLabel="長押しでタグ・メモを編集"
+                  style={({ pressed }) => [styles.session, pressed && styles.sessionPressed]}
+                >
                   <View style={styles.sessionHead}>
                     <Text style={styles.sessionTime}>
                       {formatTimeRange(s.startTime, s.endTime)}
@@ -239,8 +259,11 @@ export function CalendarDayDetail({
                     </View>
                   ) : null}
                   {s.memo ? <Text style={styles.memo}>{s.memo}</Text> : null}
-                </View>
+                </Pressable>
               ))}
+              <Text style={styles.editHint}>
+                記録を長押しすると、タグとメモを整えられます
+              </Text>
               </>
               ) : (
               <View style={styles.empty}>
@@ -251,6 +274,17 @@ export function CalendarDayDetail({
           </GestureDetector>
           </Animated.View>
         </GestureDetector>
+
+        {/* セッションのタグ・メモ編集（長押しで開く。感情は読み取り専用） */}
+        <SessionEditModal
+          userId={userId}
+          session={editingSession}
+          onSaved={() => {
+            if (detail) onReload(detail.studyDate);
+            setEditingSession(null);
+          }}
+          onClose={() => setEditingSession(null)}
+        />
       </GestureHandlerRootView>
     </Modal>
   );
@@ -328,6 +362,13 @@ const styles = StyleSheet.create({
     padding: Spacing.three,
     marginBottom: Spacing.two,
     gap: Spacing.one,
+  },
+  sessionPressed: { backgroundColor: "rgba(255,255,255,0.1)" },
+  editHint: {
+    color: "rgba(255,255,255,0.4)",
+    fontSize: 12,
+    textAlign: "center",
+    marginTop: Spacing.one,
   },
   sessionHead: {
     flexDirection: "row",

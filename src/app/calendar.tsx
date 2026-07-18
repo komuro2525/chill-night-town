@@ -10,6 +10,7 @@ import { runOnJS } from "react-native-reanimated";
 import { CalendarDayDetail } from "@/components/calendar-day-detail";
 import { MonthSummaryCard } from "@/components/month-summary-card";
 import { Spacing } from "@/constants/theme";
+import { useSettings } from "@/contexts/SettingsContext";
 import { calendarRepo } from "@/db/repositories";
 import type {
   DayDetail,
@@ -25,6 +26,7 @@ import { now } from "@/lib/clock";
 const WEEKDAYS = ["日", "月", "火", "水", "木", "金", "土"];
 
 export default function CalendarScreen() {
+  const { user } = useSettings();
   const today = now();
   const [ym, setYm] = useState({
     year: today.getFullYear(),
@@ -194,7 +196,12 @@ export default function CalendarScreen() {
         </GestureDetector>
       </ScrollView>
 
-      <CalendarDayDetail detail={detail} onClose={() => setDetail(null)} />
+      <CalendarDayDetail
+        detail={detail}
+        userId={user?.id ?? 0}
+        onClose={() => setDetail(null)}
+        onReload={(studyDate) => void openDay(studyDate)}
+      />
     </View>
   );
 }
