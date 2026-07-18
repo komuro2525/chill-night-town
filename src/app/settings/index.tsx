@@ -1,5 +1,5 @@
 import { useRouter } from "expo-router";
-import { useCallback, useEffect, useState } from "react";
+import { useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Switch, View } from "react-native";
 
 import { EditFieldModal, SettingRow, SettingSection } from "@/components/settings-ui";
@@ -9,7 +9,6 @@ import { Spacing } from "@/constants/theme";
 import { useSettings } from "@/contexts/SettingsContext";
 import { useTimer } from "@/contexts/TimerContext";
 import { growthRepo, townProgressRepo, userRepo } from "@/db/repositories";
-import type { SelectedTown } from "@/db/repositories/townProgressRepo";
 import type { GrowthMethod } from "@/db/types";
 import { useTheme } from "@/hooks/use-theme";
 import { formatMinutes } from "@/lib/study-day";
@@ -29,25 +28,15 @@ const RUNNING_NOTE = "学習中は変更できません";
 
 export default function SettingsScreen() {
   const router = useRouter();
-  const { user, ready, reload } = useSettings();
+  const { user, ready, reload, selectedTown } = useSettings();
   const { status } = useTimer();
   const running = status !== "idle";
 
-  const [selectedTown, setSelectedTown] = useState<SelectedTown | null>(null);
   const [editing, setEditing] = useState<"nickname" | "goal" | null>(null);
   const [projectPrompt, setProjectPrompt] = useState(false);
 
-  const loadTown = useCallback(async () => {
-    try {
-      setSelectedTown(await townProgressRepo.getSelectedTown());
-    } catch (e) {
-      console.error("選択中の街の読み込みに失敗しました", e);
-    }
-  }, []);
-
-  useEffect(() => {
-    void loadTown();
-  }, [loadTown]);
+  // 選択中の街は SettingsContext が保持する。S9 で変更すると context 側が更新され、
+  // 戻ってきたときには既に最新（非同期の再読み込み待ちが無いのでラグが出ない）。
 
   if (!ready || !user) {
     return (
@@ -59,10 +48,11 @@ export default function SettingsScreen() {
 
   const method = user.growth_method;
 
-  // 成長方式を切り替える。プロジェクト型で選択中の街に目標が無ければ入力を求める。
+  // 成長方式を切り替える。プロジェクト型へ切り替えるときは、必ずモーダルで
+  // 目標時間を確認・設定させる（既存の目標があれば初期値に入れておく）。
   async function changeMethod(next: GrowthMethod) {
     if (running || next === method || !user) return;
-    if (next === "project" && (selectedTown?.progress.project_target_minutes ?? null) === null) {
+    if (next === "project") {
       setProjectPrompt(true);
       return;
     }
@@ -70,17 +60,17 @@ export default function SettingsScreen() {
     if (selectedTown) {
       await growthRepo.recomputeTownLevel(user.id, selectedTown.town.id, next);
     }
-    await Promise.all([reload(), loadTown()]);
+    await reload();
   }
 
-  // 目標未設定でプロジェクト型を選んだときの入力確定。目標を保存→方式切替→レベル再判定。
+  // プロジェクト型に切り替えるときの目標時間確定。目標を保存→方式切替→レベル再判定。
   async function confirmProjectTarget(hoursText: string) {
     if (!user || !selectedTown) return;
     const minutes = Number(hoursText.trim()) * 60;
     await townProgressRepo.updateProjectTargetMinutes(selectedTown.town.id, minutes);
     await userRepo.updateGrowthMethod("project");
     await growthRepo.recomputeTownLevel(user.id, selectedTown.town.id, "project");
-    await Promise.all([reload(), loadTown()]);
+    await reload();
   }
 
   return (
@@ -218,8 +208,12 @@ export default function SettingsScreen() {
       <EditFieldModal
         visible={projectPrompt}
         title="目標学習時間（時間）"
-        description="1〜500時間。この時間の達成で街が完成します。"
-        initialValue=""
+        description="1〜744時間。この時間の達成で街が完成します。"
+        initialValue={
+          selectedTown?.progress.project_target_minutes != null
+            ? String(Math.round(selectedTown.progress.project_target_minutes / 60))
+            : ""
+        }
         placeholder="例: 10"
         keyboardType="number-pad"
         maxLength={3}

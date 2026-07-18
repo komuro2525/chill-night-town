@@ -888,8 +888,8 @@ function TopOverlay({
         {session ? (
           <MeasuringIndicator session={session} width={CLOCK_SIZE} />
         ) : !canStart ? (
-          <Text style={styles.closedText}>
-            この街が目覚めるのは {STUDY_DAY.START_HOUR}:00 から
+          <Text style={styles.closedText} numberOfLines={1}>
+            夜が目覚めるのは{STUDY_DAY.START_HOUR}:00から
           </Text>
         ) : null}
       </View>
