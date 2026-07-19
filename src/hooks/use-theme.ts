@@ -8,7 +8,7 @@ import { useColorScheme } from '@/hooks/use-color-scheme';
 
 export function useTheme() {
   const scheme = useColorScheme();
-  const theme = scheme === 'unspecified' ? 'light' : scheme;
-
-  return Colors[theme];
+  // useColorScheme は null / undefined を返すことがある（起動直後・未対応環境）。
+  // その場合は light にフォールバックする
+  return Colors[scheme === 'dark' ? 'dark' : 'light'];
 }
