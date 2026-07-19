@@ -19,6 +19,7 @@ import type {
 } from "@/db/repositories/calendarRepo";
 import { getMonthGrid, getMonthRange, shiftMonth } from "@/lib/calendar";
 import { now } from "@/lib/clock";
+import { getStudyDate } from "@/lib/study-day";
 
 // S7 カレンダー画面（要件4章）。日別記録閲覧（4.1）・月次サマリー（4.2）。
 // 集計はすべて学習日（study_date）基準。マス日付＝study_date で一致する。
@@ -39,7 +40,9 @@ export default function CalendarScreen() {
   // 月の選択は両タブで共有する
   const [tab, setTab] = useState<"calendar" | "summary">("calendar");
 
-  const todayKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+  // 「今日」のマスは暦日ではなく学習日基準（マス＝study_date のため）。
+  // 深夜0:00〜4:59は前夜のサイクル内なので、今夜の記録が乗る前日のマスを光らせる
+  const todayKey = getStudyDate(today);
 
   const reload = useCallback(async () => {
     const { start, end } = getMonthRange(ym.year, ym.month);
