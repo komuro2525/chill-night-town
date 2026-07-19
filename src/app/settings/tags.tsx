@@ -116,6 +116,7 @@ export default function TagsScreen() {
       <EditFieldModal
         visible={renaming !== null}
         title="タグの名前"
+        description={`${LIMITS.TAG_NAME_MAX}文字以内で入力できます`}
         initialValue={renaming?.name ?? ""}
         maxLength={LIMITS.TAG_NAME_MAX}
         validate={validateTagName}

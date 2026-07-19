@@ -210,6 +210,7 @@ export function SessionEditModal({
                   <Ionicons name="add" size={22} color="rgba(255,255,255,0.95)" />
                 </Pressable>
               </View>
+              <Text style={styles.tagHint}>{LIMITS.TAG_NAME_MAX}文字以内</Text>
               {tagError ? <Text style={styles.error}>{tagError}</Text> : null}
             </Section>
 
@@ -398,6 +399,11 @@ const styles = StyleSheet.create({
     color: "rgba(255,255,255,0.35)",
     fontSize: 11,
     marginTop: Spacing.one,
+  },
+  tagHint: {
+    color: "rgba(255,255,255,0.4)",
+    fontSize: 11,
+    marginTop: Spacing.two,
   },
   error: {
     color: "rgba(255,180,180,0.95)",
