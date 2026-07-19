@@ -5,6 +5,7 @@ import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Switch, Vi
 import { EditFieldModal, SettingRow, SettingSection } from "@/components/settings-ui";
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
+import { DAILY_GOAL_MINUTES, LIMITS, PROJECT_TARGET } from "@/constants/domain";
 import { Spacing } from "@/constants/theme";
 import { useSettings } from "@/contexts/SettingsContext";
 import { useTimer } from "@/contexts/TimerContext";
@@ -222,7 +223,7 @@ export default function SettingsScreen() {
         title="ニックネーム"
         initialValue={user.nickname}
         placeholder="この街での呼び名"
-        maxLength={20}
+        maxLength={LIMITS.NICKNAME_MAX}
         validate={validateNickname}
         onCancel={() => setEditing(null)}
         onSubmit={async (v) => {
@@ -235,7 +236,7 @@ export default function SettingsScreen() {
       <EditFieldModal
         visible={editing === "goal"}
         title="1日の目標時間（分）"
-        description="10〜720分。習慣型の達成判定・休憩提案の基準になります。"
+        description={`${DAILY_GOAL_MINUTES.MIN}〜${DAILY_GOAL_MINUTES.MAX}分。習慣型の達成判定・休憩提案の基準になります。`}
         initialValue={String(user.daily_goal_minutes)}
         keyboardType="number-pad"
         maxLength={3}
@@ -251,7 +252,7 @@ export default function SettingsScreen() {
       <EditFieldModal
         visible={projectPrompt}
         title="目標学習時間（時間）"
-        description="1〜744時間。この時間の達成で街が完成します。"
+        description={`${PROJECT_TARGET.HOURS.MIN}〜${PROJECT_TARGET.HOURS.MAX}時間。この時間の達成で街が完成します。`}
         initialValue={
           selectedTown?.progress.project_target_minutes != null
             ? String(Math.round(selectedTown.progress.project_target_minutes / 60))

@@ -6,6 +6,7 @@ import { LevelBadge } from "@/components/level-badge";
 import { EditFieldModal, SettingRow } from "@/components/settings-ui";
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
+import { LIMITS, PROJECT_TARGET } from "@/constants/domain";
 import { Spacing } from "@/constants/theme";
 import { getTownArt, hasTownArt } from "@/constants/townArt";
 import { useSettings } from "@/contexts/SettingsContext";
@@ -188,10 +189,10 @@ export default function TownsScreen() {
       <EditFieldModal
         visible={editing?.kind === "subtitle"}
         title="サブタイトル"
-        description="「試験にむけて」など、この街につける言葉（20文字以内・任意）。空にすると外せます。"
+        description={`「試験にむけて」など、この街につける言葉（${LIMITS.SUBTITLE_MAX}文字以内・任意）。空にすると外せます。`}
         initialValue={editing?.kind === "subtitle" ? editing.current : ""}
         placeholder="例: 試験にむけて"
-        maxLength={20}
+        maxLength={LIMITS.SUBTITLE_MAX}
         onCancel={() => setEditing(null)}
         onSubmit={(v) => {
           if (editing?.kind === "subtitle") return saveSubtitle(editing.townId, v);
@@ -202,7 +203,7 @@ export default function TownsScreen() {
       <EditFieldModal
         visible={editing?.kind === "target"}
         title="目標学習時間（時間）"
-        description="1〜500時間。この時間の達成で街が完成します。"
+        description={`${PROJECT_TARGET.HOURS.MIN}〜${PROJECT_TARGET.HOURS.MAX}時間。この時間の達成で街が完成します。`}
         initialValue={editing?.kind === "target" ? editing.current : ""}
         placeholder="例: 10"
         keyboardType="number-pad"
