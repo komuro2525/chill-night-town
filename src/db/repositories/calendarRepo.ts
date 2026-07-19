@@ -119,17 +119,28 @@ export async function getDayDetail(studyDate: string): Promise<DayDetail> {
   const emotions = await db.getAllAsync<Emotion>("SELECT * FROM emotion");
   const emotionById = new Map(emotions.map((e) => [e.id, e]));
 
+  // タグはその日の全セッション分を1クエリで引き、セッションIDごとに束ねる
+  // （セッションごとに1クエリずつ発行しない）
+  const tagRows = await db.getAllAsync<StudyTag & { study_session_id: number }>(
+    `SELECT st.study_session_id, t.*
+       FROM session_tag st
+       JOIN study_tag t ON t.id = st.study_tag_id
+      WHERE st.study_session_id IN
+            (SELECT id FROM study_session WHERE study_date = ?)
+      ORDER BY t.is_custom, t.display_order, t.id`,
+    studyDate,
+  );
+  const tagsBySession = new Map<number, StudyTag[]>();
+  for (const { study_session_id, ...tag } of tagRows) {
+    const list = tagsBySession.get(study_session_id) ?? [];
+    list.push(tag);
+    tagsBySession.set(study_session_id, list);
+  }
+
   const sessions: DaySessionRecord[] = [];
   let totalMinutes = 0;
   for (const s of sessionRows) {
     totalMinutes += s.duration_minutes;
-    const tags = await db.getAllAsync<StudyTag>(
-      `SELECT t.* FROM study_tag t
-         JOIN session_tag st ON st.study_tag_id = t.id
-        WHERE st.study_session_id = ?
-        ORDER BY t.is_custom, t.display_order, t.id`,
-      s.id,
-    );
     sessions.push({
       id: s.id,
       timerMode: s.timer_mode,
@@ -139,7 +150,7 @@ export async function getDayDetail(studyDate: string): Promise<DayDetail> {
       durationMinutes: s.duration_minutes,
       emotion: s.emotion_id !== null ? (emotionById.get(s.emotion_id) ?? null) : null,
       memo: s.memo,
-      tags,
+      tags: tagsBySession.get(s.id) ?? [],
     });
   }
 
