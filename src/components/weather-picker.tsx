@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Modal, Pressable, ScrollView, StyleSheet, Text } from "react-native";
 
-import { Spacing } from "@/constants/theme";
+import { LightColor, Spacing } from "@/constants/theme";
 import { masterRepo } from "@/db/repositories";
 import type { NightWeather } from "@/db/types";
 
@@ -93,7 +93,6 @@ export function WeatherPicker({
   );
 }
 
-const LIGHT_COLOR = "rgba(255,206,138,0.95)";
 
 const styles = StyleSheet.create({
   backdrop: {
@@ -138,7 +137,7 @@ const styles = StyleSheet.create({
     borderColor: "transparent",
   },
   itemSelected: {
-    borderColor: LIGHT_COLOR,
+    borderColor: LightColor,
     backgroundColor: "rgba(255,206,138,0.1)",
   },
   pressed: {
@@ -152,7 +151,7 @@ const styles = StyleSheet.create({
     fontSize: 15,
   },
   nameSelected: {
-    color: LIGHT_COLOR,
+    color: LightColor,
     fontWeight: "600",
   },
   closeButton: {

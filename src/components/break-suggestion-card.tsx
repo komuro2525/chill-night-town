@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Modal, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
 import { EXTENSION_MINUTES } from "@/constants/domain";
-import { Spacing } from "@/constants/theme";
+import { LightColor, Spacing } from "@/constants/theme";
 import { formatMinutes } from "@/lib/study-day";
 import { validateExtensionMinutes } from "@/lib/validation";
 
@@ -88,7 +88,7 @@ export function BreakSuggestionCard({
                   keyboardType="number-pad"
                   maxLength={3}
                   style={styles.input}
-                  selectionColor={LIGHT_COLOR}
+                  selectionColor={LightColor}
                 />
                 <Text style={styles.unit}>分</Text>
               </View>
@@ -145,7 +145,6 @@ function Button({
   );
 }
 
-const LIGHT_COLOR = "rgba(255,206,138,0.95)";
 
 const styles = StyleSheet.create({
   backdrop: {
@@ -165,7 +164,7 @@ const styles = StyleSheet.create({
     padding: Spacing.four,
   },
   title: {
-    color: LIGHT_COLOR,
+    color: LightColor,
     fontSize: 17,
     fontWeight: "600",
   },
@@ -233,7 +232,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   buttonPrimary: {
-    borderColor: LIGHT_COLOR,
+    borderColor: LightColor,
     backgroundColor: "rgba(255,206,138,0.12)",
   },
   buttonText: {
@@ -242,7 +241,7 @@ const styles = StyleSheet.create({
     fontWeight: "500",
   },
   buttonTextPrimary: {
-    color: LIGHT_COLOR,
+    color: LightColor,
   },
   pressed: { opacity: 0.6 },
 });

@@ -1,6 +1,6 @@
 import { StyleSheet, Text, View } from "react-native";
 
-import { Spacing } from "@/constants/theme";
+import { LightColor, Spacing } from "@/constants/theme";
 import type { MonthSummary } from "@/db/repositories/calendarRepo";
 import { formatMinutes } from "@/lib/study-day";
 
@@ -20,7 +20,6 @@ const PLOT_HEIGHT = 150;
 const VALUE_LABEL_HEIGHT = 16;
 
 // 灯りの暖色（バーの色）。他画面のレベル表示・合計時間と同じトーン
-const LIGHT_COLOR = "rgba(255,206,138,0.95)";
 
 type BarDatum = { key: string; label: string; value: number };
 
@@ -202,7 +201,7 @@ const styles = StyleSheet.create({
     maxWidth: 16,
     minWidth: 6,
     borderRadius: 3,
-    backgroundColor: LIGHT_COLOR,
+    backgroundColor: LightColor,
   },
   labelRow: {
     flexDirection: "row",

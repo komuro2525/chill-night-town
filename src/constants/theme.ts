@@ -63,3 +63,8 @@ export const Spacing = {
 
 export const BottomTabInset = Platform.select({ ios: 50, android: 80 }) ?? 0;
 export const MaxContentWidth = 800;
+
+/** 街の灯り（暖色アンバー）のRGB三つ組。透明度を変えて使うときはこちらから組む */
+export const LightRgb = "255,206,138";
+/** 街の灯り色。達成・選択・強調など、夜のUIのアクセントとして全画面で共有する */
+export const LightColor = `rgba(${LightRgb},0.95)`;

@@ -22,7 +22,7 @@ import Animated, {
   withTiming,
 } from "react-native-reanimated";
 
-import { Spacing } from "@/constants/theme";
+import { LightColor, Spacing } from "@/constants/theme";
 import type { DayDetail, DaySessionRecord } from "@/db/repositories/calendarRepo";
 import { formatMinutes, formatStudyDateLabel } from "@/lib/study-day";
 import { SessionEditModal } from "./session-edit-modal";
@@ -290,7 +290,6 @@ export function CalendarDayDetail({
   );
 }
 
-const LIGHT_COLOR = "rgba(255,206,138,0.95)";
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },
@@ -347,13 +346,13 @@ const styles = StyleSheet.create({
     fontSize: 15,
   },
   total: {
-    color: LIGHT_COLOR,
+    color: LightColor,
     fontSize: 22,
     fontWeight: "300",
     marginTop: 2,
   },
   achieved: {
-    color: LIGHT_COLOR,
+    color: LightColor,
     fontSize: 12,
   },
   session: {

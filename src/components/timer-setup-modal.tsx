@@ -12,7 +12,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { POMODORO, SIMPLE_PLANNED_MINUTES, STUDY_DAY } from "@/constants/domain";
-import { Spacing } from "@/constants/theme";
+import { LightColor, Spacing } from "@/constants/theme";
 import type { NightWeather, TimerMode } from "@/db/types";
 import { formatStudyDateLabel } from "@/lib/study-day";
 import {
@@ -428,7 +428,6 @@ function StepperButton({
   );
 }
 
-const LIGHT_COLOR = "rgba(255,206,138,0.95)";
 
 const styles = StyleSheet.create({
   overlay: {
@@ -479,14 +478,14 @@ const styles = StyleSheet.create({
   segmentButtonActive: {
     backgroundColor: "rgba(18,26,46,0.9)",
     borderWidth: 1,
-    borderColor: LIGHT_COLOR,
+    borderColor: LightColor,
   },
   segmentText: {
     color: "rgba(255,255,255,0.6)",
     fontSize: 13,
   },
   segmentTextActive: {
-    color: LIGHT_COLOR,
+    color: LightColor,
     fontWeight: "600",
   },
   weather: {

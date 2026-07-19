@@ -1,13 +1,12 @@
 import { StyleSheet, Text, View } from "react-native";
 
-import { Spacing } from "@/constants/theme";
+import { LightColor, Spacing } from "@/constants/theme";
 import { formatMinutes } from "@/lib/study-day";
 
 // 当学習日の学習時間・目標達成状況（要件2.1）。
 // コンセプト準拠: 未達成を「不足」「あと◯分」と煽らない。静かに事実だけを置く。
 const BAR_WIDTH = 76;
 const BAR_HEIGHT = 3;
-const LIGHT_COLOR = "rgba(255,206,138,0.95)";
 
 export function StudyDayStatus({
   totalMinutes,
@@ -71,7 +70,7 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(255,255,255,0.55)",
   },
   barFillAchieved: {
-    backgroundColor: LIGHT_COLOR,
+    backgroundColor: LightColor,
     shadowColor: "rgb(255,184,77)",
     shadowOpacity: 0.8,
     shadowRadius: 4,
@@ -84,6 +83,6 @@ const styles = StyleSheet.create({
     textShadowRadius: 4,
   },
   goalAchieved: {
-    color: LIGHT_COLOR,
+    color: LightColor,
   },
 });

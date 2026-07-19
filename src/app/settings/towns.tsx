@@ -7,7 +7,7 @@ import { EditFieldModal, SettingRow } from "@/components/settings-ui";
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
 import { LIMITS, PROJECT_TARGET } from "@/constants/domain";
-import { Spacing } from "@/constants/theme";
+import { LightColor, Spacing } from "@/constants/theme";
 import { getTownArt, hasTownArt } from "@/constants/townArt";
 import { useSettings } from "@/contexts/SettingsContext";
 import { useTimer } from "@/contexts/TimerContext";
@@ -21,7 +21,6 @@ import { validateProjectTargetHours } from "@/lib/validation";
 // プロジェクト型の目標学習時間の設定・変更（稼働中不可）。
 // 育成進捗（レベル・累計・経験値）は街ごとに個別保持され、切り替えでは失われない。
 
-const LIGHT_COLOR = "rgba(255,206,138,0.95)";
 
 type Editing =
   | { kind: "subtitle"; townId: number; current: string }
@@ -268,8 +267,8 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     backgroundColor: "rgba(0,0,0,0.5)",
     borderWidth: 1,
-    borderColor: LIGHT_COLOR,
+    borderColor: LightColor,
   },
-  selectedText: { color: LIGHT_COLOR, fontSize: 12, fontWeight: "600" },
+  selectedText: { color: LightColor, fontSize: 12, fontWeight: "600" },
   footer: { backgroundColor: "rgba(255,255,255,0.04)" },
 });

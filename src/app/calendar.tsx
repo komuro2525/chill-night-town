@@ -9,7 +9,7 @@ import { runOnJS } from "react-native-reanimated";
 
 import { CalendarDayDetail } from "@/components/calendar-day-detail";
 import { MonthSummaryCard } from "@/components/month-summary-card";
-import { Spacing } from "@/constants/theme";
+import { LightColor, Spacing } from "@/constants/theme";
 import { useSettings } from "@/contexts/SettingsContext";
 import { calendarRepo } from "@/db/repositories";
 import type {
@@ -209,7 +209,6 @@ export default function CalendarScreen() {
   );
 }
 
-const LIGHT_COLOR = "rgba(255,206,138,0.95)";
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#05070f" },
@@ -255,14 +254,14 @@ const styles = StyleSheet.create({
   segItemActive: {
     backgroundColor: "rgba(18,26,46,0.9)",
     borderWidth: 1,
-    borderColor: LIGHT_COLOR,
+    borderColor: LightColor,
   },
   segText: {
     color: "rgba(255,255,255,0.6)",
     fontSize: 13,
   },
   segTextActive: {
-    color: LIGHT_COLOR,
+    color: LightColor,
     fontWeight: "600",
   },
   weekRow: { flexDirection: "row" },
@@ -290,7 +289,7 @@ const styles = StyleSheet.create({
   },
   cellToday: {
     borderWidth: 1,
-    borderColor: LIGHT_COLOR,
+    borderColor: LightColor,
     backgroundColor: "rgba(255,206,138,0.08)",
   },
   dayNum: {
@@ -298,7 +297,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
   dayNumToday: {
-    color: LIGHT_COLOR,
+    color: LightColor,
     fontWeight: "600",
   },
   mark: { fontSize: 13 },
@@ -306,7 +305,7 @@ const styles = StyleSheet.create({
     width: 5,
     height: 5,
     borderRadius: 2.5,
-    backgroundColor: LIGHT_COLOR,
+    backgroundColor: LightColor,
   },
   // 記録の無い日でも高さを揃えるための空きスペース
   markPlaceholder: { height: 13 },

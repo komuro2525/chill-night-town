@@ -1,6 +1,7 @@
 import { StyleSheet, Text, View } from "react-native";
 
 import { GROWTH } from "@/constants/domain";
+import { LightRgb } from "@/constants/theme";
 
 // 街のレベル表示（案1: 灯りドット）。
 // 背景アートが「Lv1=家も街灯も暗い → Lv5=窓と街灯が煌々と灯る」という
@@ -25,7 +26,7 @@ const SHADOW_RADIUS_MAX = 8;
 const SHADOW_OPACITY_MIN = 0.3;
 const SHADOW_OPACITY_MAX = 0.85;
 
-const LIGHT_COLOR = "255,206,138"; // 灯りの芯（暖色アンバー）
+// 灯りの芯は共有の LightRgb（暖色アンバー）を使う
 const GLOW_COLOR = "255,184,77"; // にじむ光
 
 function lerp(from: number, to: number, t: number): number {
@@ -75,7 +76,7 @@ function LightDot({
         style={[
           styles.dot,
           {
-            backgroundColor: `rgba(${LIGHT_COLOR}, ${lerp(
+            backgroundColor: `rgba(${LightRgb}, ${lerp(
               CORE_OPACITY_MIN,
               CORE_OPACITY_MAX,
               intensity,

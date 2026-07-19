@@ -1,7 +1,7 @@
 import { Modal, Pressable, StyleSheet, Text, View } from "react-native";
 
 import { GROWTH } from "@/constants/domain";
-import { Spacing } from "@/constants/theme";
+import { LightColor, Spacing } from "@/constants/theme";
 import { LevelBadge } from "./level-badge";
 
 // レベルアップ演出・完成演出（要件6.1）。
@@ -54,7 +54,6 @@ export function GrowthCard({
   );
 }
 
-const LIGHT_COLOR = "rgba(255,206,138,0.95)";
 
 const styles = StyleSheet.create({
   backdrop: {
@@ -77,7 +76,7 @@ const styles = StyleSheet.create({
     gap: Spacing.four,
   },
   title: {
-    color: LIGHT_COLOR,
+    color: LightColor,
     fontSize: 16,
     fontWeight: "600",
     textAlign: "center",

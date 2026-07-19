@@ -13,7 +13,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { LIMITS } from "@/constants/domain";
-import { Spacing } from "@/constants/theme";
+import { LightColor, Spacing } from "@/constants/theme";
 import { masterRepo, tagRepo } from "@/db/repositories";
 import type { Emotion, NightWeather, StudyTag } from "@/db/types";
 import { formatMinutes, formatStudyDateLabel } from "@/lib/study-day";
@@ -221,7 +221,7 @@ export function RecordModal({
                   placeholderTextColor="rgba(255,255,255,0.35)"
                   maxLength={LIMITS.TAG_NAME_MAX}
                   style={styles.newTagInput}
-                  selectionColor={LIGHT_COLOR}
+                  selectionColor={LightColor}
                 />
                 <Pressable
                   onPress={() => void handleAddTag()}
@@ -250,7 +250,7 @@ export function RecordModal({
                 multiline
                 maxLength={LIMITS.MEMO_MAX}
                 style={styles.memo}
-                selectionColor={LIGHT_COLOR}
+                selectionColor={LightColor}
               />
               <Text style={styles.counter}>
                 {memo.length} / {LIMITS.MEMO_MAX}
@@ -333,7 +333,6 @@ function Chip({
   );
 }
 
-const LIGHT_COLOR = "rgba(255,206,138,0.95)";
 
 const styles = StyleSheet.create({
   overlay: { ...StyleSheet.absoluteFillObject },
@@ -369,7 +368,7 @@ const styles = StyleSheet.create({
     fontSize: 12,
   },
   summaryTime: {
-    color: LIGHT_COLOR,
+    color: LightColor,
     fontSize: 34,
     fontWeight: "300",
   },
@@ -413,7 +412,7 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(255,255,255,0.05)",
   },
   chipSelected: {
-    borderColor: LIGHT_COLOR,
+    borderColor: LightColor,
     backgroundColor: "rgba(255,206,138,0.12)",
   },
   chipText: {
@@ -421,7 +420,7 @@ const styles = StyleSheet.create({
     fontSize: 13,
   },
   chipTextSelected: {
-    color: LIGHT_COLOR,
+    color: LightColor,
     fontWeight: "600",
   },
   newTagRow: {
