@@ -141,7 +141,8 @@ export function EditFieldModal({
   submitLabel?: string;
   validate?: (raw: string) => string | null;
   onCancel: () => void;
-  onSubmit: (value: string) => Promise<void> | void;
+  /** 値を保存する。文字列を返すと（＝非同期の検証エラー）その文言を表示して閉じない */
+  onSubmit: (value: string) => Promise<string | void> | string | void;
 }) {
   const theme = useTheme();
   const [text, setText] = useState(initialValue);
@@ -166,7 +167,13 @@ export function EditFieldModal({
     }
     setSaving(true);
     try {
-      await onSubmit(text.trim());
+      const result = await onSubmit(text.trim());
+      // 非同期の検証エラー（例: 名前の重複）は文言を返してもらい、閉じずに表示する
+      if (typeof result === "string") {
+        setError(result);
+        setSaving(false);
+        return;
+      }
       onCancel();
     } catch (e) {
       console.error("設定の保存に失敗しました", e);

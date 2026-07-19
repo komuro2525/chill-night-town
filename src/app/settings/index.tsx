@@ -1,6 +1,6 @@
 import { useRouter } from "expo-router";
 import { useState } from "react";
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Switch, View } from "react-native";
+import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Switch, View } from "react-native";
 
 import { EditFieldModal, SettingRow, SettingSection } from "@/components/settings-ui";
 import { ThemedText } from "@/components/themed-text";
@@ -8,7 +8,7 @@ import { ThemedView } from "@/components/themed-view";
 import { Spacing } from "@/constants/theme";
 import { useSettings } from "@/contexts/SettingsContext";
 import { useTimer } from "@/contexts/TimerContext";
-import { growthRepo, townProgressRepo, userRepo } from "@/db/repositories";
+import { growthRepo, maintenanceRepo, townProgressRepo, userRepo } from "@/db/repositories";
 import type { GrowthMethod } from "@/db/types";
 import { useTheme } from "@/hooks/use-theme";
 import { formatMinutes } from "@/lib/study-day";
@@ -61,6 +61,33 @@ export default function SettingsScreen() {
       await growthRepo.recomputeTownLevel(user.id, selectedTown.town.id, next);
     }
     await reload();
+  }
+
+  // アプリ内データの初期化（要件10.10）。復元不可を明記して確認し、初期設定へ戻す。
+  function handleReset() {
+    if (running) return;
+    Alert.alert(
+      "このアプリのデータを初期化しますか",
+      "学習記録・街の育成・設定・マイタグなど、すべてのデータを削除します。削除したデータは元に戻せません。",
+      [
+        { text: "やめる", style: "cancel" },
+        {
+          text: "初期化する",
+          style: "destructive",
+          onPress: () => {
+            void (async () => {
+              try {
+                await maintenanceRepo.resetUserData();
+                await reload();
+                router.replace("/setup");
+              } catch (e) {
+                console.error("データの初期化に失敗しました", e);
+              }
+            })();
+          },
+        },
+      ],
+    );
   }
 
   // プロジェクト型に切り替えるときの目標時間確定。目標を保存→方式切替→レベル再判定。
@@ -170,6 +197,22 @@ export default function SettingsScreen() {
         <SettingSection title="音・通知">
           <SettingRow first label="音量" value="準備中" disabled />
           <SettingRow label="通知" value="準備中" disabled />
+        </SettingSection>
+
+        {/* データ */}
+        <SettingSection title="データ">
+          <SettingRow
+            first
+            label="このアプリのデータを初期化"
+            danger
+            onPress={running ? undefined : handleReset}
+            disabled={running}
+            note={
+              running
+                ? RUNNING_NOTE
+                : "すべての記録・設定を消して最初からやり直します"
+            }
+          />
         </SettingSection>
       </ScrollView>
 
