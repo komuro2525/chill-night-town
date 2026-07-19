@@ -107,10 +107,14 @@ export default function HomeScreen() {
   const [discardedNote, setDiscardedNote] = useState(false);
   // 中断からの復元（要件3.2 / UC 1.1）。復元した実績（分）。null なら復元なし
   const [restoreMinutes, setRestoreMinutes] = useState<number | null>(null);
-  // S6 学習成果記録。終了後に確定済みのセッションへ任意項目を書き足す（要件3.4）
-  const [record, setRecord] = useState<{ id: number; minutes: number } | null>(
-    null,
-  );
+  // S6 学習成果記録。終了後に確定済みのセッションへ任意項目を書き足す（要件3.4）。
+  // studyDate は保存した記録の学習日（開始時刻由来）。5:00自動終了・翌日の復元では
+  // 現在時刻の学習日とズレるため、表示・天気の書き込み先はこちらを使う
+  const [record, setRecord] = useState<{
+    id: number;
+    minutes: number;
+    studyDate: string;
+  } | null>(null);
   // 記録の保存後にかけるNPCの一言（要件7.1）。選ばれた感情に応じて出し分ける
   const [npcMessage, setNpcMessage] = useState<string | null>(null);
   // 直近の成長結果（要件6.1）。NPCメッセージの出し分けと演出に使う
@@ -164,13 +168,15 @@ export default function HomeScreen() {
   }, [reloadSummary, reloadWeather]);
 
   // その夜の天気を選ぶ（要件2.5: 1晩＝1天気・最後の選択が残る）。
-  // ホームの天気の行から選んだ場合は、その場で確定して演出へ反映する
+  // ホームの天気の行から選んだ場合は、その場で確定して演出へ反映する。
+  // studyDate を指定すると過去の学習日（成果記録が5:00をまたいだ場合等）へ書ける。
+  // ホームの演出（weather 状態）は現在の学習日のときだけ更新する
   const handleSelectWeather = useCallback(
-    async (w: NightWeather) => {
+    async (w: NightWeather, studyDate: string = getStudyDate()) => {
       if (!user) return;
       try {
-        await weatherRepo.setWeather(user.id, getStudyDate(), w.id);
-        setWeather(w);
+        await weatherRepo.setWeather(user.id, studyDate, w.id);
+        if (studyDate === getStudyDate()) setWeather(w);
       } catch (e) {
         console.error("今夜の天気の保存に失敗しました", e);
       } finally {
@@ -253,12 +259,14 @@ export default function HomeScreen() {
   );
 
   // 街の成長処理（要件6.1 / UC 6.1）。学習記録の保存を契機に一度だけ実行する。
-  // 判定に使う実績合計は保存済みの記録から取り直す（1日に複数セッションなら合算される）
+  // 判定に使う実績合計は保存済みの記録から取り直す（1日に複数セッションなら合算される）。
+  // studyDate は保存した記録の学習日を必ず渡す。終了処理は5:00自動終了や翌日の
+  // 中断復元で学習日をまたいだ後に走ることがあり、現在時刻から取り直すと
+  // 別の日（合計0分）で目標達成を判定してしまう
   const applyGrowth = useCallback(
-    async (actualMinutes: number) => {
+    async (actualMinutes: number, studyDate: string) => {
       if (!user || !selected) return;
       try {
-        const studyDate = getStudyDate();
         const dayTotal = await sessionRepo.getStudyDayTotalMinutes(studyDate);
         const result = await growthRepo.applyGrowth({
           userId: user.id,
@@ -301,10 +309,14 @@ export default function HomeScreen() {
         // あり、成果記録（S6）は任意項目の追記にすぎないため。S6から離脱しても
         // 街は育つ（要件3.4 の「離脱時も成長処理を実行する」の担保）
         await reloadSummary();
-        await applyGrowth(result.minutes);
+        await applyGrowth(result.minutes, result.studyDate);
         // TODO(Phase 7): 終了演出（要件3.3）— 鐘の音とダッキング。
         //   音源は assets/audio/ambient/The sound of the bell.mp3
-        setRecord({ id: result.sessionId, minutes: result.minutes });
+        setRecord({
+          id: result.sessionId,
+          minutes: result.minutes,
+          studyDate: result.studyDate,
+        });
       }
     } catch (e) {
       console.error("学習の終了に失敗しました", e);
@@ -617,11 +629,12 @@ export default function HomeScreen() {
       {record && user ? (
         <RecordModal
           userId={user.id}
-          studyDate={getStudyDate()}
+          // 現在時刻ではなく保存した記録の学習日（5:00をまたいで終了しても前夜として扱う）
+          studyDate={record.studyDate}
           minutes={record.minutes}
           weather={weather}
           emotionEnabled={user.emotion_record_enabled === 1}
-          onChangeWeather={(w) => void handleSelectWeather(w)}
+          onChangeWeather={(w) => void handleSelectWeather(w, record.studyDate)}
           onSave={(v) => void handleSaveRecord(v)}
           // 保存せず離脱した場合も、成長処理は実行済み。感情は空でNPC/演出へ進む（要件3.4）
           onClose={() => showPostRecord(null)}

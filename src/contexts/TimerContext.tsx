@@ -12,6 +12,7 @@ import { activeSessionRepo, sessionRepo } from "@/db/repositories";
 import type { ActiveSession } from "@/db/types";
 import { MIN_SAVE_MINUTES } from "@/constants/domain";
 import { nowMs } from "@/lib/clock";
+import { getStudyDate } from "@/lib/study-day";
 import { getActualStudyMinutes } from "@/lib/timer";
 
 // 学習タイマーの状態と操作（要件3.2）。
@@ -29,7 +30,18 @@ export type TimerStatus = "idle" | "running" | "paused";
 /** 終了操作の結果 */
 export type FinishResult =
   /** 学習記録として保存した（実績1分以上） */
-  | { kind: "saved"; sessionId: number; minutes: number }
+  | {
+      kind: "saved";
+      sessionId: number;
+      minutes: number;
+      /**
+       * 保存した記録が帰属する学習日（開始時刻から算出。要件0章）。
+       * 終了処理は5:00自動終了・翌日の中断復元などで学習日をまたいだ後に走ることが
+       * あるため、終了時点の getStudyDate() とは一致しない場合がある。
+       * 目標達成判定・成果記録の表示は必ずこの値を使う
+       */
+      studyDate: string;
+    }
   /** 実績1分未満のため保存せず破棄した（要件3.2） */
   | { kind: "discarded" };
 
@@ -93,7 +105,12 @@ export function TimerProvider({ children }: { children: ReactNode }) {
 
     const sessionId = await sessionRepo.createFromActive(current, at);
     await reload();
-    return { kind: "saved", sessionId, minutes };
+    return {
+      kind: "saved",
+      sessionId,
+      minutes,
+      studyDate: getStudyDate(new Date(Date.parse(current.start_time))),
+    };
   }, [reload]);
 
   const status: TimerStatus = !session
