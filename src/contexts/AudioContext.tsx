@@ -11,9 +11,20 @@ import {
 } from "react";
 
 import { AUDIO } from "@/constants/domain";
-import { getSfxSource, type SfxKey } from "@/constants/audioAssets";
-import { settingsRepo } from "@/db/repositories";
-import { duckedVolume, isMuted, toPlayerVolume } from "@/lib/audio";
+import {
+  getBgmSource,
+  getSfxSource,
+  type SfxKey,
+} from "@/constants/audioAssets";
+import { masterRepo, settingsRepo } from "@/db/repositories";
+import type { AmbientSound } from "@/db/types";
+import {
+  duckedVolume,
+  isMuted,
+  nextTrackIndex,
+  shuffle,
+  toPlayerVolume,
+} from "@/lib/audio";
 
 // アプリの音を一手に引き受けるContext（要件9）。
 //
@@ -59,6 +70,18 @@ type AudioContextValue = {
    * 鐘の音量が0のときは何もしない（演出表示のみ進める）。
    */
   playBell: () => void;
+
+  // --- BGM（要件9 / UC 9.2）。ミニプレイヤーが参照・操作する ---
+  /** 再生中のBGM（曲名・クレジット表示用。プール無し・BGM音量0のときは null） */
+  bgmTrack: AmbientSound | null;
+  /** BGMが鳴っているか（一時停止・BGM音量0なら false）。再生/一時停止アイコンの出し分けに使う */
+  bgmPlaying: boolean;
+  /** BGMの一時停止／再開（対象はBGMのみ。環境音・効果音・鐘は対象外） */
+  toggleBgm: () => void;
+  /** 次の曲へ進む */
+  skipBgm: () => void;
+  /** 再生中の曲の頭に戻す（前の曲へは戻らない） */
+  restartBgm: () => void;
 };
 
 const AudioContext = createContext<AudioContextValue | null>(null);
@@ -80,17 +103,29 @@ const PREVIEW_SFX: Record<SoundCategory, SfxKey> = {
 export function AudioProvider({ children }: { children: ReactNode }) {
   const [volumes, setVolumes] = useState<Volumes>(DEFAULT_VOLUMES);
   const [ready, setReady] = useState(false);
+  // ミニプレイヤーの表示用（要件9）。再生中の曲と、鳴っているかどうか
+  const [bgmTrack, setBgmTrack] = useState<AmbientSound | null>(null);
+  const [bgmPlaying, setBgmPlaying] = useState(false);
 
   // 使い捨ての効果音プレイヤー。鳴らすたびに作ると重いため、用途ごとに使い回す
   const sfxPlayers = useRef(new Map<SfxKey, AudioPlayer>());
   // ダッキング中に元の音量へ戻すためのタイマー
   const duckTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // BGM・環境音のプレイヤー（7-2 / 7-4 で設定する）。ダッキングの対象
+  // BGM・環境音のプレイヤー（環境音は 7-4 で設定する）。ダッキングの対象
   const bgmPlayer = useRef<AudioPlayer | null>(null);
   const ambientPlayer = useRef<AudioPlayer | null>(null);
   // 最新の音量を同期的に参照する（コールバック内で古い値を掴まないため）
   const volumesRef = useRef<Volumes>(DEFAULT_VOLUMES);
   volumesRef.current = volumes;
+
+  // BGMプール（シャッフル済み）と現在の位置（要件9: シャッフル再生・曲送り）
+  const bgmPoolRef = useRef<AmbientSound[]>([]);
+  const bgmIndexRef = useRef(0);
+  // ユーザーが明示的に一時停止したか。音量0による停止と区別し、
+  // 音量が戻ったときに勝手に再開しない（ユーザーの意図を尊重する）
+  const bgmUserPausedRef = useRef(false);
+  // 進行中のフェードを止めるためのタイマー
+  const fadeTimer = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // 無音モードでも音が出るようにし、他アプリの音を止めない設定にする
   useEffect(() => {
@@ -126,13 +161,20 @@ export function AudioProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  // プレイヤーは画面を離れても使い回すが、アプリ終了時には解放する
+  // プレイヤーは画面を離れても使い回すが、アプリ終了時には解放する。
+  // bgm/ambient は命令的に生成する音源（Reactが描画するノードではない）で、
+  // アンマウント時点で存在するプレイヤーを解放したい。ref.current を cleanup で
+  // 読むのは意図どおりのため、当該の hooks 警告は抑制する。
   useEffect(() => {
     const players = sfxPlayers.current;
     return () => {
       if (duckTimer.current) clearTimeout(duckTimer.current);
+      if (fadeTimer.current) clearInterval(fadeTimer.current);
       players.forEach((p) => p.remove());
       players.clear();
+      bgmPlayer.current?.remove();
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+      ambientPlayer.current?.remove();
     };
   }, []);
 
@@ -211,6 +253,147 @@ export function AudioProvider({ children }: { children: ReactNode }) {
     [playOnce],
   );
 
+  // --- BGM（要件9 / UC 9.2） ---
+
+  // プレイヤーの音量を target へ durationMs かけて動かす（フェード）。
+  // 「急に鳴らさない」（要件9）を満たすための時間駆動処理のため純関数にはしない。
+  const fadeTo = useCallback(
+    (player: AudioPlayer, target: number, durationMs: number) => {
+      if (fadeTimer.current) clearInterval(fadeTimer.current);
+      const steps = Math.max(1, Math.round(durationMs / AUDIO.FADE_STEP_MS));
+      const start = player.volume;
+      let i = 0;
+      fadeTimer.current = setInterval(() => {
+        i += 1;
+        try {
+          player.volume = start + (target - start) * (i / steps);
+        } catch {
+          // 途中でプレイヤーが解放された場合は黙って止める
+          if (fadeTimer.current) clearInterval(fadeTimer.current);
+          fadeTimer.current = null;
+          return;
+        }
+        if (i >= steps) {
+          if (fadeTimer.current) clearInterval(fadeTimer.current);
+          fadeTimer.current = null;
+        }
+      }, AUDIO.FADE_STEP_MS);
+    },
+    [],
+  );
+
+  // 曲終了時に次の曲へ進む処理。playTrackAt と相互参照になるため ref 越しに呼ぶ
+  const advanceRef = useRef<() => void>(() => {});
+
+  /**
+   * シャッフル済みプールの index の曲を再生する。
+   * 初回自動再生のみ fade=true（フェードイン）。曲送り・スキップは fade=false。
+   */
+  const playTrackAt = useCallback(
+    (index: number, fade: boolean) => {
+      const pool = bgmPoolRef.current;
+      if (pool.length === 0) return;
+      const track = pool[index];
+      const source = getBgmSource(track.code);
+      if (!source) return; // プールは登録済みの音源だけで作るため通常ここは通らない
+
+      bgmIndexRef.current = index;
+      const target = toPlayerVolume(volumesRef.current.bgm);
+
+      let player = bgmPlayer.current;
+      if (!player) {
+        player = createAudioPlayer(source);
+        bgmPlayer.current = player;
+        // 曲が最後まで再生されたら自動で次の曲へ（要件9）
+        player.addListener("playbackStatusUpdate", (status) => {
+          if (status.didJustFinish) advanceRef.current();
+        });
+      } else {
+        player.replace(source);
+      }
+      player.volume = fade ? 0 : target;
+      player.play();
+      setBgmTrack(track);
+      setBgmPlaying(true);
+      if (fade) fadeTo(player, target, AUDIO.FADE_IN_MS);
+    },
+    [fadeTo],
+  );
+
+  advanceRef.current = () => {
+    const pool = bgmPoolRef.current;
+    if (pool.length === 0) return;
+    playTrackAt(nextTrackIndex(bgmIndexRef.current, pool.length), false);
+  };
+
+  /** BGMを（まだ始まっていなければ）フェードインで自動再生する（要件9） */
+  const startBgm = useCallback(() => {
+    if (bgmPlayer.current) return; // 既に開始済み
+    if (isMuted(volumesRef.current.bgm)) return; // 音量0は再生処理自体を行わない
+    if (bgmPoolRef.current.length === 0) return;
+    bgmUserPausedRef.current = false;
+    playTrackAt(0, true); // シャッフル済みプールの先頭から
+  }, [playTrackAt]);
+
+  const toggleBgm = useCallback(() => {
+    const player = bgmPlayer.current;
+    if (!player) {
+      startBgm(); // 起動時に音量0で未開始だった場合はここで開始
+      return;
+    }
+    if (player.playing) {
+      bgmUserPausedRef.current = true;
+      player.pause();
+      setBgmPlaying(false);
+    } else {
+      bgmUserPausedRef.current = false;
+      player.volume = toPlayerVolume(volumesRef.current.bgm);
+      player.play();
+      setBgmPlaying(true);
+    }
+  }, [startBgm]);
+
+  const skipBgm = useCallback(() => {
+    if (bgmPoolRef.current.length === 0) return;
+    if (!bgmPlayer.current) {
+      startBgm();
+      return;
+    }
+    bgmUserPausedRef.current = false;
+    playTrackAt(
+      nextTrackIndex(bgmIndexRef.current, bgmPoolRef.current.length),
+      false,
+    );
+  }, [playTrackAt, startBgm]);
+
+  const restartBgm = useCallback(() => {
+    bgmPlayer.current
+      ?.seekTo(0)
+      .catch((e) => console.error("BGMの頭出しに失敗しました", e));
+  }, []);
+
+  // BGMプールを読み込み、フェードインで自動再生する（要件9: 初回表示と同時に）。
+  // 音源が登録されている曲だけをプールに入れる（未登録はスキップ対象にしない）
+  useEffect(() => {
+    if (!ready) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const tracks = await masterRepo.getBgmTracks();
+        const playable = tracks.filter((t) => getBgmSource(t.code));
+        if (cancelled) return;
+        bgmPoolRef.current = shuffle(playable);
+        bgmIndexRef.current = 0;
+        startBgm();
+      } catch (e) {
+        console.error("BGMプールの読み込みに失敗しました", e);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [ready, startBgm]);
+
   const setVolume = useCallback(
     async (category: SoundCategory, value: number) => {
       const next = { ...volumesRef.current, [category]: value };
@@ -219,8 +402,21 @@ export function AudioProvider({ children }: { children: ReactNode }) {
       setVolumes(next);
 
       // 再生中の音へ即座に反映する
-      if (category === "bgm" && bgmPlayer.current) {
-        bgmPlayer.current.volume = toPlayerVolume(value);
+      if (category === "bgm") {
+        if (bgmPlayer.current) bgmPlayer.current.volume = toPlayerVolume(value);
+        if (isMuted(value)) {
+          // 音量0は再生処理自体を行わない（要件9）。一時停止してミニプレイヤーも消す
+          if (bgmPlayer.current) bgmPlayer.current.pause();
+          setBgmPlaying(false);
+        } else if (!bgmUserPausedRef.current) {
+          // 0から戻した: ユーザーが自分で止めていなければ再生を復帰（未開始なら開始）
+          if (bgmPlayer.current) {
+            bgmPlayer.current.play();
+            setBgmPlaying(true);
+          } else {
+            startBgm();
+          }
+        }
       }
       if (category === "ambient" && ambientPlayer.current) {
         ambientPlayer.current.volume = toPlayerVolume(value);
@@ -232,12 +428,36 @@ export function AudioProvider({ children }: { children: ReactNode }) {
         console.error("音量設定の保存に失敗しました", e);
       }
     },
-    [],
+    [startBgm],
   );
 
   const value = useMemo<AudioContextValue>(
-    () => ({ ready, volumes, setVolume, playPreview, playSfx, playBell }),
-    [ready, volumes, setVolume, playPreview, playSfx, playBell],
+    () => ({
+      ready,
+      volumes,
+      setVolume,
+      playPreview,
+      playSfx,
+      playBell,
+      bgmTrack,
+      bgmPlaying,
+      toggleBgm,
+      skipBgm,
+      restartBgm,
+    }),
+    [
+      ready,
+      volumes,
+      setVolume,
+      playPreview,
+      playSfx,
+      playBell,
+      bgmTrack,
+      bgmPlaying,
+      toggleBgm,
+      skipBgm,
+      restartBgm,
+    ],
   );
 
   return (

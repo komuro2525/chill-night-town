@@ -1,60 +1,55 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useEffect, useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import {
+  type LayoutChangeEvent,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
+import Animated, {
+  cancelAnimation,
+  Easing,
+  useAnimatedStyle,
+  useSharedValue,
+  withDelay,
+  withRepeat,
+  withSequence,
+  withTiming,
+} from "react-native-reanimated";
 
 import { Spacing } from "@/constants/theme";
-import { masterRepo, settingsRepo } from "@/db/repositories";
-import type { AmbientSound } from "@/db/types";
+import { useAudio } from "@/contexts/AudioContext";
+import { isMuted } from "@/lib/audio";
 
-// BGMミニプレイヤー（要件9「BGMの再生とミニプレイヤー」）。
+// BGMミニプレイヤー（要件9「BGMの再生とミニプレイヤー」/ UC 9.2）。
 // ホーム画面に常時表示する（タイマー計測中も継続。鑑賞モード中のみ非表示）。
 //
-// TODO(Phase 7): 実際の再生は AudioContext + expo-audio で実装する。
-//   現状は曲名・クレジットの表示と操作UIの枠のみで、操作しても音は鳴らない。
-//   Phase 7 で対応する要件:
-//     - ホーム初回表示で自動再生（フェードイン）／BGMプールのシャッフル再生
-//     - 長い曲名のスクロール表示（現状は末尾を省略表示）
-//     - 音量変更への追従（BGM音量0で非表示・再生処理なし）
+// 再生そのものは AudioContext が持つ。ここは表示と操作の受け口だけを担う:
+//   - 再生中の曲名・アーティスト（クレジット表記）の表示
+//   - 一時停止／再開（対象はBGMのみ）・スキップ・頭出し（前の曲へは戻らない）
+//   - BGM音量が0のときは非表示（AudioContext 側も再生処理を行わない。要件9）
 
 const BUTTON_SIZE = 34;
 const PLAY_BUTTON_SIZE = 44;
+// 曲名の表示幅。これを超える曲名はスクロールさせる
+const TEXT_WIDTH = 180;
 
 export function BgmMiniPlayer() {
-  const [track, setTrack] = useState<AmbientSound | null>(null);
-  const [bgmVolume, setBgmVolume] = useState<number | null>(null);
-  const [isPlaying, setIsPlaying] = useState(true);
+  const { volumes, bgmTrack, bgmPlaying, toggleBgm, skipBgm, restartBgm } =
+    useAudio();
 
-  useEffect(() => {
-    let mounted = true;
-    (async () => {
-      try {
-        const [tracks, audio] = await Promise.all([
-          masterRepo.getBgmTracks(),
-          settingsRepo.getAudioSetting(),
-        ]);
-        if (!mounted) return;
-        setTrack(tracks[0] ?? null);
-        setBgmVolume(audio?.bgm_volume ?? null);
-      } catch (e) {
-        console.error("BGM情報の読み込みに失敗しました", e);
-      }
-    })();
-    return () => {
-      mounted = false;
-    };
-  }, []);
-
-  // BGM音量0のときはミニプレイヤーを表示しない（要件9）
-  if (track === null || bgmVolume === null || bgmVolume === 0) return null;
+  // BGM音量0のときはミニプレイヤーを表示しない（要件9）。
+  // 曲がまだ用意できていない（プール空・読み込み中）ときも出さない
+  if (isMuted(volumes.bgm) || bgmTrack === null) return null;
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title} numberOfLines={1}>
-        {track.name}
-      </Text>
-      {track.artist ? (
+      {/* 長い曲名はスクロール表示（要件9。収まる曲名は静止したまま） */}
+      <MarqueeText text={bgmTrack.name} style={styles.title} width={TEXT_WIDTH} />
+      {bgmTrack.artist ? (
         <Text style={styles.artist} numberOfLines={1}>
-          {track.artist}
+          {bgmTrack.artist}
         </Text>
       ) : null}
 
@@ -64,21 +59,84 @@ export function BgmMiniPlayer() {
           name="play-back"
           size={BUTTON_SIZE}
           accessibilityLabel="曲の最初に戻る"
-          onPress={() => {}}
+          onPress={restartBgm}
         />
         <ControlButton
-          name={isPlaying ? "pause" : "play"}
+          name={bgmPlaying ? "pause" : "play"}
           size={PLAY_BUTTON_SIZE}
-          accessibilityLabel={isPlaying ? "BGMを一時停止" : "BGMを再開"}
-          onPress={() => setIsPlaying((v) => !v)}
+          accessibilityLabel={bgmPlaying ? "BGMを一時停止" : "BGMを再開"}
+          onPress={toggleBgm}
         />
         <ControlButton
           name="play-forward"
           size={BUTTON_SIZE}
           accessibilityLabel="次の曲へ"
-          onPress={() => {}}
+          onPress={skipBgm}
         />
       </View>
+    </View>
+  );
+}
+
+/**
+ * 幅に収まらないテキストだけを左右へゆっくりスクロールさせる（要件9）。
+ *
+ * 収まる曲名は静止させたいので、実際の文字幅を測ってから判定する。
+ * 端まで行ったら少し止めて戻る、を繰り返す（急かさない静かな動き）。
+ */
+function MarqueeText({
+  text,
+  style,
+  width,
+}: {
+  text: string;
+  style: object;
+  width: number;
+}) {
+  const [textWidth, setTextWidth] = useState(0);
+  const offset = useSharedValue(0);
+  const overflow = Math.max(0, textWidth - width);
+
+  useEffect(() => {
+    cancelAnimation(offset);
+    offset.value = 0;
+    if (overflow <= 0) return;
+    // 端で1秒ずつ止めながら往復する。速度は距離に比例（長いほど時間をかける）
+    const durationMs = overflow * 30;
+    offset.value = withRepeat(
+      withSequence(
+        withDelay(1000, withTiming(-overflow, {
+          duration: durationMs,
+          easing: Easing.inOut(Easing.ease),
+        })),
+        withDelay(1000, withTiming(0, {
+          duration: durationMs,
+          easing: Easing.inOut(Easing.ease),
+        })),
+      ),
+      -1,
+    );
+    return () => cancelAnimation(offset);
+    // text が変われば測り直す。overflow はその結果から算出される
+  }, [overflow, text, offset]);
+
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: offset.value }],
+  }));
+
+  function handleLayout(e: LayoutChangeEvent) {
+    setTextWidth(e.nativeEvent.layout.width);
+  }
+
+  return (
+    <View style={{ width, overflow: "hidden" }}>
+      <Animated.Text
+        onLayout={handleLayout}
+        numberOfLines={1}
+        style={[style, animatedStyle, { width: "auto", flexShrink: 0 }]}
+      >
+        {text}
+      </Animated.Text>
     </View>
   );
 }
@@ -122,7 +180,6 @@ const styles = StyleSheet.create({
     color: "rgba(255,255,255,0.95)",
     fontSize: 13,
     fontWeight: "500",
-    maxWidth: 180,
   },
   artist: {
     color: "rgba(255,255,255,0.6)",
