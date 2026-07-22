@@ -618,10 +618,11 @@ export default function HomeScreen() {
 
   // 向きロックの一元管理（要件2.4）。ホームにフォーカスがあり、操作/演出中でない
   // ときだけ回転を許可する。それ以外（他画面へ移動中・オーバーレイ中）は縦固定。
+  // 許可には DEFAULT を使う（iOSは上下逆さ以外＝縦＋横を許可。ALL は iPhone 非対応で失敗する）。
   useEffect(() => {
     const lock =
       isFocused && !needsPortrait
-        ? ScreenOrientation.OrientationLock.ALL
+        ? ScreenOrientation.OrientationLock.DEFAULT
         : ScreenOrientation.OrientationLock.PORTRAIT_UP;
     ScreenOrientation.lockAsync(lock).catch((e) =>
       console.error("画面の向きの切り替えに失敗しました", e),
