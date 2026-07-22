@@ -27,6 +27,7 @@ import { BreakSuggestionCard } from "@/components/break-suggestion-card";
 import { BreakSuggestionWatcher } from "@/components/break-suggestion-watcher";
 import { BgmMiniPlayer } from "@/components/bgm-mini-player";
 import { ClockButton } from "@/components/clock-button";
+import { GoodnightOverlay } from "@/components/goodnight-overlay";
 import { GrowthCard } from "@/components/growth-card";
 import { GrowthHintCard } from "@/components/growth-hint-card";
 import { LevelBadge } from "@/components/level-badge";
@@ -129,6 +130,8 @@ export default function HomeScreen() {
   } | null>(null);
   // S5 休憩提案（要件5.1）。表示中の実績合計（分）。null なら非表示
   const [breakTotal, setBreakTotal] = useState<number | null>(null);
+  // おやすみ（要件13）。暗転画面に出すNPCの一言。null なら暗転していない
+  const [goodnightMessage, setGoodnightMessage] = useState<string | null>(null);
   // 開発用: 習慣型のレベルアップ閾値（1レベルあたりの必要経験値）。本番=5 / テスト=1
   const [habitStep, setHabitStep] = useState(HABIT_STEP_PRODUCTION);
   // 復元の判定が済んだか。済むまでは自動終了の見張りを動かさない
@@ -439,6 +442,27 @@ export default function HomeScreen() {
     },
     [user, timer, breakTotal],
   );
+  // おやすみ（要件13 / UC 13.1）。夜を閉じる演出。
+  // タイマー稼働中（一時停止中を含む）は実行しない（呼び出し側でグレーアウト＋メッセージ）。
+  // 確認 → 音のフェードアウト → 暗転＋NPCのおやすみメッセージ、の順で進める。
+  const handleGoodnight = useCallback(async () => {
+    // 鑑賞モード中でも押せるよう、UIは戻しておく
+    setImmersive(false);
+    try {
+      const message = await masterRepo.pickNpcMessage("goodnight", null);
+      audio.setGoodnight(true);
+      setGoodnightMessage(message ?? "おやすみなさい。またこの街で。");
+    } catch (e) {
+      console.error("おやすみの準備に失敗しました", e);
+    }
+  }, [audio]);
+
+  // 暗転画面をタップしてホームへ戻る（音はフェードインで再開。要件13）
+  const handleWake = useCallback(() => {
+    setGoodnightMessage(null);
+    audio.setGoodnight(false);
+  }, [audio]);
+
   // 感情に応じたNPCの一言を出す（要件7.1 / 3.4 のステップ8）。
   // 学習終了と目標達成が同時に成立した場合は「目標達成」を優先する（要件7.1）
   const showNpcMessage = useCallback(
@@ -593,7 +617,10 @@ export default function HomeScreen() {
               session={timer.session}
             />
           ) : null}
-          <SideIcons />
+          <SideIcons
+            running={timer.status !== "idle"}
+            onGoodnight={() => void handleGoodnight()}
+          />
           <ImmersiveButton onPress={() => setImmersive(true)} />
           <View style={[styles.absolute, styles.miniPlayer]}>
             <BgmMiniPlayer />
@@ -715,6 +742,9 @@ export default function HomeScreen() {
       {/* 記録の保存後にかけるNPCの一言（要件7.1） */}
       <NpcMessageCard message={npcMessage} onClose={() => setNpcMessage(null)} />
 
+      {/* おやすみの暗転画面（要件13）。タップでホームへ復帰する */}
+      <GoodnightOverlay message={goodnightMessage} onWake={handleWake} />
+
       {/* 中断からの復元（要件3.2 / UC 1.1） */}
       <RestoreSessionCard
         visible={restoreMinutes !== null}
@@ -777,16 +807,33 @@ function KeepScreenAwake() {
 }
 
 // 右側の縦並びアイコン（カレンダー・設定・おやすみ）
-function SideIcons() {
+function SideIcons({
+  running,
+  onGoodnight,
+}: {
+  /** タイマー稼働中（一時停止中を含む）。おやすみは不可（要件13） */
+  running: boolean;
+  /** おやすみを確定したとき（確認後）に呼ぶ */
+  onGoodnight: () => void;
+}) {
   const insets = useSafeAreaInsets();
   const router = useRouter();
 
+  // おやすみボタン（要件13 / UC 13.1）。
+  // 稼働中は「学習中はおやすみできません」と控えめに伝えるだけ（グレーアウト表示）。
+  // それ以外は確認してから実行する（キャンセルなら何もしない）
   function handleGoodnight() {
-    // TODO(Phase 7): おやすみ機能（要件13章）。確認 → 音のフェードアウト → 暗転＋NPCメッセージ →
-    //   タップで復帰。タイマー稼働中はグレーアウトする。音の実装後に対応する。
-    if (__DEV__) {
-      Alert.alert("おやすみ", "おやすみ機能はこの後の段階で実装します。");
+    if (running) {
+      Alert.alert(
+        "学習中はおやすみできません",
+        "先に学習を終えてから、そっと夜を閉じましょう。",
+      );
+      return;
     }
+    Alert.alert("眠りにつきますか", "音を止めて、静かに画面を閉じます。", [
+      { text: "まだ起きている", style: "cancel" },
+      { text: "おやすみ", onPress: onGoodnight },
+    ]);
   }
 
   return (
@@ -810,6 +857,7 @@ function SideIcons() {
       <RoundIconButton
         name="moon-outline"
         onPress={handleGoodnight}
+        dimmed={running}
         accessibilityLabel="おやすみ"
       />
     </View>

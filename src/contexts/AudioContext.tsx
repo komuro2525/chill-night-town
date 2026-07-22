@@ -92,6 +92,13 @@ type AudioContextValue = {
    * 対応する音が無い・環境音の音量が0のときは停止する（ニュートラルな夜）。
    */
   setAmbientForWeather: (weatherCode: string | null) => void;
+
+  // --- おやすみ（要件13 / UC 13.1） ---
+  /**
+   * おやすみ状態を切り替える。true でBGM・環境音をフェードアウトして停止し、
+   * false で（鳴らすべきものを）フェードインで再開する。
+   */
+  setGoodnight: (sleeping: boolean) => void;
 };
 
 const AudioContext = createContext<AudioContextValue | null>(null);
@@ -430,6 +437,85 @@ export function AudioProvider({ children }: { children: ReactNode }) {
     [applyAmbient],
   );
 
+  // --- おやすみ（要件13 / UC 13.1） ---
+
+  // BGM・環境音を一括でフェードして、終わりに任意の処理を行う。
+  // 対象を一度に動かすため fadeTo（単一プレイヤー用）ではなくここで両方まとめて扱う。
+  const fadeBgmAndAmbient = useCallback(
+    (
+      targets: { bgm: number; ambient: number },
+      durationMs: number,
+      onDone?: () => void,
+    ) => {
+      if (fadeTimer.current) clearInterval(fadeTimer.current);
+      const bgm = bgmPlayer.current;
+      const amb = ambientPlayer.current;
+      const bgmStart = bgm?.volume ?? 0;
+      const ambStart = amb?.volume ?? 0;
+      const steps = Math.max(1, Math.round(durationMs / AUDIO.FADE_STEP_MS));
+      let i = 0;
+      fadeTimer.current = setInterval(() => {
+        i += 1;
+        const t = i / steps;
+        try {
+          if (bgm) bgm.volume = bgmStart + (targets.bgm - bgmStart) * t;
+          if (amb) amb.volume = ambStart + (targets.ambient - ambStart) * t;
+        } catch {
+          if (fadeTimer.current) clearInterval(fadeTimer.current);
+          fadeTimer.current = null;
+          return;
+        }
+        if (i >= steps) {
+          if (fadeTimer.current) clearInterval(fadeTimer.current);
+          fadeTimer.current = null;
+          onDone?.();
+        }
+      }, AUDIO.FADE_STEP_MS);
+    },
+    [],
+  );
+
+  const setGoodnight = useCallback(
+    (sleeping: boolean) => {
+      if (sleeping) {
+        // BGM・環境音をフェードアウトして止める（暗転中は音を止める。要件13）
+        fadeBgmAndAmbient({ bgm: 0, ambient: 0 }, AUDIO.FADE_OUT_MS, () => {
+          try {
+            bgmPlayer.current?.pause();
+            ambientPlayer.current?.pause();
+          } catch {
+            // 解放済みなら何もしない
+          }
+        });
+      } else {
+        // 鳴らすべきものを0から再開してフェードインする（要件13: 復帰時はフェードイン）
+        const bgmTarget = toPlayerVolume(volumesRef.current.bgm);
+        const ambTarget = toPlayerVolume(volumesRef.current.ambient);
+        if (
+          bgmPlayer.current &&
+          !bgmUserPausedRef.current &&
+          !isMuted(volumesRef.current.bgm)
+        ) {
+          bgmPlayer.current.volume = 0;
+          bgmPlayer.current.play();
+        }
+        if (
+          ambientPlayer.current &&
+          playingAmbientCodeRef.current &&
+          !isMuted(volumesRef.current.ambient)
+        ) {
+          ambientPlayer.current.volume = 0;
+          ambientPlayer.current.play();
+        }
+        fadeBgmAndAmbient(
+          { bgm: bgmTarget, ambient: ambTarget },
+          AUDIO.FADE_IN_MS,
+        );
+      }
+    },
+    [fadeBgmAndAmbient],
+  );
+
   // BGMプールを読み込み、フェードインで自動再生する（要件9: 初回表示と同時に）。
   // 音源が登録されている曲だけをプールに入れる（未登録はスキップ対象にしない）
   useEffect(() => {
@@ -505,6 +591,7 @@ export function AudioProvider({ children }: { children: ReactNode }) {
       skipBgm,
       restartBgm,
       setAmbientForWeather,
+      setGoodnight,
     }),
     [
       ready,
@@ -519,6 +606,7 @@ export function AudioProvider({ children }: { children: ReactNode }) {
       skipBgm,
       restartBgm,
       setAmbientForWeather,
+      setGoodnight,
     ],
   );
 

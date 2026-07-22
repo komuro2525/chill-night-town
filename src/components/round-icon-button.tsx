@@ -11,11 +11,14 @@ export function RoundIconButton({
   onPress,
   accessibilityLabel,
   disabled = false,
+  dimmed = false,
 }: {
   name: ComponentProps<typeof Ionicons>["name"];
   onPress: () => void;
   accessibilityLabel: string;
   disabled?: boolean;
+  /** 見た目だけ非活性に見せる（押下は受け付ける）。おやすみ等で「押すと理由を伝える」用途 */
+  dimmed?: boolean;
 }) {
   return (
     <Pressable
@@ -23,7 +26,7 @@ export function RoundIconButton({
       disabled={disabled}
       hitSlop={6}
       accessibilityLabel={accessibilityLabel}
-      style={[styles.button, disabled && styles.disabled]}
+      style={[styles.button, (disabled || dimmed) && styles.disabled]}
     >
       <Ionicons
         name={name}
