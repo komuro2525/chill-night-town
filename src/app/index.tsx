@@ -89,7 +89,7 @@ import {
 // Phase 2-1: 選択中の街の背景（レベル連動）＋スワイプ探索（要件2.2）＋OSステータスバー非表示。
 // 上部UI（日付・レベル・時計＝タイマー、各アイコン、BGMミニプレイヤー等）は後続の P2 で載せる。
 export default function HomeScreen() {
-  const { user, reload: reloadSettings } = useSettings();
+  const { user, reload: reloadSettings, selectedTown } = useSettings();
   const timer = useTimer();
   const audio = useAudio();
   const [selected, setSelected] = useState<SelectedTown | null>(null);
@@ -172,6 +172,15 @@ export default function HomeScreen() {
       mounted = false;
     };
   }, [reloadSummary, reloadWeather]);
+
+  // 街の切り替え（S9）は SettingsContext の selectedTown を更新する。
+  // ホームは裏で生存し続けるため（画面を戻ってもマウント処理は再実行されない）、
+  // 背景・レベルの表示は selectedTown に追従させて最新の街へ切り替える。
+  // 成長処理での即時反映（setSelected）はこの後も上書きしない
+  // （selectedTown はその後の reloadSettings 時にDBの最新レベルで揃う）。
+  useEffect(() => {
+    setSelected(selectedTown);
+  }, [selectedTown]);
 
   // その夜の天気に応じて環境音を自動再生する（要件9 / UC 9.1）。
   // 天気が変わるたび（選択・成果記録での変更・読み直し）に切り替える。
