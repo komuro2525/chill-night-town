@@ -102,8 +102,9 @@ type AudioContextValue = {
 
   // --- おやすみ（要件13 / UC 13.1） ---
   /**
-   * おやすみ状態を切り替える。true でBGM・環境音をフェードアウトして停止し、
-   * false で（鳴らすべきものを）フェードインで再開する。
+   * おやすみ状態を切り替える。true でBGM・環境音をフェードアウトして停止する。
+   * false（復帰）では環境音だけフェードインで戻し、BGMは停止のままにする
+   * （デフォルト停止に合わせ、再生はユーザーの操作による）。
    */
   setGoodnight: (sleeping: boolean) => void;
 };
@@ -146,8 +147,6 @@ export function AudioProvider({ children }: { children: ReactNode }) {
   // BGMプール（シャッフル済み）と現在の位置（要件9: シャッフル再生・曲送り）
   const bgmPoolRef = useRef<AmbientSound[]>([]);
   const bgmIndexRef = useRef(0);
-  // 眠る（おやすみ）前にBGMが鳴っていたか。復帰時に鳴っていたものだけ戻すために使う
-  const bgmPlayingBeforeSleepRef = useRef(false);
   // 進行中のフェードを止めるためのタイマー
   const fadeTimer = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -489,8 +488,6 @@ export function AudioProvider({ children }: { children: ReactNode }) {
   const setGoodnight = useCallback(
     (sleeping: boolean) => {
       if (sleeping) {
-        // 眠る前の再生状態を覚えておき、復帰時は鳴っていたものだけ戻す
-        bgmPlayingBeforeSleepRef.current = !!bgmPlayer.current?.playing;
         // BGM・環境音をフェードアウトして止める（暗転中は音を止める。要件13）
         fadeBgmAndAmbient({ bgm: 0, ambient: 0 }, AUDIO.FADE_OUT_MS, () => {
           try {
@@ -502,19 +499,9 @@ export function AudioProvider({ children }: { children: ReactNode }) {
           setBgmPlaying(false);
         });
       } else {
-        // 鳴らすべきものを0から再開してフェードインする（要件13: 復帰時はフェードイン）
-        const bgmTarget = toPlayerVolume(volumesRef.current.bgm);
+        // 復帰時: BGMは鳴らさない（デフォルト停止に合わせ、ユーザーが再生ボタンで始める）。
+        // 環境音（天気の雰囲気として自動で流れる音）だけをフェードインで戻す（要件13改訂）
         const ambTarget = toPlayerVolume(volumesRef.current.ambient);
-        // BGMは眠る前に鳴っていた場合のみ戻す（デフォルト停止のため勝手に鳴らさない）
-        if (
-          bgmPlayer.current &&
-          bgmPlayingBeforeSleepRef.current &&
-          !isMuted(volumesRef.current.bgm)
-        ) {
-          bgmPlayer.current.volume = 0;
-          bgmPlayer.current.play();
-          setBgmPlaying(true);
-        }
         if (
           ambientPlayer.current &&
           playingAmbientCodeRef.current &&
@@ -523,10 +510,8 @@ export function AudioProvider({ children }: { children: ReactNode }) {
           ambientPlayer.current.volume = 0;
           ambientPlayer.current.play();
         }
-        fadeBgmAndAmbient(
-          { bgm: bgmTarget, ambient: ambTarget },
-          AUDIO.FADE_IN_MS,
-        );
+        // BGMは停止のままにしたいので target=0（一時停止中のため無音。次の再生操作で戻る）
+        fadeBgmAndAmbient({ bgm: 0, ambient: ambTarget }, AUDIO.FADE_IN_MS);
       }
     },
     [fadeBgmAndAmbient],
