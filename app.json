@@ -7,10 +7,12 @@
     "icon": "./assets/images/icon.png",
     "scheme": "chillnighttown",
     "userInterfaceStyle": "automatic",
+    "backgroundColor": "#05070f",
     "ios": {
       "icon": "./assets/expo.icon"
     },
     "android": {
+      "backgroundColor": "#05070f",
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
