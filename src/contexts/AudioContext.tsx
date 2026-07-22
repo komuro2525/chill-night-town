@@ -116,12 +116,12 @@ const AudioContext = createContext<AudioContextValue | null>(null);
  *
  * BGM・環境音は素材が長尺で頭出しでは分かりにくいため、短い音で代用する。
  * TODO(素材): UI操作音（ui_tap）が用意できたら、鐘以外はそちらへ差し替える。
- *   いまは仮素材の goal_reached を短い代表音として使っている。
+ *   いまは仮素材の break_notice を短い代表音として使っている。
  */
 const PREVIEW_SFX: Record<SoundCategory, SfxKey> = {
-  bgm: "goal_reached",
-  ambient: "goal_reached",
-  sfx: "goal_reached",
+  bgm: "break_notice",
+  ambient: "break_notice",
+  sfx: "break_notice",
   bell: "bell",
 };
 

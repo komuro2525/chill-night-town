@@ -64,6 +64,26 @@ export function shouldSuggestBreak(
 }
 
 /**
+ * 最初の休憩提案を出す基準（分）。要件5.1（改訂）。
+ *
+ * 「一日の目標時間」と「開始時点の実績合計 ＋ 今回のセッションの予定学習時間」の大きい方。
+ * ユーザーが自分で決めた学習時間の途中では提案を出さないため、目標が予定より短くても、
+ * 決めた分を終えるまで割り込まない（コンセプト: 急かさない・責めない）。
+ * 予定学習時間は黙々=設定分数／ポモドーロ=作業時間×回数（呼び出し側で算出して渡す。2モード共通）。
+ *
+ * @param goalMinutes    一日の学習目標時間
+ * @param savedMinutes   開始時点の実績合計（その学習日の保存済み）
+ * @param plannedMinutes 今回のセッションの予定学習時間
+ */
+export function getInitialBreakThreshold(
+  goalMinutes: number,
+  savedMinutes: number,
+  plannedMinutes: number,
+): number {
+  return Math.max(goalMinutes, savedMinutes + plannedMinutes);
+}
+
+/**
  * 「学習を継続する」を選んだときの次回基準（分）。
  * 超過60分ごとに再表示する（要件5.1）。
  */

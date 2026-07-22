@@ -82,6 +82,7 @@ import { getActualStudyMinutes, getPlannedEndMs } from "@/lib/timer";
 import {
   getContinueThreshold,
   getExtensionThreshold,
+  getInitialBreakThreshold,
   getStudyDayTotalMinutes,
 } from "@/lib/break-suggestion";
 
@@ -262,6 +263,11 @@ export default function HomeScreen() {
         });
         // 記憶した設定を読み直す。これをしないと同じ起動中は前回値が反映されない
         await reloadSettings();
+        // このセッションの予定学習時間（黙々=設定分数／ポモドーロ=作業時間×回数。2モード共通）
+        const plannedMinutes =
+          v.mode === "simple"
+            ? (v.plannedMinutes ?? 0)
+            : (v.workMinutes ?? 0) * (v.loopCount ?? 0);
         await activeSessionRepo.create({
           userId: user.id,
           townId: selected.town.id,
@@ -271,8 +277,13 @@ export default function HomeScreen() {
           pomodoroBreakMinutes: v.breakMinutes,
           pomodoroLoopCount: v.loopCount,
           startTime: appNow().toISOString(),
-          // 最初の休憩提案は一日の目標時間で出す（要件5.1）
-          breakSuggestThresholdMinutes: user.daily_goal_minutes,
+          // 最初の休憩提案は「目標時間」と「開始時点の実績＋今回の予定学習時間」の
+          // 大きい方で出す（要件5.1改訂: 自分で決めた学習時間の途中では割り込まない）
+          breakSuggestThresholdMinutes: getInitialBreakThreshold(
+            user.daily_goal_minutes,
+            summary?.totalMinutes ?? 0,
+            plannedMinutes,
+          ),
         });
         setWeather(v.weather);
         await timer.reload();
@@ -282,7 +293,7 @@ export default function HomeScreen() {
         console.error("学習の開始に失敗しました", e);
       }
     },
-    [user, selected, timer, reloadSettings],
+    [user, selected, timer, reloadSettings, summary?.totalMinutes],
   );
 
   // 街の成長処理（要件6.1 / UC 6.1）。学習記録の保存を契機に一度だけ実行する。
@@ -713,8 +724,8 @@ export default function HomeScreen() {
           onSuggest={() => {
             // 鑑賞モード中はUIを復帰させてから表示する（要件2.4）
             setImmersive(false);
-            // 目標到達を控えめな効果音で1回知らせる（要件5.1・UC 5.1。鐘は使わない）
-            audio.playSfx("goal_reached");
+            // 休憩モーダルが出たことを、柔らかい通知音で1回知らせる（要件5.1・UC 5.1。鐘は使わない）
+            audio.playSfx("break_notice");
             setBreakTotal(
               getStudyDayTotalMinutes(
                 summary?.totalMinutes ?? 0,

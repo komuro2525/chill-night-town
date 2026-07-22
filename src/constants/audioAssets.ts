@@ -35,8 +35,8 @@ const AMBIENT: Record<string, AudioSource> = {
 export type SfxKey =
   /** 学習終了演出の鐘（要件3.3）。再生中はBGM・環境音をダッキングする */
   | "bell"
-  /** 目標到達（休憩提案の表示時。要件5.1）。鐘とは別の音 */
-  | "goal_reached"
+  /** 休憩提案が表示されたことを柔らかく知らせる通知音（要件5.1）。鐘とは別・急かさない音 */
+  | "break_notice"
   /** ポモドーロの作業⇄休憩の切り替わり（要件3.1）。控えめな音 */
   | "pomodoro_phase"
   /** UI操作音（要件9） */
@@ -44,12 +44,13 @@ export type SfxKey =
 
 /**
  * 効果音・鐘。未制作のものは登録せず、呼び出し側では無音になる。
- * TODO(素材): pomodoro_phase / ui_tap は未制作。goal_reached は仮素材。
+ * TODO(素材): pomodoro_phase / ui_tap は未制作。break_notice は仮素材
+ *   （test_目標達成.mp3 を流用中）。最終的に「それとなく柔らかい休憩の通知音」へ差し替える。
  *   差し替え時は docs/必要素材一覧.md の該当行も更新する。
  */
 const SFX: Partial<Record<SfxKey, AudioSource>> = {
   bell: require("@/assets/audio/ambient/The sound of the bell.mp3"),
-  goal_reached: require("@/assets/audio/ambient/test_目標達成.mp3"),
+  break_notice: require("@/assets/audio/ambient/test_目標達成.mp3"),
 };
 
 /** BGMの音源（未登録なら undefined） */
