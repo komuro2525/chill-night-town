@@ -31,7 +31,7 @@ type Migration = {
 
 // 現在のスキーマバージョン（db/*.sql が表す「最新」の版）。
 // スキーマを変更したら、スキーマSQLを更新しつつ本値を+1し、DELTA_MIGRATIONS に差分を追加する。
-const SCHEMA_VERSION = 9;
+const SCHEMA_VERSION = 10;
 
 // 既存DB（過去バージョン）向けの差分マイグレーション（version >= 2）。
 // 新規インストールはスキーマSQL（=最新）を適用して一気に SCHEMA_VERSION まで上がるため、
@@ -300,6 +300,31 @@ const DELTA_MIGRATIONS: Migration[] = [
         CREATE UNIQUE INDEX idx_town_progress_selected
             ON town_progress(user_id)
             WHERE is_selected = 1;
+      `);
+    },
+  },
+  {
+    version: 10,
+    up: async (db) => {
+      // 街をフォルダ名ベースの4街へ更新する（背景画像フォルダ assets/images/home/<code>/ に合わせる）。
+      // 既存の town_01 / town_02 を nightTown / castleTown へ改称し、snowTown / starHill を追加する。
+      // town_progress は town_id（=id）で紐づくため、改称しても既存の育成進捗は保持される。
+      // 追加した街の育成進捗行は、既存ユーザーぶんをここで作る（新規ユーザーは setup で作成）。
+      await db.execAsync(`
+        UPDATE town SET code = 'nightTown',  name = 'nightTown'  WHERE code = 'town_01';
+        UPDATE town SET code = 'castleTown', name = 'castleTown' WHERE code = 'town_02';
+        INSERT INTO town (code, name, description, display_order) VALUES
+            ('snowTown', 'snowTown', 'テーマ未定。素材制作時に名称・説明を更新する', 3),
+            ('starHill', 'starHill', 'テーマ未定。素材制作時に名称・説明を更新する', 4);
+        INSERT INTO town_progress (user_id, town_id)
+        SELECT u.id, t.id
+          FROM user u
+          CROSS JOIN town t
+         WHERE t.code IN ('snowTown', 'starHill')
+           AND NOT EXISTS (
+             SELECT 1 FROM town_progress tp
+              WHERE tp.user_id = u.id AND tp.town_id = t.id
+           );
       `);
     },
   },
