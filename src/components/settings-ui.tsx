@@ -1,3 +1,4 @@
+import Slider from "@react-native-community/slider";
 import { ReactNode, useEffect, useState } from "react";
 import {
   ActivityIndicator,
@@ -8,7 +9,8 @@ import {
   View,
 } from "react-native";
 
-import { Spacing } from "@/constants/theme";
+import { AUDIO } from "@/constants/domain";
+import { LightColor, Spacing } from "@/constants/theme";
 import { useTheme } from "@/hooks/use-theme";
 import { ThemedText } from "./themed-text";
 
@@ -111,6 +113,75 @@ export function SettingRow({
     <Pressable onPress={onPress} style={({ pressed }) => (pressed ? styles.pressed : undefined)}>
       {body}
     </Pressable>
+  );
+}
+
+/**
+ * 音量の1行（要件10.4）。0〜100のスライダーと現在値を並べる。
+ *
+ * つまみを動かしている間は値の表示だけを追従させ、**指を離した時点で**保存と
+ * プレビュー音の再生を行う（onSlidingComplete）。動かすたびに保存・再生すると
+ * 書き込みと発音が連続して落ち着かないため。
+ */
+export function VolumeRow({
+  label,
+  note,
+  value,
+  onChange,
+  first = false,
+}: {
+  label: string;
+  note?: string;
+  /** 0〜100 */
+  value: number;
+  /** 指を離した時点で呼ばれる（保存・プレビュー再生はここで行う） */
+  onChange: (value: number) => void;
+  first?: boolean;
+}) {
+  const theme = useTheme();
+  // 指を離すまでの見た目上の値。離したら親から来る値へ戻す
+  const [dragging, setDragging] = useState<number | null>(null);
+  const shown = dragging ?? value;
+
+  return (
+    <View
+      style={[
+        styles.volumeRow,
+        !first && {
+          borderTopWidth: StyleSheet.hairlineWidth,
+          borderTopColor: theme.backgroundSelected,
+        },
+      ]}
+    >
+      <View style={styles.volumeHead}>
+        <View style={styles.rowLabel}>
+          <ThemedText>{label}</ThemedText>
+          {note ? (
+            <ThemedText type="small" themeColor="textSecondary">
+              {note}
+            </ThemedText>
+          ) : null}
+        </View>
+        <ThemedText type="small" themeColor="textSecondary">
+          {shown}
+        </ThemedText>
+      </View>
+      <Slider
+        value={value}
+        minimumValue={0}
+        maximumValue={AUDIO.VOLUME_MAX}
+        step={1}
+        minimumTrackTintColor={LightColor}
+        maximumTrackTintColor={theme.backgroundSelected}
+        thumbTintColor={LightColor}
+        onValueChange={setDragging}
+        onSlidingComplete={(v) => {
+          setDragging(null);
+          onChange(Math.round(v));
+        }}
+        accessibilityLabel={`${label}の音量`}
+      />
+    </View>
   );
 }
 
@@ -256,6 +327,16 @@ const styles = StyleSheet.create({
     gap: Spacing.two,
   },
   rowLabel: { flex: 1, gap: 2 },
+  volumeRow: {
+    paddingHorizontal: Spacing.three,
+    paddingTop: Spacing.two,
+    paddingBottom: Spacing.one,
+  },
+  volumeHead: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Spacing.two,
+  },
   value: { flexShrink: 1, textAlign: "right", maxWidth: "55%" },
   chevron: { fontSize: 20, lineHeight: 20 },
   disabled: { opacity: 0.4 },

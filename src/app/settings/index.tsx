@@ -2,11 +2,17 @@ import { useRouter } from "expo-router";
 import { useState } from "react";
 import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Switch, View } from "react-native";
 
-import { EditFieldModal, SettingRow, SettingSection } from "@/components/settings-ui";
+import {
+  EditFieldModal,
+  SettingRow,
+  SettingSection,
+  VolumeRow,
+} from "@/components/settings-ui";
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
 import { DAILY_GOAL_MINUTES, LIMITS, PROJECT_TARGET } from "@/constants/domain";
 import { Spacing } from "@/constants/theme";
+import { useAudio, type SoundCategory } from "@/contexts/AudioContext";
 import { useSettings } from "@/contexts/SettingsContext";
 import { useTimer } from "@/contexts/TimerContext";
 import { growthRepo, maintenanceRepo, townProgressRepo, userRepo } from "@/db/repositories";
@@ -31,7 +37,14 @@ export default function SettingsScreen() {
   const router = useRouter();
   const { user, ready, reload, selectedTown } = useSettings();
   const { status } = useTimer();
+  const audio = useAudio();
   const running = status !== "idle";
+
+  // 音量の変更（10.4）。保存したうえで、その音量が分かるようプレビュー音を鳴らす。
+  // タイマー稼働中も変更できる（判定・記録に影響しないため）
+  function handleVolumeChange(category: SoundCategory, value: number) {
+    void audio.setVolume(category, value).then(() => audio.playPreview(category));
+  }
 
   const [editing, setEditing] = useState<"nickname" | "goal" | null>(null);
   const [projectPrompt, setProjectPrompt] = useState(false);
@@ -194,10 +207,39 @@ export default function SettingsScreen() {
           <SettingRow label="マイタグの管理" onPress={() => router.push("/settings/tags")} />
         </SettingSection>
 
-        {/* 音・通知（Phase 7 で実装） */}
-        <SettingSection title="音・通知">
-          <SettingRow first label="音量" value="準備中" disabled />
-          <SettingRow label="通知" value="準備中" disabled />
+        {/* 音（要件9 / 10.4）。音量0の音は再生処理自体を行わない */}
+        <SettingSection
+          title="音"
+          footer="0にすると、その音は鳴らなくなります。"
+        >
+          <VolumeRow
+            first
+            label="BGM"
+            value={audio.volumes.bgm}
+            onChange={(v) => handleVolumeChange("bgm", v)}
+          />
+          <VolumeRow
+            label="環境音"
+            note="夜の天気に合わせて流れる音"
+            value={audio.volumes.ambient}
+            onChange={(v) => handleVolumeChange("ambient", v)}
+          />
+          <VolumeRow
+            label="効果音"
+            value={audio.volumes.sfx}
+            onChange={(v) => handleVolumeChange("sfx", v)}
+          />
+          <VolumeRow
+            label="鐘の音"
+            note="学習を終えたときの音"
+            value={audio.volumes.bell}
+            onChange={(v) => handleVolumeChange("bell", v)}
+          />
+        </SettingSection>
+
+        {/* 通知（Phase 7-5 で実装） */}
+        <SettingSection title="通知">
+          <SettingRow first label="学習開始の通知" value="準備中" disabled />
         </SettingSection>
 
         {/* データ */}
