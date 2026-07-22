@@ -32,6 +32,7 @@ import { GrowthHintCard } from "@/components/growth-hint-card";
 import { LevelBadge } from "@/components/level-badge";
 import { MeasuringIndicator } from "@/components/measuring-indicator";
 import { NpcMessageCard } from "@/components/npc-message-card";
+import { PomodoroPhaseWatcher } from "@/components/pomodoro-phase-watcher";
 import { RecordModal, type RecordValues } from "@/components/record-modal";
 import { RestoreSessionCard } from "@/components/restore-session-card";
 import { RoundIconButton } from "@/components/round-icon-button";
@@ -44,6 +45,7 @@ import { ThemedText } from "@/components/themed-text";
 import { MIN_SAVE_MINUTES, STUDY_DAY } from "@/constants/domain";
 import { Spacing } from "@/constants/theme";
 import { getTownArt } from "@/constants/townArt";
+import { useAudio } from "@/contexts/AudioContext";
 import { useSettings } from "@/contexts/SettingsContext";
 import { useTimer } from "@/contexts/TimerContext";
 import {
@@ -88,6 +90,7 @@ import {
 export default function HomeScreen() {
   const { user, reload: reloadSettings } = useSettings();
   const timer = useTimer();
+  const audio = useAudio();
   const [selected, setSelected] = useState<SelectedTown | null>(null);
   const [summary, setSummary] = useState<StudyDaySummary | null>(null);
   const [loading, setLoading] = useState(true);
@@ -310,8 +313,9 @@ export default function HomeScreen() {
         // 街は育つ（要件3.4 の「離脱時も成長処理を実行する」の担保）
         await reloadSummary();
         await applyGrowth(result.minutes, result.studyDate);
-        // TODO(Phase 7): 終了演出（要件3.3）— 鐘の音とダッキング。
-        //   音源は assets/audio/ambient/The sound of the bell.mp3
+        // 終了演出（要件3.3）: 鐘を鳴らし、その間BGM・環境音を下げる（ダッキング）。
+        // 鐘の音量が0なら演出表示のみで無音（AudioContext 側で判定・UC 3.3 備考）
+        audio.playBell();
         setRecord({
           id: result.sessionId,
           minutes: result.minutes,
@@ -321,7 +325,7 @@ export default function HomeScreen() {
     } catch (e) {
       console.error("学習の終了に失敗しました", e);
     }
-  }, [timer, reloadSummary, applyGrowth]);
+  }, [timer, reloadSummary, applyGrowth, audio]);
 
   // 自動終了（要件3.2）。鑑賞モード中に起きた場合はUIを復帰させてから表示する（要件2.4）
   const handleAutoFinish = useCallback(async () => {
@@ -624,6 +628,15 @@ export default function HomeScreen() {
         />
       ) : null}
 
+      {/* ポモドーロの作業⇄休憩の切り替わりで控えめな効果音を鳴らす（要件3.1）。
+          計測中のポモドーロのときだけ見張る */}
+      {timer.session && timer.session.timer_mode === "pomodoro" ? (
+        <PomodoroPhaseWatcher
+          session={timer.session}
+          onPhaseChange={() => audio.playSfx("pomodoro_phase")}
+        />
+      ) : null}
+
       {/* S6 学習成果記録（要件3.4）。セッションは確定済みのため、
           保存せず閉じても学習した時間は失われない */}
       {record && user ? (
@@ -652,6 +665,8 @@ export default function HomeScreen() {
           onSuggest={() => {
             // 鑑賞モード中はUIを復帰させてから表示する（要件2.4）
             setImmersive(false);
+            // 目標到達を控えめな効果音で1回知らせる（要件5.1・UC 5.1。鐘は使わない）
+            audio.playSfx("goal_reached");
             setBreakTotal(
               getStudyDayTotalMinutes(
                 summary?.totalMinutes ?? 0,
