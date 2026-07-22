@@ -3,6 +3,7 @@ import { useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   Image as RNImage,
   KeyboardAvoidingView,
   Modal,
@@ -26,6 +27,7 @@ import Animated, {
   withTiming,
 } from "react-native-reanimated";
 
+import { formatClockInput } from "@/components/settings-ui";
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
 import {
@@ -39,6 +41,10 @@ import { useSettings } from "@/contexts/SettingsContext";
 import { masterRepo, setupRepo } from "@/db/repositories";
 import type { Town } from "@/db/types";
 import { useTheme } from "@/hooks/use-theme";
+import {
+  ensureNotificationPermission,
+  scheduleDailyReminder,
+} from "@/lib/notifications";
 import {
   validateDailyGoalMinutes,
   validateNickname,
@@ -99,20 +105,9 @@ export default function SetupScreen() {
     };
   }, []);
 
-  // 通知時刻の入力補助: 数字のみ4桁まで受け付け、2桁打ち終えたら ":" を自動挿入する。
-  // 削除操作中（前回入力より短くなった場合）は ":" を付け直さず、編集しやすくする。
+  // 通知時刻の入力補助（":" 自動挿入）。設定画面と同じ整形を共用する
   function handleNotificationTimeChange(text: string) {
-    const digits = text.replace(/\D/g, "").slice(0, 4);
-    let formatted: string;
-    if (digits.length >= 3) {
-      formatted = `${digits.slice(0, 2)}:${digits.slice(2)}`;
-    } else if (digits.length === 2) {
-      const deleting = text.length < notificationTime.length;
-      formatted = deleting ? digits : `${digits}:`;
-    } else {
-      formatted = digits;
-    }
-    setNotificationTime(formatted);
+    setNotificationTime(formatClockInput(text, notificationTime));
   }
 
   async function handleSubmit() {
@@ -134,14 +129,30 @@ export default function SetupScreen() {
     setError(null);
     setSaving(true);
     try {
+      // 通知ONなら先にOSの許可を得て、許可されたときだけ通知を有効化する（UC 1.2 ステップ5）。
+      // 拒否された場合は通知OFFで保存し、OSの設定から変更できる旨を伝える（要件12章）
+      const time = notificationTime.trim();
+      let notifyOn = false;
+      if (notificationEnabled) {
+        notifyOn = await ensureNotificationPermission();
+      }
+
       await setupRepo.completeSetup({
         nickname: nickname.trim(),
         dailyGoalMinutes: Number(goalText.trim()),
         selectedTownId,
-        notificationEnabled,
-        notificationTime: notificationEnabled ? notificationTime.trim() : null,
+        notificationEnabled: notifyOn,
+        notificationTime: notifyOn ? time : null,
       });
+      if (notifyOn) await scheduleDailyReminder(time);
       await reload();
+
+      if (notificationEnabled && !notifyOn) {
+        Alert.alert(
+          "通知は今回オフのままにしました",
+          "端末の設定から Chill Night Town の通知を許可すると、あとで学習開始のお知らせを受け取れます。",
+        );
+      }
       router.replace("/");
     } catch (e) {
       console.error("初期設定の保存に失敗しました", e);

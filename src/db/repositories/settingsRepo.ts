@@ -44,3 +44,21 @@ export async function updateAudioVolumes(volumes: {
     volumes.bell,
   );
 }
+
+/**
+ * 通知設定（ON/OFF・時刻）を保存する（要件10.3 / 12章）。
+ * OSへのスケジュール登録・解除は呼び出し側（lib/notifications）で行う。
+ * @param time 'HH:MM'。OFF時は null
+ */
+export async function updateNotificationSetting(
+  enabled: boolean,
+  time: string | null,
+): Promise<void> {
+  const db = await getDatabase();
+  await db.runAsync(
+    `UPDATE notification_setting
+        SET is_enabled = ?, scheduled_time = ?, updated_at = datetime('now')`,
+    enabled ? 1 : 0,
+    enabled ? time : null,
+  );
+}

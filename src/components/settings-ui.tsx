@@ -19,6 +19,21 @@ import { ThemedText } from "./themed-text";
 
 const DANGER_COLOR = "#d9534f";
 
+/**
+ * 通知時刻の入力補助（'HH:MM'）。数字のみ4桁まで受け付け、2桁打ち終えたら ":" を
+ * 自動挿入する。削除操作中（前回より短い）は ":" を付け直さず編集しやすくする。
+ * 初期設定・設定画面の両方の通知時刻入力で共用する。
+ */
+export function formatClockInput(text: string, prev: string): string {
+  const digits = text.replace(/\D/g, "").slice(0, 4);
+  if (digits.length >= 3) return `${digits.slice(0, 2)}:${digits.slice(2)}`;
+  if (digits.length === 2) {
+    const deleting = text.length < prev.length;
+    return deleting ? digits : `${digits}:`;
+  }
+  return digits;
+}
+
 /** 見出し付きのグループ。中の行は薄い区切り線で仕切る */
 export function SettingSection({
   title,
@@ -199,6 +214,7 @@ export function EditFieldModal({
   maxLength,
   submitLabel = "保存",
   validate,
+  transform,
   onCancel,
   onSubmit,
 }: {
@@ -211,6 +227,8 @@ export function EditFieldModal({
   maxLength?: number;
   submitLabel?: string;
   validate?: (raw: string) => string | null;
+  /** 入力の整形（例: 通知時刻の ":" 自動挿入）。前回値も渡す（削除操作の判定に使う） */
+  transform?: (text: string, prev: string) => string;
   onCancel: () => void;
   /** 値を保存する。文字列を返すと（＝非同期の検証エラー）その文言を表示して閉じない */
   onSubmit: (value: string) => Promise<string | void> | string | void;
@@ -268,7 +286,7 @@ export function EditFieldModal({
           ) : null}
           <TextInput
             value={text}
-            onChangeText={setText}
+            onChangeText={(t) => setText(transform ? transform(t, text) : t)}
             placeholder={placeholder}
             placeholderTextColor={theme.textSecondary}
             keyboardType={keyboardType}

@@ -4,6 +4,7 @@ import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Switch, Vi
 
 import {
   EditFieldModal,
+  formatClockInput,
   SettingRow,
   SettingSection,
   VolumeRow,
@@ -15,27 +16,33 @@ import { Spacing } from "@/constants/theme";
 import { useAudio, type SoundCategory } from "@/contexts/AudioContext";
 import { useSettings } from "@/contexts/SettingsContext";
 import { useTimer } from "@/contexts/TimerContext";
-import { growthRepo, maintenanceRepo, townProgressRepo, userRepo } from "@/db/repositories";
+import { growthRepo, maintenanceRepo, settingsRepo, townProgressRepo, userRepo } from "@/db/repositories";
 import type { GrowthMethod } from "@/db/types";
 import { useTheme } from "@/hooks/use-theme";
+import {
+  cancelReminder,
+  ensureNotificationPermission,
+  scheduleDailyReminder,
+} from "@/lib/notifications";
 import { formatMinutes } from "@/lib/study-day";
 import {
   validateDailyGoalMinutes,
   validateNickname,
+  validateNotificationTime,
   validateProjectTargetHours,
 } from "@/lib/validation";
 
 // S8 設定画面（要件10章）。各種設定の入口。
 // タイマー稼働中は、判定・記録に影響する項目（目標時間・成長方式・街切替・初期化）を
 // グレーアウトし「学習中は変更できません」と添える（要件10 共通ルール）。
-// 音量(10.4)・通知(10.3)は音声・通知基盤（Phase 7）に依存するため、本画面では
-// 「準備中」の無効行として置くだけとする。
 
 const RUNNING_NOTE = "学習中は変更できません";
+// 通知を初めてONにするときの既定時刻（夜間帯のうち一般的な時刻）
+const DEFAULT_NOTIFICATION_TIME = "21:00";
 
 export default function SettingsScreen() {
   const router = useRouter();
-  const { user, ready, reload, selectedTown } = useSettings();
+  const { user, ready, reload, selectedTown, notificationSetting } = useSettings();
   const { status } = useTimer();
   const audio = useAudio();
   const running = status !== "idle";
@@ -48,6 +55,48 @@ export default function SettingsScreen() {
 
   const [editing, setEditing] = useState<"nickname" | "goal" | null>(null);
   const [projectPrompt, setProjectPrompt] = useState(false);
+  const [timeEditOpen, setTimeEditOpen] = useState(false);
+
+  const notifyEnabled = notificationSetting?.is_enabled === 1;
+  const notifyTime = notificationSetting?.scheduled_time ?? null;
+
+  // 通知のON/OFF（要件10.3 / 12章）。ONにするときはOSの許可を確保し、
+  // 拒否されたらOFFへ戻してOSの設定から変更できる旨を伝える（要件12章）。
+  // 発火はOSが行い、設定保存時にスケジュール登録・解除する（アプリは時刻を監視しない）
+  async function handleToggleNotification(next: boolean) {
+    try {
+      if (next) {
+        const granted = await ensureNotificationPermission();
+        if (!granted) {
+          Alert.alert(
+            "通知が許可されていません",
+            "端末の設定から Chill Night Town の通知を許可すると、学習開始の時刻をお知らせできます。",
+          );
+          return; // OFFのまま（Switchは notifyEnabled を見るので戻る）
+        }
+        const time = notifyTime ?? DEFAULT_NOTIFICATION_TIME;
+        await settingsRepo.updateNotificationSetting(true, time);
+        await scheduleDailyReminder(time);
+      } else {
+        await settingsRepo.updateNotificationSetting(false, null);
+        await cancelReminder();
+      }
+      await reload();
+    } catch (e) {
+      console.error("通知設定の更新に失敗しました", e);
+    }
+  }
+
+  // 通知時刻の変更（ONのあいだのみ）。保存して登録し直す
+  async function handleChangeNotificationTime(time: string) {
+    try {
+      await settingsRepo.updateNotificationSetting(true, time);
+      await scheduleDailyReminder(time);
+      await reload();
+    } catch (e) {
+      console.error("通知時刻の更新に失敗しました", e);
+    }
+  }
 
   // 選択中の街は SettingsContext が保持する。S9 で変更すると context 側が更新され、
   // 戻ってきたときには既に最新（非同期の再読み込み待ちが無いのでラグが出ない）。
@@ -237,9 +286,28 @@ export default function SettingsScreen() {
           />
         </SettingSection>
 
-        {/* 通知（Phase 7-5 で実装） */}
-        <SettingSection title="通知">
-          <SettingRow first label="学習開始の通知" value="準備中" disabled />
+        {/* 通知（要件10.3 / 12章）。発火はOSが行う。稼働中も変更可 */}
+        <SettingSection
+          title="通知"
+          footer="設定した時刻に、そっと学習の始まりをお知らせします。"
+        >
+          <SettingRow
+            first
+            label="学習開始の通知"
+            right={
+              <Switch
+                value={notifyEnabled}
+                onValueChange={(v) => void handleToggleNotification(v)}
+              />
+            }
+          />
+          {notifyEnabled ? (
+            <SettingRow
+              label="通知時刻"
+              value={notifyTime ?? DEFAULT_NOTIFICATION_TIME}
+              onPress={() => setTimeEditOpen(true)}
+            />
+          ) : null}
         </SettingSection>
 
         {/* データ */}
@@ -258,6 +326,24 @@ export default function SettingsScreen() {
           />
         </SettingSection>
       </ScrollView>
+
+      {/* 通知時刻の編集（通知ONのあいだのみ） */}
+      <EditFieldModal
+        visible={timeEditOpen}
+        title="通知時刻"
+        description="17:30〜翌4:30 の範囲で設定できます。18:00より前は夜の始まりまでのカウントダウンをお知らせします。"
+        initialValue={notifyTime ?? DEFAULT_NOTIFICATION_TIME}
+        placeholder="21:00"
+        keyboardType="number-pad"
+        maxLength={5}
+        transform={formatClockInput}
+        validate={validateNotificationTime}
+        onCancel={() => setTimeEditOpen(false)}
+        onSubmit={async (v) => {
+          await handleChangeNotificationTime(v);
+          setTimeEditOpen(false);
+        }}
+      />
 
       {/* ニックネーム編集 */}
       <EditFieldModal
