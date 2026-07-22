@@ -97,6 +97,9 @@ export function TimerSetupModal({
   // 天気はモーダル内の下書き。開始を押すまで確定しない
   const [weather, setWeather] = useState<NightWeather | null>(initialWeather);
   const [pickerOpen, setPickerOpen] = useState(false);
+  // 再生ボタンから天気の選択欄を開いたか。true のときは天気を選んだらそのまま起動する。
+  // 天気の行から開いた場合（変更だけの意図）は false のままで、選んでも起動しない
+  const [startAfterPick, setStartAfterPick] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // 天気を選び直したらエラー表示を消す（責める表示を残さない）
@@ -131,42 +134,54 @@ export function TimerSetupModal({
     });
   }
 
-  function handleStart() {
-    // 天気はその学習日で未選択なら必須（要件3.1）。
-    // 「選んでください」と告げるだけでは選択欄を開き直す手間が増えるため、
-    // その場で選択欄を出す（責めるより、次にすべきことを示す）
-    if (!weather) {
-      setPickerOpen(true);
-      return;
-    }
+  // 設定値（分数等）の検証。問題なければ null
+  function validateSettings(): string | null {
+    if (mode === "simple") return validatePlannedMinutes(planned);
+    return (
+      validatePomodoroWorkMinutes(work) ??
+      validatePomodoroBreakMinutes(brk) ??
+      validatePomodoroLoopCount(String(loop))
+    );
+  }
 
+  // 確定した天気で開始ペイロードを組む（設定は検証済みの前提）
+  function buildValues(w: NightWeather): TimerSetupValues {
     if (mode === "simple") {
-      const e = validatePlannedMinutes(planned);
-      if (e) return setError(e);
-      onStart({
+      return {
         mode,
         plannedMinutes: Number(planned),
         workMinutes: null,
         breakMinutes: null,
         loopCount: null,
-        weather,
-      });
-      return;
+        weather: w,
+      };
     }
-
-    const e =
-      validatePomodoroWorkMinutes(work) ??
-      validatePomodoroBreakMinutes(brk) ??
-      validatePomodoroLoopCount(String(loop));
-    if (e) return setError(e);
-    onStart({
+    return {
       mode,
       plannedMinutes: null,
       workMinutes: Number(work),
       breakMinutes: Number(brk),
       loopCount: loop,
-      weather,
-    });
+      weather: w,
+    };
+  }
+
+  function handleStart() {
+    // 先に設定値を検証する。天気を選んだ直後に確実に起動できるよう、順序を
+    // 「設定 → 天気」にする（天気を選んでから分数エラーで止まるチグハグを避ける）
+    const e = validateSettings();
+    if (e) return setError(e);
+
+    // 天気はその学習日で未選択なら必須（要件3.1）。ここは「再生を押した」流れなので、
+    // 選択欄を最後の関門として出し、選んだらそのまま起動する（startAfterPick）。
+    // 「選んでください」と告げるより、次にすべきことをその場で示す
+    if (!weather) {
+      setStartAfterPick(true);
+      setPickerOpen(true);
+      return;
+    }
+
+    onStart(buildValues(weather));
   }
 
   return (
@@ -220,9 +235,16 @@ export function TimerSetupModal({
           />
         </View>
 
-        {/* 今夜の天気（ホーム画面の天気の行と同じ部品） */}
+        {/* 今夜の天気（ホーム画面の天気の行と同じ部品）。
+            行からの選択は「変更だけ」の意図なので、選んでも起動しない */}
         <View style={styles.weather}>
-          <WeatherRow weather={weather} onPress={() => setPickerOpen(true)} />
+          <WeatherRow
+            weather={weather}
+            onPress={() => {
+              setStartAfterPick(false);
+              setPickerOpen(true);
+            }}
+          />
         </View>
 
         {/* 設定の円 */}
@@ -310,8 +332,17 @@ export function TimerSetupModal({
         onSelect={(w) => {
           setWeather(w);
           setPickerOpen(false);
+          // 再生ボタンから開いていた場合は、天気の確定をもってそのまま起動する。
+          // 設定値は handleStart で検証済みのため、ここでは検証しない
+          if (startAfterPick) {
+            setStartAfterPick(false);
+            onStart(buildValues(w));
+          }
         }}
-        onClose={() => setPickerOpen(false)}
+        onClose={() => {
+          setPickerOpen(false);
+          setStartAfterPick(false);
+        }}
       />
     </View>
   );
