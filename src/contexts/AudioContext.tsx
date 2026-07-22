@@ -12,12 +12,14 @@ import {
 
 import { AUDIO } from "@/constants/domain";
 import {
+  getAmbientSource,
   getBgmSource,
   getSfxSource,
   type SfxKey,
 } from "@/constants/audioAssets";
 import { masterRepo, settingsRepo } from "@/db/repositories";
 import type { AmbientSound } from "@/db/types";
+import { selectAmbientCode } from "@/lib/ambient-select";
 import {
   duckedVolume,
   isMuted,
@@ -82,6 +84,14 @@ type AudioContextValue = {
   skipBgm: () => void;
   /** 再生中の曲の頭に戻す（前の曲へは戻らない） */
   restartBgm: () => void;
+
+  // --- 環境音（要件9 / UC 9.1） ---
+  /**
+   * その夜の天気に応じた環境音へ切り替える（要件9）。
+   * 天気コード（未選択は null）を渡すと、対応する環境音をループ再生する。
+   * 対応する音が無い・環境音の音量が0のときは停止する（ニュートラルな夜）。
+   */
+  setAmbientForWeather: (weatherCode: string | null) => void;
 };
 
 const AudioContext = createContext<AudioContextValue | null>(null);
@@ -126,6 +136,11 @@ export function AudioProvider({ children }: { children: ReactNode }) {
   const bgmUserPausedRef = useRef(false);
   // 進行中のフェードを止めるためのタイマー
   const fadeTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // 環境音（要件9）。天気が「鳴らしたい」環境音コードと、いま実際に鳴っているコード。
+  // 音量0で止めても desired は保持し、音量が戻ったら同じ環境音を鳴らし直せるようにする
+  const desiredAmbientCodeRef = useRef<string | null>(null);
+  const playingAmbientCodeRef = useRef<string | null>(null);
 
   // 無音モードでも音が出るようにし、他アプリの音を止めない設定にする
   useEffect(() => {
@@ -173,7 +188,6 @@ export function AudioProvider({ children }: { children: ReactNode }) {
       players.forEach((p) => p.remove());
       players.clear();
       bgmPlayer.current?.remove();
-      // eslint-disable-next-line react-hooks/exhaustive-deps
       ambientPlayer.current?.remove();
     };
   }, []);
@@ -372,6 +386,50 @@ export function AudioProvider({ children }: { children: ReactNode }) {
       .catch((e) => console.error("BGMの頭出しに失敗しました", e));
   }, []);
 
+  // --- 環境音（要件9 / UC 9.1） ---
+
+  // 「鳴らしたい環境音」と現在の音量から、実際の再生を合わせる。
+  // 環境音は天気演出の一部としてループし続ける（一時停止のUIは持たない。要件9）。
+  const applyAmbient = useCallback(() => {
+    const code = desiredAmbientCodeRef.current;
+    const source = code ? getAmbientSource(code) : undefined;
+    const volume = volumesRef.current.ambient;
+
+    // 対応する音が無い・音量0のときは鳴らさない（要件9: 未対応はニュートラルな夜）
+    if (!source || isMuted(volume)) {
+      if (ambientPlayer.current) ambientPlayer.current.pause();
+      playingAmbientCodeRef.current = null;
+      return;
+    }
+
+    // 既に同じ環境音が鳴っているなら音量だけ合わせる（鳴らし直さない）
+    if (playingAmbientCodeRef.current === code && ambientPlayer.current) {
+      ambientPlayer.current.volume = toPlayerVolume(volume);
+      if (!ambientPlayer.current.playing) ambientPlayer.current.play();
+      return;
+    }
+
+    let player = ambientPlayer.current;
+    if (!player) {
+      player = createAudioPlayer(source);
+      ambientPlayer.current = player;
+    } else {
+      player.replace(source);
+    }
+    player.loop = true;
+    player.volume = toPlayerVolume(volume);
+    player.play();
+    playingAmbientCodeRef.current = code;
+  }, []);
+
+  const setAmbientForWeather = useCallback(
+    (weatherCode: string | null) => {
+      desiredAmbientCodeRef.current = selectAmbientCode(weatherCode);
+      applyAmbient();
+    },
+    [applyAmbient],
+  );
+
   // BGMプールを読み込み、フェードインで自動再生する（要件9: 初回表示と同時に）。
   // 音源が登録されている曲だけをプールに入れる（未登録はスキップ対象にしない）
   useEffect(() => {
@@ -418,8 +476,10 @@ export function AudioProvider({ children }: { children: ReactNode }) {
           }
         }
       }
-      if (category === "ambient" && ambientPlayer.current) {
-        ambientPlayer.current.volume = toPlayerVolume(value);
+      if (category === "ambient") {
+        // 0への変更で停止、0から戻すと同じ環境音を鳴らし直す（要件9）。
+        // desired（天気で決まる鳴らしたい音）は保持したまま再生だけ合わせる
+        applyAmbient();
       }
 
       try {
@@ -428,7 +488,7 @@ export function AudioProvider({ children }: { children: ReactNode }) {
         console.error("音量設定の保存に失敗しました", e);
       }
     },
-    [startBgm],
+    [startBgm, applyAmbient],
   );
 
   const value = useMemo<AudioContextValue>(
@@ -444,6 +504,7 @@ export function AudioProvider({ children }: { children: ReactNode }) {
       toggleBgm,
       skipBgm,
       restartBgm,
+      setAmbientForWeather,
     }),
     [
       ready,
@@ -457,6 +518,7 @@ export function AudioProvider({ children }: { children: ReactNode }) {
       toggleBgm,
       skipBgm,
       restartBgm,
+      setAmbientForWeather,
     ],
   );
 

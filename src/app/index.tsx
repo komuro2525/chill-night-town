@@ -170,6 +170,18 @@ export default function HomeScreen() {
     };
   }, [reloadSummary, reloadWeather]);
 
+  // その夜の天気に応じて環境音を自動再生する（要件9 / UC 9.1）。
+  // 天気が変わるたび（選択・成果記録での変更・読み直し）に切り替える。
+  // 対応する音が無い天気・未選択では鳴らない（AudioContext 側で判定）。
+  // 音量設定の読み込み完了（audio.ready）を待つ。既定値のまま鳴らして
+  // 「音量0にしていたのに一瞬鳴る」ことを避けるため
+  const setAmbientForWeather = audio.setAmbientForWeather;
+  const audioReady = audio.ready;
+  useEffect(() => {
+    if (!audioReady) return;
+    setAmbientForWeather(weather?.code ?? null);
+  }, [weather, audioReady, setAmbientForWeather]);
+
   // その夜の天気を選ぶ（要件2.5: 1晩＝1天気・最後の選択が残る）。
   // ホームの天気の行から選んだ場合は、その場で確定して演出へ反映する。
   // studyDate を指定すると過去の学習日（成果記録が5:00をまたいだ場合等）へ書ける。
