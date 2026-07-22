@@ -21,6 +21,10 @@ SplashScreen.preventAutoHideAsync();
 
 export default function RootLayout() {
   const colorScheme = useColorScheme();
+
+  // 画面の向きはホーム画面が一元管理する（要件2.4: 横画面対応はホームのみ）。
+  // ホームは常にマウントされている根の画面で、フォーカス/離脱に応じて縦固定⇄回転許可を
+  // 切り替え、離脱時（他画面・アンマウント）は縦へ戻す（src/app/index.tsx）。
   return (
     // 全画面でジェスチャ（ホームの街探索スワイプ等）を有効にするためルートに配置する
     <GestureHandlerRootView style={{ flex: 1 }}>

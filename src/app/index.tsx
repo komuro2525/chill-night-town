@@ -1,6 +1,8 @@
+import { useIsFocused } from "@react-navigation/native";
 import { Image } from "expo-image";
 import { useKeepAwake } from "expo-keep-awake";
 import { useRouter } from "expo-router";
+import * as ScreenOrientation from "expo-screen-orientation";
 import { StatusBar } from "expo-status-bar";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
@@ -28,6 +30,7 @@ import { BreakSuggestionWatcher } from "@/components/break-suggestion-watcher";
 import { BgmMiniPlayer } from "@/components/bgm-mini-player";
 import { ClockButton } from "@/components/clock-button";
 import { GoodnightOverlay } from "@/components/goodnight-overlay";
+import { LandscapeHome } from "@/components/landscape-home";
 import { GrowthCard } from "@/components/growth-card";
 import { GrowthHintCard } from "@/components/growth-hint-card";
 import { LevelBadge } from "@/components/level-badge";
@@ -93,6 +96,10 @@ export default function HomeScreen() {
   const { user, reload: reloadSettings, selectedTown } = useSettings();
   const timer = useTimer();
   const audio = useAudio();
+  // 横画面表示（要件2.4）: ホームだけ横向きを許可し、閲覧専用ビューへ切り替える
+  const { width: winWidth, height: winHeight } = useWindowDimensions();
+  const isLandscape = winWidth > winHeight;
+  const isFocused = useIsFocused();
   const [selected, setSelected] = useState<SelectedTown | null>(null);
   const [summary, setSummary] = useState<StudyDaySummary | null>(null);
   const [loading, setLoading] = useState(true);
@@ -594,6 +601,45 @@ export default function HomeScreen() {
   const level = selected?.progress.current_level ?? 1;
   const art = selected ? getTownArt(selected.town.code, level) : undefined;
 
+  // 縦固定が必要な状態（操作モーダル・演出・システムイベント）。
+  // これらが立っている間は横向きを許可しない＝要件2.4「操作系は縦固定／イベント時は縦へ戻す」。
+  // 鑑賞モード（immersive）は縦のUI非表示であり、横向き許可の妨げにはしない
+  const needsPortrait =
+    setupOpen ||
+    timerOpen ||
+    record !== null ||
+    breakTotal !== null ||
+    restoreMinutes !== null ||
+    growthCard !== null ||
+    npcMessage !== null ||
+    goodnightMessage !== null ||
+    weatherPickerOpen ||
+    discardedNote;
+
+  // 向きロックの一元管理（要件2.4）。ホームにフォーカスがあり、操作/演出中でない
+  // ときだけ回転を許可する。それ以外（他画面へ移動中・オーバーレイ中）は縦固定。
+  useEffect(() => {
+    const lock =
+      isFocused && !needsPortrait
+        ? ScreenOrientation.OrientationLock.ALL
+        : ScreenOrientation.OrientationLock.PORTRAIT_UP;
+    ScreenOrientation.lockAsync(lock).catch((e) =>
+      console.error("画面の向きの切り替えに失敗しました", e),
+    );
+  }, [isFocused, needsPortrait]);
+
+  // 離脱・アンマウント時は必ず縦へ戻す（初期設定などホーム以外を縦固定に保つ安全策）
+  useEffect(() => {
+    return () => {
+      ScreenOrientation.lockAsync(
+        ScreenOrientation.OrientationLock.PORTRAIT_UP,
+      ).catch(() => {});
+    };
+  }, []);
+
+  // 横向きの閲覧ビューを出すか（操作/演出中は縦へ戻すため出さない）
+  const landscapeMode = isLandscape && !needsPortrait;
+
   return (
     <View style={styles.container}>
       {/* OSのステータスバー（時刻・バッテリー）を隠して全面背景にする */}
@@ -602,7 +648,10 @@ export default function HomeScreen() {
       {/* 鑑賞モード中はOSのスリープを防止する（要件2.4） */}
       {immersive ? <KeepScreenAwake /> : null}
 
-      {art ? (
+      {landscapeMode ? (
+        // 横向き（要件2.4）: 街の全景だけを表示する閲覧専用ビュー。UIは持たない
+        <LandscapeHome art={art} session={timer.session} />
+      ) : art ? (
         // 鑑賞モード中に画面をタップするとUIを復帰する（スワイプ探索は継続できる）
         <TownBackground
           art={art}
@@ -619,9 +668,9 @@ export default function HomeScreen() {
       ) : null}
 
       {/* 鑑賞モード中はすべてのUIを隠す（鑑賞モードボタン自身を含む）。
-          タイマー設定モーダル表示中も同様に隠し、背景は夜の街だけを透かす
+          横向き・タイマー設定モーダル表示中も同様に隠し、背景は夜の街だけを透かす
           （ボタン類が透けるとごちゃついて見えるため） */}
-      {!immersive && !setupOpen && !timerOpen && !record ? (
+      {!landscapeMode && !immersive && !setupOpen && !timerOpen && !record ? (
         <>
           {selected ? (
             <TopOverlay
