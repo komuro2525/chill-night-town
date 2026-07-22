@@ -18,7 +18,7 @@ import Animated, {
   withTiming,
 } from "react-native-reanimated";
 
-import { Spacing } from "@/constants/theme";
+import { LightColor, Spacing } from "@/constants/theme";
 import { useAudio } from "@/contexts/AudioContext";
 import { isMuted } from "@/lib/audio";
 
@@ -36,8 +36,15 @@ const PLAY_BUTTON_SIZE = 44;
 const TEXT_WIDTH = 180;
 
 export function BgmMiniPlayer() {
-  const { volumes, bgmTrack, bgmPlaying, toggleBgm, skipBgm, restartBgm } =
-    useAudio();
+  const {
+    volumes,
+    bgmTrack,
+    bgmPlaying,
+    bgmProgress,
+    toggleBgm,
+    skipBgm,
+    restartBgm,
+  } = useAudio();
 
   // BGM音量0のときはミニプレイヤーを表示しない（要件9）。
   // 曲がまだ用意できていない（プール空・読み込み中）ときも出さない
@@ -52,6 +59,16 @@ export function BgmMiniPlayer() {
           {bgmTrack.artist}
         </Text>
       ) : null}
+
+      {/* 再生位置の進捗バー（要件9: 曲がどれくらい進んだか視覚的に示す） */}
+      <View style={styles.progressTrack}>
+        <View
+          style={[
+            styles.progressFill,
+            { width: `${Math.round(Math.min(1, Math.max(0, bgmProgress)) * 100)}%` },
+          ]}
+        />
+      </View>
 
       <View style={styles.controls}>
         {/* 巻き戻し: 再生中の曲の頭に戻る（前の曲へは戻らない） */}
@@ -186,6 +203,19 @@ const styles = StyleSheet.create({
     fontSize: 11,
     marginTop: 1,
     maxWidth: 180,
+  },
+  progressTrack: {
+    width: TEXT_WIDTH,
+    height: 3,
+    borderRadius: 2,
+    marginTop: Spacing.two,
+    backgroundColor: "rgba(255,255,255,0.18)",
+    overflow: "hidden",
+  },
+  progressFill: {
+    height: "100%",
+    borderRadius: 2,
+    backgroundColor: LightColor,
   },
   controls: {
     flexDirection: "row",
