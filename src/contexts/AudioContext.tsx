@@ -86,6 +86,8 @@ type AudioContextValue = {
   bgmPlaying: boolean;
   /** 再生位置の進捗（0〜1）。ミニプレイヤーの再生バーに使う */
   bgmProgress: number;
+  /** アプリにBGMが1曲でもあるか。選択中ソースが空でもミニプレイヤー（＝入口）を残す判定に使う */
+  bgmHasTracks: boolean;
   /** BGMの一時停止／再開（対象はBGMのみ。環境音・効果音・鐘は対象外） */
   toggleBgm: () => void;
   /** 次の曲へ進む */
@@ -146,6 +148,8 @@ export function AudioProvider({ children }: { children: ReactNode }) {
   const [bgmTrack, setBgmTrack] = useState<AmbientSound | null>(null);
   const [bgmPlaying, setBgmPlaying] = useState(false);
   const [bgmProgress, setBgmProgress] = useState(0);
+  // アプリにBGMが1曲でもあるか（選択中ソースが空でもミニプレイヤー＝プレイリスト入口を残すため）
+  const [bgmHasTracks, setBgmHasTracks] = useState(false);
   // プレイリスト（要件9）: 再生ソースとシャッフル。正はDB（audio_setting）
   const [bgmSource, setBgmSourceState] = useState<BgmSource>("all");
   const [bgmShuffle, setBgmShuffleState] = useState(true);
@@ -502,6 +506,7 @@ export function AudioProvider({ children }: { children: ReactNode }) {
       ]);
       // 音源が登録されている曲だけを対象にする
       const playable = tracks.filter((t) => getBgmSource(t.code));
+      setBgmHasTracks(playable.length > 0);
       setBgmSourceState(settings.source);
       setBgmShuffleState(settings.shuffle);
       bgmSourceRef.current = settings.source;
@@ -700,6 +705,7 @@ export function AudioProvider({ children }: { children: ReactNode }) {
       bgmTrack,
       bgmPlaying,
       bgmProgress,
+      bgmHasTracks,
       toggleBgm,
       skipBgm,
       restartBgm,
@@ -722,6 +728,7 @@ export function AudioProvider({ children }: { children: ReactNode }) {
       bgmTrack,
       bgmPlaying,
       bgmProgress,
+      bgmHasTracks,
       toggleBgm,
       skipBgm,
       restartBgm,

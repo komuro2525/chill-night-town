@@ -43,15 +43,16 @@ export function BgmMiniPlayer() {
     bgmTrack,
     bgmPlaying,
     bgmProgress,
+    bgmHasTracks,
     toggleBgm,
     skipBgm,
     restartBgm,
   } = useAudio();
 
-  // 曲がまだ用意できていない（プール空・読み込み中）ときは出さない。
-  // BGM音量0でも表示する（曲名タップでプレイリスト画面へ行けるように。要件9改訂）。
-  // ただし音量0では再生処理は行わない（音は鳴らない）ため「音量オフ」と添える
-  if (bgmTrack === null) return null;
+  // アプリにBGMが1曲も無い（読み込み中含む）ときだけ出さない。
+  // 選択中ソース（お気に入り/プレイリスト）が空で bgmTrack が無くても、
+  // プレイリスト画面への入口を保つためミニプレイヤーは残す（要件9改訂）。
+  if (!bgmHasTracks) return null;
   const muted = isMuted(volumes.bgm);
 
   return (
@@ -62,54 +63,67 @@ export function BgmMiniPlayer() {
         accessibilityLabel="プレイリストを開く"
         style={({ pressed }) => [styles.infoArea, pressed && styles.pressed]}
       >
-        {/* 長い曲名はスクロール表示（要件9。収まる曲名は静止したまま） */}
-        <MarqueeText text={bgmTrack.name} style={styles.title} width={TEXT_WIDTH} />
-        {bgmTrack.artist ? (
-          <Text style={styles.artist} numberOfLines={1}>
-            {bgmTrack.artist}
-          </Text>
-        ) : null}
+        {bgmTrack ? (
+          <>
+            {/* 長い曲名はスクロール表示（要件9。収まる曲名は静止したまま） */}
+            <MarqueeText text={bgmTrack.name} style={styles.title} width={TEXT_WIDTH} />
+            {bgmTrack.artist ? (
+              <Text style={styles.artist} numberOfLines={1}>
+                {bgmTrack.artist}
+              </Text>
+            ) : null}
 
-        {muted ? (
-          // 音量0のときは進捗バーの代わりに「音量オフ」を示す（押しても鳴らない理由）
-          <View style={styles.mutedRow}>
-            <Ionicons name="volume-mute" size={12} color="rgba(255,255,255,0.5)" />
-            <Text style={styles.mutedText}>音量オフ</Text>
-          </View>
+            {muted ? (
+              // 音量0のときは進捗バーの代わりに「音量オフ」を示す（押しても鳴らない理由）
+              <View style={styles.mutedRow}>
+                <Ionicons name="volume-mute" size={12} color="rgba(255,255,255,0.5)" />
+                <Text style={styles.mutedText}>音量オフ</Text>
+              </View>
+            ) : (
+              /* 再生位置の進捗バー（要件9: 曲がどれくらい進んだか視覚的に示す） */
+              <View style={styles.progressTrack}>
+                <View
+                  style={[
+                    styles.progressFill,
+                    { width: `${Math.round(Math.min(1, Math.max(0, bgmProgress)) * 100)}%` },
+                  ]}
+                />
+              </View>
+            )}
+          </>
         ) : (
-          /* 再生位置の進捗バー（要件9: 曲がどれくらい進んだか視覚的に示す） */
-          <View style={styles.progressTrack}>
-            <View
-              style={[
-                styles.progressFill,
-                { width: `${Math.round(Math.min(1, Math.max(0, bgmProgress)) * 100)}%` },
-              ]}
-            />
-          </View>
+          // 選択中ソース（お気に入り/マイプレイリスト）に曲が無い。入口だけ残す
+          <>
+            <Text style={styles.emptyTitle}>再生する曲がありません</Text>
+            <Text style={styles.emptyHint}>タップして選ぶ</Text>
+          </>
         )}
       </Pressable>
 
-      <View style={styles.controls}>
-        {/* 巻き戻し: 再生中の曲の頭に戻る（前の曲へは戻らない） */}
-        <ControlButton
-          name="play-back"
-          size={BUTTON_SIZE}
-          accessibilityLabel="曲の最初に戻る"
-          onPress={restartBgm}
-        />
-        <ControlButton
-          name={bgmPlaying ? "pause" : "play"}
-          size={PLAY_BUTTON_SIZE}
-          accessibilityLabel={bgmPlaying ? "BGMを一時停止" : "BGMを再開"}
-          onPress={toggleBgm}
-        />
-        <ControlButton
-          name="play-forward"
-          size={BUTTON_SIZE}
-          accessibilityLabel="次の曲へ"
-          onPress={skipBgm}
-        />
-      </View>
+      {/* 再生対象があるときだけ操作ボタンを出す */}
+      {bgmTrack ? (
+        <View style={styles.controls}>
+          {/* 巻き戻し: 再生中の曲の頭に戻る（前の曲へは戻らない） */}
+          <ControlButton
+            name="play-back"
+            size={BUTTON_SIZE}
+            accessibilityLabel="曲の最初に戻る"
+            onPress={restartBgm}
+          />
+          <ControlButton
+            name={bgmPlaying ? "pause" : "play"}
+            size={PLAY_BUTTON_SIZE}
+            accessibilityLabel={bgmPlaying ? "BGMを一時停止" : "BGMを再開"}
+            onPress={toggleBgm}
+          />
+          <ControlButton
+            name="play-forward"
+            size={BUTTON_SIZE}
+            accessibilityLabel="次の曲へ"
+            onPress={skipBgm}
+          />
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -243,6 +257,16 @@ const styles = StyleSheet.create({
   mutedText: {
     color: "rgba(255,255,255,0.5)",
     fontSize: 11,
+  },
+  emptyTitle: {
+    color: "rgba(255,255,255,0.9)",
+    fontSize: 13,
+    fontWeight: "500",
+  },
+  emptyHint: {
+    color: "rgba(255,255,255,0.55)",
+    fontSize: 11,
+    marginTop: 1,
   },
   progressFill: {
     height: "100%",
