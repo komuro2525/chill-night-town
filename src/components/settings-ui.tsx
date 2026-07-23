@@ -79,6 +79,7 @@ export function SettingRow({
   disabled = false,
   danger = false,
   first = false,
+  hideChevron = false,
 }: {
   label: string;
   value?: string;
@@ -89,6 +90,8 @@ export function SettingRow({
   danger?: boolean;
   /** グループ先頭の行は上区切り線を出さない */
   first?: boolean;
+  /** タップ可能でも右端の > を出さない（複数選択のチェックボックス行など） */
+  hideChevron?: boolean;
 }) {
   const theme = useTheme();
   const tappable = !!onPress && !disabled;
@@ -115,7 +118,7 @@ export function SettingRow({
             {value}
           </ThemedText>
         ) : null)}
-      {tappable ? (
+      {tappable && !hideChevron ? (
         <ThemedText themeColor="textSecondary" style={styles.chevron}>
           ›
         </ThemedText>

@@ -158,6 +158,20 @@ export async function deactivateTag(id: number): Promise<void> {
   await db.runAsync("UPDATE study_tag SET is_active = 0 WHERE id = ?", id);
 }
 
+/**
+ * 複数のタグをまとめて論理削除する（要件10.9: 複数選択してまとめて削除）。
+ * 1トランザクションで行い、途中失敗時は全体を巻き戻す。空配列なら何もしない。
+ */
+export async function deactivateTags(ids: number[]): Promise<void> {
+  if (ids.length === 0) return;
+  const db = await getDatabase();
+  await db.withTransactionAsync(async () => {
+    for (const id of ids) {
+      await db.runAsync("UPDATE study_tag SET is_active = 0 WHERE id = ?", id);
+    }
+  });
+}
+
 /** 指定セッションに紐づくタグ（カレンダー・記録表示用。論理削除済みも表示する） */
 export async function getTagsBySessionId(
   studySessionId: number,
