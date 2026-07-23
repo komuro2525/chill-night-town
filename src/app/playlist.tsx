@@ -8,7 +8,6 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
-  Switch,
   Text,
   View,
 } from "react-native";
@@ -170,12 +169,12 @@ export default function PlaylistScreen() {
     if (!user || selectedIds.length === 0) return;
     const n = selectedIds.length;
     Alert.alert(
-      "プレイリストから外す",
-      `選択した${n}曲をマイプレイリストから外しますか（曲自体は残ります）`,
+      `${n}曲を削除しますか？`,
+      "このミュージックをプレイリストから削除してもよろしいですか？",
       [
-        { text: "やめる", style: "cancel" },
+        { text: "キャンセル", style: "cancel" },
         {
-          text: `外す（${n}）`,
+          text: "曲を削除",
           style: "destructive",
           onPress: () => {
             void (async () => {
@@ -266,6 +265,8 @@ export default function PlaylistScreen() {
       <View style={styles.segment}>
         {SOURCES.map((s) => {
           const active = audio.bgmSource === s.value;
+          // マイプレイリストのタブは編集した名前を表示する（要件9）
+          const label = s.value === "playlist" ? playlistName : s.label;
           return (
             <Pressable
               key={s.value}
@@ -273,8 +274,11 @@ export default function PlaylistScreen() {
               style={[styles.segItem, active && styles.segItemActive]}
               accessibilityState={{ selected: active }}
             >
-              <Text style={[styles.segText, active && styles.segTextActive]}>
-                {s.label}
+              <Text
+                style={[styles.segText, active && styles.segTextActive]}
+                numberOfLines={1}
+              >
+                {label}
               </Text>
             </Pressable>
           );
@@ -339,25 +343,20 @@ export default function PlaylistScreen() {
           <Ionicons name="play" size={18} color="#05070f" />
           <Text style={styles.playText}>再生</Text>
         </Pressable>
-        <Pressable
-          onPress={() => void audio.setBgmShuffle(!audio.bgmShuffle)}
-          style={styles.shuffleRow}
-          accessibilityLabel="シャッフル"
-          accessibilityState={{ selected: audio.bgmShuffle }}
-        >
-          <Ionicons
-            name="shuffle"
-            size={20}
-            color={audio.bgmShuffle ? LightColor : "rgba(255,255,255,0.4)"}
+        <View style={styles.toggleGroup}>
+          <ToggleIcon
+            icon="shuffle"
+            label="シャッフル"
+            on={audio.bgmShuffle}
+            onPress={() => void audio.setBgmShuffle(!audio.bgmShuffle)}
           />
-          <Text style={[styles.shuffleText, audio.bgmShuffle && styles.shuffleOn]}>
-            シャッフル
-          </Text>
-          <Switch
-            value={audio.bgmShuffle}
-            onValueChange={(v) => void audio.setBgmShuffle(v)}
+          <ToggleIcon
+            icon="repeat"
+            label="リピート"
+            on={audio.bgmRepeatOne}
+            onPress={() => void audio.setBgmRepeatOne(!audio.bgmRepeatOne)}
           />
-        </Pressable>
+        </View>
       </View>
 
       {/* マイプレイリストの名前＋編集ツール */}
@@ -456,6 +455,36 @@ export default function PlaylistScreen() {
         onSubmit={saveName}
       />
     </View>
+  );
+}
+
+/** シャッフル・リピートのアイコントグル（タップでON/OFF、色で状態を示す） */
+function ToggleIcon({
+  icon,
+  label,
+  on,
+  onPress,
+}: {
+  icon: React.ComponentProps<typeof Ionicons>["name"];
+  label: string;
+  on: boolean;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      style={styles.toggle}
+      hitSlop={6}
+      accessibilityLabel={label}
+      accessibilityState={{ selected: on }}
+    >
+      <Ionicons
+        name={icon}
+        size={22}
+        color={on ? LightColor : "rgba(255,255,255,0.4)"}
+      />
+      <Text style={[styles.toggleText, on && styles.toggleOn]}>{label}</Text>
+    </Pressable>
   );
 }
 
@@ -583,13 +612,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.five,
   },
   playText: { color: "#05070f", fontSize: 15, fontWeight: "600" },
-  shuffleRow: {
+  toggleGroup: {
     flexDirection: "row",
     alignItems: "center",
-    gap: Spacing.two,
+    gap: Spacing.five,
   },
-  shuffleText: { color: "rgba(255,255,255,0.6)", fontSize: 12 },
-  shuffleOn: { color: LightColor },
+  toggle: { alignItems: "center", gap: 2 },
+  toggleText: { color: "rgba(255,255,255,0.5)", fontSize: 11 },
+  toggleOn: { color: LightColor },
   plHeader: {
     flexDirection: "row",
     alignItems: "center",

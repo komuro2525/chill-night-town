@@ -32,15 +32,15 @@ run("INSERT INTO user (nickname, daily_goal_minutes) VALUES ('夜子', 60)");
 const userId = one("SELECT id FROM user LIMIT 1").id;
 run("INSERT INTO audio_setting (user_id) VALUES (?)", userId);
 
-console.log("A. 再生設定（audio_setting の bgm_source / bgm_shuffle / playlist_name）");
-const s0 = one("SELECT bgm_source, bgm_shuffle, playlist_name FROM audio_setting");
-check("既定は all / シャッフルOFF", s0.bgm_source === "all" && s0.bgm_shuffle === 0);
+console.log("A. 再生設定（bgm_source / bgm_shuffle / bgm_repeat_one / playlist_name）");
+const s0 = one("SELECT bgm_source, bgm_shuffle, bgm_repeat_one, playlist_name FROM audio_setting");
+check("既定は all / シャッフルOFF / リピートOFF", s0.bgm_source === "all" && s0.bgm_shuffle === 0 && s0.bgm_repeat_one === 0);
 check("プレイリスト名の既定は『マイプレイリスト』", s0.playlist_name === "マイプレイリスト");
-run("UPDATE audio_setting SET bgm_source = 'playlist', bgm_shuffle = 1, playlist_name = '夜の作業用'");
-const s1 = one("SELECT bgm_source, bgm_shuffle, playlist_name FROM audio_setting");
+run("UPDATE audio_setting SET bgm_source = 'playlist', bgm_shuffle = 1, bgm_repeat_one = 1, playlist_name = '夜の作業用'");
+const s1 = one("SELECT bgm_source, bgm_shuffle, bgm_repeat_one, playlist_name FROM audio_setting");
 check(
-  "ソース・シャッフル・名前を保存できる",
-  s1.bgm_source === "playlist" && s1.bgm_shuffle === 1 && s1.playlist_name === "夜の作業用",
+  "ソース・シャッフル・リピート・名前を保存できる",
+  s1.bgm_source === "playlist" && s1.bgm_shuffle === 1 && s1.bgm_repeat_one === 1 && s1.playlist_name === "夜の作業用",
 );
 let sourceCheck = false;
 try { run("UPDATE audio_setting SET bgm_source = 'bad'"); } catch { sourceCheck = true; }
@@ -133,6 +133,10 @@ const m = mdb.prepare("SELECT bgm_volume, bgm_shuffle, playlist_name FROM audio_
 check("既存の音量を保ちつつ列を追加できる", m.bgm_volume === 70);
 check("シャッフルは既定OFF(0)へそろえる", m.bgm_shuffle === 0);
 check("playlist_name の既定が入る", m.playlist_name === "マイプレイリスト");
+// v14: 1曲リピート列を ADD COLUMN で追加（作り直し不要）
+mdb.exec("ALTER TABLE audio_setting ADD COLUMN bgm_repeat_one INTEGER NOT NULL DEFAULT 0 CHECK (bgm_repeat_one IN (0, 1))");
+const m2 = mdb.prepare("SELECT bgm_repeat_one FROM audio_setting").get();
+check("v14: bgm_repeat_one を既定0で追加できる", m2.bgm_repeat_one === 0);
 mdb.close();
 
 db.close();

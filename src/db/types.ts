@@ -235,6 +235,8 @@ export type AudioSetting = {
   bell_volume: number;
   bgm_source: BgmSource;
   bgm_shuffle: Bool;
+  /** 1曲リピート（ONで再生中の曲を繰り返す） */
+  bgm_repeat_one: Bool;
   /** マイプレイリストの表示名（ユーザー編集可） */
   playlist_name: string;
   updated_at: string;

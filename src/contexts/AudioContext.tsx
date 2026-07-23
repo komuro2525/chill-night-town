@@ -113,10 +113,14 @@ type AudioContextValue = {
   bgmSource: BgmSource;
   /** シャッフル再生ON/OFF（全ソース共通。一巡するまで同じ曲は再生しない） */
   bgmShuffle: boolean;
+  /** 1曲リピートON/OFF（ONで再生中の曲を繰り返す） */
+  bgmRepeatOne: boolean;
   /** 再生ソースを切り替えて保存し、キューを組み直す */
   setBgmSource: (source: BgmSource) => Promise<void>;
   /** シャッフルON/OFFを切り替えて保存し、キューを組み直す */
   setBgmShuffle: (on: boolean) => Promise<void>;
+  /** 1曲リピートON/OFFを切り替えて保存し、再生中プレイヤーへ即反映する */
+  setBgmRepeatOne: (on: boolean) => Promise<void>;
   /** お気に入り・プレイリストの編集後にキューを組み直す（再生中の曲は可能なら維持） */
   refreshBgm: () => Promise<void>;
 
@@ -164,9 +168,10 @@ export function AudioProvider({ children }: { children: ReactNode }) {
   const [bgmDurationSec, setBgmDurationSec] = useState(0);
   // アプリにBGMが1曲でもあるか（選択中ソースが空でもミニプレイヤー＝プレイリスト入口を残すため）
   const [bgmHasTracks, setBgmHasTracks] = useState(false);
-  // プレイリスト（要件9）: 再生ソースとシャッフル。正はDB（audio_setting）。既定シャッフルOFF
+  // プレイリスト（要件9）: 再生ソースとシャッフル・1曲リピート。正はDB（audio_setting）。既定OFF
   const [bgmSource, setBgmSourceState] = useState<BgmSource>("all");
   const [bgmShuffle, setBgmShuffleState] = useState(false);
+  const [bgmRepeatOne, setBgmRepeatOneState] = useState(false);
 
   // 使い捨ての効果音プレイヤー。鳴らすたびに作ると重いため、用途ごとに使い回す
   const sfxPlayers = useRef(new Map<SfxKey, AudioPlayer>());
@@ -189,6 +194,10 @@ export function AudioProvider({ children }: { children: ReactNode }) {
   bgmSourceRef.current = bgmSource;
   const bgmShuffleRef = useRef(false);
   bgmShuffleRef.current = bgmShuffle;
+  const bgmRepeatOneRef = useRef(false);
+  bgmRepeatOneRef.current = bgmRepeatOne;
+  // シーク直後は古い再生位置が一瞬返るため、目標に追いつくまで位置更新を無視するロック
+  const seekLockRef = useRef<{ target: number; until: number } | null>(null);
   // 進行中のフェードを止めるためのタイマー
   const fadeTimer = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -365,6 +374,17 @@ export function AudioProvider({ children }: { children: ReactNode }) {
     }
     const duration = status.duration || 0;
     const position = status.currentTime || 0;
+    // シーク直後は古い位置が一瞬返る。目標付近へ追いつくか一定時間経つまで位置更新を無視して、
+    // シークバーが変更前の時間へ戻る「ちらつき」を防ぐ（seekBgm が目標位置をセット済み）
+    const lock = seekLockRef.current;
+    if (lock) {
+      if (Date.now() > lock.until || Math.abs(position - lock.target) < 0.75) {
+        seekLockRef.current = null;
+      } else {
+        setBgmDurationSec(duration);
+        return;
+      }
+    }
     setBgmProgress(duration > 0 ? Math.min(1, position / duration) : 0);
     setBgmPositionSec(position);
     setBgmDurationSec(duration);
@@ -392,6 +412,8 @@ export function AudioProvider({ children }: { children: ReactNode }) {
       } else {
         player.replace(source);
       }
+      // 1曲リピートON時はプレイヤー自身でループさせる（曲終了イベントを待たず途切れない）
+      player.loop = bgmRepeatOneRef.current;
       setBgmTrack(track);
       currentTrackIdRef.current = track.id;
       setBgmProgress(0);
@@ -476,6 +498,8 @@ export function AudioProvider({ children }: { children: ReactNode }) {
     const target = Math.max(0, duration > 0 ? Math.min(sec, duration) : sec);
     setBgmPositionSec(target);
     if (duration > 0) setBgmProgress(Math.min(1, target / duration));
+    // 目標に追いつくまで（最大1.2秒）ステータス由来の位置更新を無視する（ちらつき防止）
+    seekLockRef.current = { target, until: Date.now() + 1200 };
     player.seekTo(target).catch((e) => console.error("BGMのシークに失敗しました", e));
   }, []);
 
@@ -560,8 +584,12 @@ export function AudioProvider({ children }: { children: ReactNode }) {
       setBgmHasTracks(playable.length > 0);
       setBgmSourceState(settings.source);
       setBgmShuffleState(settings.shuffle);
+      setBgmRepeatOneState(settings.repeatOne);
       bgmSourceRef.current = settings.source;
       bgmShuffleRef.current = settings.shuffle;
+      bgmRepeatOneRef.current = settings.repeatOne;
+      // 既存プレイヤーがあればリピート設定を即反映する
+      if (bgmPlayer.current) bgmPlayer.current.loop = settings.repeatOne;
       applyQueue(
         buildBgmQueue({
           tracks: playable,
@@ -591,6 +619,18 @@ export function AudioProvider({ children }: { children: ReactNode }) {
     },
     [refreshBgmQueue],
   );
+
+  // 1曲リピートの切り替え。キューは変えず、再生中プレイヤーの loop を即反映する
+  const setBgmRepeatOne = useCallback(async (on: boolean) => {
+    setBgmRepeatOneState(on);
+    bgmRepeatOneRef.current = on;
+    if (bgmPlayer.current) bgmPlayer.current.loop = on;
+    try {
+      await settingsRepo.updateBgmRepeatOne(on);
+    } catch (e) {
+      console.error("リピート設定の保存に失敗しました", e);
+    }
+  }, []);
 
   // --- 環境音（要件9 / UC 9.1） ---
 
@@ -767,8 +807,10 @@ export function AudioProvider({ children }: { children: ReactNode }) {
       playTrack,
       bgmSource,
       bgmShuffle,
+      bgmRepeatOne,
       setBgmSource,
       setBgmShuffle,
+      setBgmRepeatOne,
       refreshBgm: refreshBgmQueue,
       setAmbientForWeather,
       setGoodnight,
@@ -794,8 +836,10 @@ export function AudioProvider({ children }: { children: ReactNode }) {
       playTrack,
       bgmSource,
       bgmShuffle,
+      bgmRepeatOne,
       setBgmSource,
       setBgmShuffle,
+      setBgmRepeatOne,
       refreshBgmQueue,
       setAmbientForWeather,
       setGoodnight,

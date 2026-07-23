@@ -45,18 +45,22 @@ export async function updateAudioVolumes(volumes: {
   );
 }
 
-/** BGMの再生設定（ソース・シャッフル）を取得する（要件9・音楽プレイリスト） */
+/** BGMの再生設定（ソース・シャッフル・1曲リピート）を取得する（要件9・音楽プレイリスト） */
 export async function getPlaybackSettings(): Promise<{
   source: BgmSource;
   shuffle: boolean;
+  repeatOne: boolean;
 }> {
   const db = await getDatabase();
-  const row = await db.getFirstAsync<{ bgm_source: BgmSource; bgm_shuffle: number }>(
-    "SELECT bgm_source, bgm_shuffle FROM audio_setting LIMIT 1",
-  );
+  const row = await db.getFirstAsync<{
+    bgm_source: BgmSource;
+    bgm_shuffle: number;
+    bgm_repeat_one: number;
+  }>("SELECT bgm_source, bgm_shuffle, bgm_repeat_one FROM audio_setting LIMIT 1");
   return {
     source: row?.bgm_source ?? "all",
     shuffle: (row?.bgm_shuffle ?? 0) === 1,
+    repeatOne: (row?.bgm_repeat_one ?? 0) === 1,
   };
 }
 
@@ -93,6 +97,15 @@ export async function updateBgmShuffle(shuffle: boolean): Promise<void> {
   await db.runAsync(
     "UPDATE audio_setting SET bgm_shuffle = ?, updated_at = datetime('now')",
     shuffle ? 1 : 0,
+  );
+}
+
+/** BGMの1曲リピートON/OFFを保存する。要件9 */
+export async function updateBgmRepeatOne(repeatOne: boolean): Promise<void> {
+  const db = await getDatabase();
+  await db.runAsync(
+    "UPDATE audio_setting SET bgm_repeat_one = ?, updated_at = datetime('now')",
+    repeatOne ? 1 : 0,
   );
 }
 

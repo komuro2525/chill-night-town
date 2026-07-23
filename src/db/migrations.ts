@@ -31,7 +31,7 @@ type Migration = {
 
 // 現在のスキーマバージョン（db/*.sql が表す「最新」の版）。
 // スキーマを変更したら、スキーマSQLを更新しつつ本値を+1し、DELTA_MIGRATIONS に差分を追加する。
-const SCHEMA_VERSION = 13;
+const SCHEMA_VERSION = 14;
 
 // 既存DB（過去バージョン）向けの差分マイグレーション（version >= 2）。
 // 新規インストールはスキーマSQL（=最新）を適用して一気に SCHEMA_VERSION まで上がるため、
@@ -403,6 +403,16 @@ const DELTA_MIGRATIONS: Migration[] = [
         DROP TABLE audio_setting;
         ALTER TABLE audio_setting_new RENAME TO audio_setting;
       `);
+    },
+  },
+  {
+    version: 14,
+    up: async (db) => {
+      // 1曲リピート（要件9・音楽プレイリスト）。ONで再生中の曲を繰り返す。
+      // 既定OFF。既存行には DEFAULT 0 が入る（ADD COLUMN で足りる）。
+      await db.execAsync(
+        "ALTER TABLE audio_setting ADD COLUMN bgm_repeat_one INTEGER NOT NULL DEFAULT 0 CHECK (bgm_repeat_one IN (0, 1))",
+      );
     },
   },
 ];
