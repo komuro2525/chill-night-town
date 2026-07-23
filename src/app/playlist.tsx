@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -62,6 +63,8 @@ export default function PlaylistScreen() {
   const [nameModal, setNameModal] = useState(false);
   // シークバーのドラッグ中の値（離すまで再生位置には反映しない）
   const [seeking, setSeeking] = useState<number | null>(null);
+  // 「…」メニューを開いている曲（お気に入り・追加・クレジットの受け口）
+  const [menuItem, setMenuItem] = useState<LibraryTrack | null>(null);
 
   const reload = useCallback(async () => {
     if (!user) return;
@@ -190,6 +193,17 @@ export default function PlaylistScreen() {
           },
         },
       ],
+    );
+  }
+
+  // クレジット表示（要件9: フリー音源の表記。曲名＋アーティスト）
+  function showCredits(item: LibraryTrack) {
+    Alert.alert(
+      item.track.name,
+      item.track.artist
+        ? `アーティスト: ${item.track.artist}`
+        : "アーティスト情報は登録されていません",
+      [{ text: "閉じる" }],
     );
   }
 
@@ -434,16 +448,65 @@ export default function PlaylistScreen() {
                 key={item.track.id}
                 item={item}
                 playing={audio.bgmTrack?.id === item.track.id}
-                // マイプレイリスト表示では追加/削除ボタンを出さない（削除は「編集」からだけ）
-                showPlaylistToggle={!isPlaylist}
                 onPlay={() => audio.playTrack(item.track.id)}
-                onToggleFavorite={() => void toggleFavorite(item)}
-                onTogglePlaylist={() => void togglePlaylist(item)}
+                onOpenMenu={() => setMenuItem(item)}
               />
             ))
           )}
         </ScrollView>
       )}
+
+      {/* 曲の「…」メニュー（お気に入り・プレイリストに追加・クレジット） */}
+      <Modal
+        transparent
+        visible={menuItem !== null}
+        animationType="fade"
+        onRequestClose={() => setMenuItem(null)}
+      >
+        <View style={styles.menuBackdrop}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={() => setMenuItem(null)} />
+          {menuItem ? (
+            <View style={styles.menuCard}>
+              <Text style={styles.menuTitle} numberOfLines={1}>
+                {menuItem.track.name}
+              </Text>
+              <View style={styles.menuRow}>
+                <MenuAction
+                  icon="add-circle"
+                  label={menuItem.playlistPosition != null ? "追加済み" : "追加"}
+                  active={menuItem.playlistPosition != null}
+                  // 既に追加済みなら押せない（外すのは「編集」から）
+                  disabled={menuItem.playlistPosition != null}
+                  onPress={() => {
+                    const it = menuItem;
+                    setMenuItem(null);
+                    void togglePlaylist(it);
+                  }}
+                />
+                <MenuAction
+                  icon={menuItem.isFavorite ? "star" : "star-outline"}
+                  label="お気に入り"
+                  active={menuItem.isFavorite}
+                  onPress={() => {
+                    const it = menuItem;
+                    setMenuItem(null);
+                    void toggleFavorite(it);
+                  }}
+                />
+                <MenuAction
+                  icon="information-circle-outline"
+                  label="クレジット"
+                  onPress={() => {
+                    const it = menuItem;
+                    setMenuItem(null);
+                    showCredits(it);
+                  }}
+                />
+              </View>
+            </View>
+          ) : null}
+        </View>
+      </Modal>
 
       <EditFieldModal
         visible={nameModal}
@@ -490,23 +553,51 @@ function ToggleIcon({
   );
 }
 
+/** 「…」メニューの1アクション（アイコン＋ラベルの縦ボタン） */
+function MenuAction({
+  icon,
+  label,
+  active,
+  disabled,
+  onPress,
+}: {
+  icon: React.ComponentProps<typeof Ionicons>["name"];
+  label: string;
+  active?: boolean;
+  disabled?: boolean;
+  onPress: () => void;
+}) {
+  const color = disabled
+    ? "rgba(255,255,255,0.3)"
+    : active
+      ? LightColor
+      : "rgba(255,255,255,0.9)";
+  return (
+    <Pressable
+      onPress={onPress}
+      disabled={disabled}
+      style={styles.menuAction}
+      accessibilityLabel={label}
+    >
+      <Ionicons name={icon} size={26} color={color} />
+      <Text style={[styles.menuActionText, { color }]} numberOfLines={1}>
+        {label}
+      </Text>
+    </Pressable>
+  );
+}
+
 function TrackRow({
   item,
   playing,
-  showPlaylistToggle,
   onPlay,
-  onToggleFavorite,
-  onTogglePlaylist,
+  onOpenMenu,
 }: {
   item: LibraryTrack;
   playing: boolean;
-  /** ＋/✓（マイプレイリスト追加・削除）ボタンを出すか。マイプレイリスト表示では出さない */
-  showPlaylistToggle: boolean;
   onPlay: () => void;
-  onToggleFavorite: () => void;
-  onTogglePlaylist: () => void;
+  onOpenMenu: () => void;
 }) {
-  const inPlaylist = item.playlistPosition != null;
   return (
     <View style={[styles.row, playing && styles.rowPlaying]}>
       {/* 曲名部をタップするとその曲を再生（要件9） */}
@@ -528,24 +619,14 @@ function TrackRow({
         ) : null}
       </Pressable>
 
-      <View style={styles.rowActions}>
-        <Pressable onPress={onToggleFavorite} hitSlop={8} accessibilityLabel="お気に入り">
-          <Ionicons
-            name={item.isFavorite ? "star" : "star-outline"}
-            size={22}
-            color={item.isFavorite ? LightColor : "rgba(255,255,255,0.4)"}
-          />
-        </Pressable>
-        {showPlaylistToggle ? (
-          <Pressable onPress={onTogglePlaylist} hitSlop={8} accessibilityLabel="マイプレイリスト">
-            <Ionicons
-              name={inPlaylist ? "checkmark-circle" : "add-circle-outline"}
-              size={24}
-              color={inPlaylist ? LightColor : "rgba(255,255,255,0.4)"}
-            />
-          </Pressable>
-        ) : null}
-      </View>
+      {/* お気に入り・追加・クレジットは「…」メニューにまとめる（要件9） */}
+      <Pressable onPress={onOpenMenu} hitSlop={8} accessibilityLabel="メニュー">
+        <Ionicons
+          name="ellipsis-horizontal"
+          size={22}
+          color="rgba(255,255,255,0.6)"
+        />
+      </Pressable>
     </View>
   );
 }
@@ -671,7 +752,6 @@ const styles = StyleSheet.create({
   trackName: { color: "rgba(255,255,255,0.95)", fontSize: 15 },
   trackNamePlaying: { color: LightColor },
   trackArtist: { color: "rgba(255,255,255,0.55)", fontSize: 12, marginTop: 1 },
-  rowActions: { flexDirection: "row", alignItems: "center", gap: Spacing.three },
   empty: { alignItems: "center", paddingVertical: Spacing.six },
   emptyText: {
     color: "rgba(255,255,255,0.45)",
@@ -679,4 +759,35 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
   pressed: { opacity: 0.6 },
+  menuBackdrop: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(0,0,0,0.5)",
+    padding: Spacing.six,
+  },
+  menuCard: {
+    width: "100%",
+    maxWidth: 340,
+    borderRadius: 16,
+    backgroundColor: "rgba(40,44,54,0.98)",
+    paddingVertical: Spacing.four,
+    paddingHorizontal: Spacing.three,
+    gap: Spacing.three,
+  },
+  menuTitle: {
+    color: "rgba(255,255,255,0.9)",
+    fontSize: 14,
+    fontWeight: "600",
+    textAlign: "center",
+    paddingHorizontal: Spacing.two,
+  },
+  menuRow: { flexDirection: "row", justifyContent: "space-around" },
+  menuAction: {
+    flex: 1,
+    alignItems: "center",
+    gap: Spacing.two,
+    paddingVertical: Spacing.two,
+  },
+  menuActionText: { fontSize: 12 },
 });
