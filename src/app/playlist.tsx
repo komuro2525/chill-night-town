@@ -5,7 +5,6 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
-  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -391,7 +390,10 @@ export default function PlaylistScreen() {
           contentContainerStyle={styles.list}
         />
       ) : (
-        <ScrollView contentContainerStyle={styles.list}>
+        <ScrollView
+          contentContainerStyle={styles.list}
+          keyboardShouldPersistTaps="handled"
+        >
           {isPlaylist ? (
             playlistItems.length === 0 ? (
               <View style={styles.empty}>
@@ -445,65 +447,62 @@ export default function PlaylistScreen() {
       )}
 
       {/* 曲の「…」メニュー（追加・お気に入り・クレジット）。背景1タップで閉じる。
-          クレジットは同じモーダル内で表示を切り替える（別モーダルにすると開閉のラグが出る） */}
-      <Modal
-        transparent
-        visible={menuItem !== null}
-        animationType="fade"
-        onRequestClose={closeMenu}
-      >
-        <Pressable style={styles.menuBackdrop} onPress={closeMenu}>
-          {menuItem ? (
-            menuMode === "credits" ? (
-              // クレジット表示: どこをタップしても閉じる（カードのタップも背景へ伝わる）
-              <View style={styles.menuCard}>
-                <Text style={styles.menuTitle} numberOfLines={2}>
-                  {menuItem.track.name}
-                </Text>
-                <Text style={styles.creditText}>
-                  {menuItem.track.artist
-                    ? `アーティスト: ${menuItem.track.artist}`
-                    : "アーティスト情報は登録されていません"}
-                </Text>
+          native Modal ではなく画面内オーバーレイにする（Modalの開閉直後に次のタップが
+          吸われて2度押しになる問題を避けるため）。クレジットは同じ表示内で切り替える */}
+      {menuItem ? (
+        <Pressable
+          style={[StyleSheet.absoluteFill, styles.menuBackdrop]}
+          onPress={closeMenu}
+        >
+          {menuMode === "credits" ? (
+            // クレジット表示: どこをタップしても閉じる（カードのタップも背景へ伝わる）
+            <View style={styles.menuCard}>
+              <Text style={styles.menuTitle} numberOfLines={2}>
+                {menuItem.track.name}
+              </Text>
+              <Text style={styles.creditText}>
+                {menuItem.track.artist
+                  ? `アーティスト: ${menuItem.track.artist}`
+                  : "アーティスト情報は登録されていません"}
+              </Text>
+            </View>
+          ) : (
+            // メニュー: カードのタップは閉じない（誤操作防止）。操作は各項目で行う
+            <Pressable style={styles.menuCard} onPress={() => {}}>
+              <Text style={styles.menuTitle} numberOfLines={1}>
+                {menuItem.track.name}
+              </Text>
+              <View style={styles.menuRow}>
+                <MenuAction
+                  icon="add-circle"
+                  label="追加"
+                  active={menuItem.inPlaylist}
+                  onPress={() => {
+                    const it = menuItem;
+                    closeMenu();
+                    handleAdd(it);
+                  }}
+                />
+                <MenuAction
+                  icon={menuItem.isFavorite ? "star" : "star-outline"}
+                  label="お気に入り"
+                  active={menuItem.isFavorite}
+                  onPress={() => {
+                    const it = menuItem;
+                    closeMenu();
+                    void toggleFavorite(it);
+                  }}
+                />
+                <MenuAction
+                  icon="information-circle-outline"
+                  label="クレジット"
+                  onPress={() => setMenuMode("credits")}
+                />
               </View>
-            ) : (
-              // メニュー: カードのタップは閉じない（誤操作防止）。操作は各項目で行う
-              <Pressable style={styles.menuCard} onPress={() => {}}>
-                <Text style={styles.menuTitle} numberOfLines={1}>
-                  {menuItem.track.name}
-                </Text>
-                <View style={styles.menuRow}>
-                  <MenuAction
-                    icon="add-circle"
-                    label="追加"
-                    active={menuItem.inPlaylist}
-                    onPress={() => {
-                      const it = menuItem;
-                      closeMenu();
-                      handleAdd(it);
-                    }}
-                  />
-                  <MenuAction
-                    icon={menuItem.isFavorite ? "star" : "star-outline"}
-                    label="お気に入り"
-                    active={menuItem.isFavorite}
-                    onPress={() => {
-                      const it = menuItem;
-                      closeMenu();
-                      void toggleFavorite(it);
-                    }}
-                  />
-                  <MenuAction
-                    icon="information-circle-outline"
-                    label="クレジット"
-                    onPress={() => setMenuMode("credits")}
-                  />
-                </View>
-              </Pressable>
-            )
-          ) : null}
+            </Pressable>
+          )}
         </Pressable>
-      </Modal>
+      ) : null}
 
       <EditFieldModal
         visible={nameModal}
