@@ -20,7 +20,7 @@ import Animated, {
 } from "react-native-reanimated";
 
 import { LightColor, Spacing } from "@/constants/theme";
-import { useAudio } from "@/contexts/AudioContext";
+import { useAudio, useAudioProgress } from "@/contexts/AudioContext";
 import { isMuted } from "@/lib/audio";
 
 // BGMミニプレイヤー（要件9「BGMの再生とミニプレイヤー」/ UC 9.2）。
@@ -42,12 +42,13 @@ export function BgmMiniPlayer() {
     volumes,
     bgmTrack,
     bgmPlaying,
-    bgmProgress,
     bgmHasTracks,
     toggleBgm,
     skipBgm,
     restartBgm,
   } = useAudio();
+  // 進捗は別コンテキストから購読する（頻繁な更新の影響をこの表示だけに閉じ込める）
+  const { bgmProgress } = useAudioProgress();
 
   // アプリにBGMが1曲も無い（読み込み中含む）ときだけ出さない。
   // 選択中ソース（お気に入り/プレイリスト）が空で bgmTrack が無くても、

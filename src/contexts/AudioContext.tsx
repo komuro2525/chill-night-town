@@ -84,12 +84,6 @@ type AudioContextValue = {
   bgmTrack: AmbientSound | null;
   /** BGMが鳴っているか（一時停止・BGM音量0なら false）。再生/一時停止アイコンの出し分けに使う */
   bgmPlaying: boolean;
-  /** 再生位置の進捗（0〜1）。ミニプレイヤーの再生バーに使う */
-  bgmProgress: number;
-  /** 再生位置（秒）。プレイリスト画面のシークバーの時間表示に使う */
-  bgmPositionSec: number;
-  /** 曲の長さ（秒）。0は未取得。プレイリスト画面のシークバーに使う */
-  bgmDurationSec: number;
   /** アプリにBGMが1曲でもあるか。選択中ソースが空でもミニプレイヤー（＝入口）を残す判定に使う */
   bgmHasTracks: boolean;
   /** BGMの一時停止／再開（対象はBGMのみ。環境音・効果音・鐘は対象外） */
@@ -142,6 +136,22 @@ type AudioContextValue = {
 };
 
 const AudioContext = createContext<AudioContextValue | null>(null);
+
+/**
+ * 再生位置の進捗（要件9）。0.5秒ごとに更新されるため、本体の AudioContext とは分けて
+ * 別コンテキストにする。こうすると進捗の更新で本体の購読側（画面全体・一覧のボタン等）が
+ * 毎回再描画されず、再描画とタップが重なって押下を取りこぼす問題を避けられる。
+ */
+type AudioProgressValue = {
+  /** 再生位置の進捗（0〜1）。ミニプレイヤーの再生バーに使う */
+  bgmProgress: number;
+  /** 再生位置（秒）。プレイリスト画面のシークバーの時間表示に使う */
+  bgmPositionSec: number;
+  /** 曲の長さ（秒）。0は未取得。プレイリスト画面のシークバーに使う */
+  bgmDurationSec: number;
+};
+
+const AudioProgressContext = createContext<AudioProgressValue | null>(null);
 
 /**
  * 音量プレビューに使う音（要件10.4: 変更した音量が分かるように鳴らす）。
@@ -807,9 +817,6 @@ export function AudioProvider({ children }: { children: ReactNode }) {
       playBell,
       bgmTrack,
       bgmPlaying,
-      bgmProgress,
-      bgmPositionSec,
-      bgmDurationSec,
       bgmHasTracks,
       toggleBgm,
       skipBgm,
@@ -836,9 +843,6 @@ export function AudioProvider({ children }: { children: ReactNode }) {
       playBell,
       bgmTrack,
       bgmPlaying,
-      bgmProgress,
-      bgmPositionSec,
-      bgmDurationSec,
       bgmHasTracks,
       toggleBgm,
       skipBgm,
@@ -858,13 +862,30 @@ export function AudioProvider({ children }: { children: ReactNode }) {
     ],
   );
 
+  // 進捗だけを別コンテキストで配る（0.5秒ごとの更新で本体購読側を再描画させない）
+  const progressValue = useMemo<AudioProgressValue>(
+    () => ({ bgmProgress, bgmPositionSec, bgmDurationSec }),
+    [bgmProgress, bgmPositionSec, bgmDurationSec],
+  );
+
   return (
-    <AudioContext.Provider value={value}>{children}</AudioContext.Provider>
+    <AudioContext.Provider value={value}>
+      <AudioProgressContext.Provider value={progressValue}>
+        {children}
+      </AudioProgressContext.Provider>
+    </AudioContext.Provider>
   );
 }
 
 export function useAudio() {
   const ctx = useContext(AudioContext);
   if (!ctx) throw new Error("useAudio は AudioProvider の内側で使うこと");
+  return ctx;
+}
+
+/** 再生位置の進捗（0.5秒ごとに更新）。これを購読する側だけが頻繁に再描画される */
+export function useAudioProgress() {
+  const ctx = useContext(AudioProgressContext);
+  if (!ctx) throw new Error("useAudioProgress は AudioProvider の内側で使うこと");
   return ctx;
 }

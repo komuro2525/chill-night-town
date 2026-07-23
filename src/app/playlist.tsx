@@ -20,7 +20,7 @@ import DraggableFlatList, {
 import { EditFieldModal } from "@/components/settings-ui";
 import { LIMITS } from "@/constants/domain";
 import { LightColor, Spacing } from "@/constants/theme";
-import { useAudio } from "@/contexts/AudioContext";
+import { useAudio, useAudioProgress } from "@/contexts/AudioContext";
 import { useSettings } from "@/contexts/SettingsContext";
 import { playlistRepo, settingsRepo } from "@/db/repositories";
 import type {
@@ -69,8 +69,6 @@ export default function PlaylistScreen() {
   // プレイリスト名（編集可）とその編集ダイアログ
   const [playlistName, setPlaylistName] = useState("マイプレイリスト");
   const [nameModal, setNameModal] = useState(false);
-  // シークバーのドラッグ中の値（離すまで再生位置には反映しない）
-  const [seeking, setSeeking] = useState<number | null>(null);
   // 「…」メニューを開いている対象（お気に入り・追加・クレジットの受け口）と表示モード。
   // メニューとクレジットは同じモーダルで切り替える（別モーダルにすると開閉のラグが出るため）
   const [menuItem, setMenuItem] = useState<MenuTarget | null>(null);
@@ -306,53 +304,8 @@ export default function PlaylistScreen() {
         })}
       </View>
 
-      {/* 現在再生中バー（シークバー＋残り時間）。要件9: 流しているときに残りが分かる */}
-      {audio.bgmTrack ? (
-        <View style={styles.nowPlaying}>
-          <Pressable
-            onPress={audio.toggleBgm}
-            style={({ pressed }) => [styles.nowPlayBtn, pressed && styles.pressed]}
-            accessibilityLabel={audio.bgmPlaying ? "一時停止" : "再生"}
-          >
-            <Ionicons
-              name={audio.bgmPlaying ? "pause" : "play"}
-              size={20}
-              color="#05070f"
-            />
-          </Pressable>
-          <View style={styles.nowInfo}>
-            <Text style={styles.nowTitle} numberOfLines={1}>
-              {audio.bgmTrack.name}
-            </Text>
-            <Slider
-              value={seeking ?? audio.bgmPositionSec}
-              minimumValue={0}
-              maximumValue={Math.max(1, audio.bgmDurationSec)}
-              minimumTrackTintColor={LightColor}
-              maximumTrackTintColor="rgba(255,255,255,0.2)"
-              thumbTintColor={LightColor}
-              disabled={audio.bgmDurationSec <= 0}
-              onValueChange={setSeeking}
-              onSlidingComplete={(v) => {
-                setSeeking(null);
-                audio.seekBgm(v);
-              }}
-              accessibilityLabel="再生位置"
-            />
-            <View style={styles.timeRow}>
-              <Text style={styles.timeText}>
-                {formatTime(seeking ?? audio.bgmPositionSec)}
-              </Text>
-              <Text style={styles.timeText}>
-                -
-                {formatTime(
-                  audio.bgmDurationSec - (seeking ?? audio.bgmPositionSec),
-                )}
-              </Text>
-            </View>
-          </View>
-        </View>
-      ) : null}
+      {/* 現在再生中バー（シークバー＋残り時間）。進捗の頻繁な更新を閉じ込めるため別コンポーネント */}
+      <NowPlayingBar />
 
       {/* 再生＋シャッフル＋リピート */}
       <View style={styles.playRow}>
@@ -563,6 +516,56 @@ export default function PlaylistScreen() {
         onCancel={() => setNameModal(false)}
         onSubmit={saveName}
       />
+    </View>
+  );
+}
+
+/**
+ * 現在再生中バー（シークバー＋残り時間）。進捗（0.5秒ごと更新）を購読するのはここだけにして、
+ * 画面本体・一覧のボタンが毎回再描画されないようにする（タップ取りこぼし対策）。
+ */
+function NowPlayingBar() {
+  const { bgmTrack, bgmPlaying, toggleBgm, seekBgm } = useAudio();
+  const { bgmPositionSec, bgmDurationSec } = useAudioProgress();
+  // シークバーのドラッグ中の値（離すまで再生位置には反映しない）
+  const [seeking, setSeeking] = useState<number | null>(null);
+
+  if (!bgmTrack) return null;
+  const shown = seeking ?? bgmPositionSec;
+
+  return (
+    <View style={styles.nowPlaying}>
+      <Pressable
+        onPress={toggleBgm}
+        style={({ pressed }) => [styles.nowPlayBtn, pressed && styles.pressed]}
+        accessibilityLabel={bgmPlaying ? "一時停止" : "再生"}
+      >
+        <Ionicons name={bgmPlaying ? "pause" : "play"} size={20} color="#05070f" />
+      </Pressable>
+      <View style={styles.nowInfo}>
+        <Text style={styles.nowTitle} numberOfLines={1}>
+          {bgmTrack.name}
+        </Text>
+        <Slider
+          value={shown}
+          minimumValue={0}
+          maximumValue={Math.max(1, bgmDurationSec)}
+          minimumTrackTintColor={LightColor}
+          maximumTrackTintColor="rgba(255,255,255,0.2)"
+          thumbTintColor={LightColor}
+          disabled={bgmDurationSec <= 0}
+          onValueChange={setSeeking}
+          onSlidingComplete={(v) => {
+            setSeeking(null);
+            seekBgm(v);
+          }}
+          accessibilityLabel="再生位置"
+        />
+        <View style={styles.timeRow}>
+          <Text style={styles.timeText}>{formatTime(shown)}</Text>
+          <Text style={styles.timeText}>-{formatTime(bgmDurationSec - shown)}</Text>
+        </View>
+      </View>
     </View>
   );
 }
