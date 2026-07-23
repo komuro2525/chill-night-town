@@ -112,15 +112,14 @@ type AudioContextValue = {
 const AudioContext = createContext<AudioContextValue | null>(null);
 
 /**
- * プレビューに使う音（要件10.4: 変更した音量が分かるように鳴らす）。
+ * 音量プレビューに使う音（要件10.4: 変更した音量が分かるように鳴らす）。
  *
- * BGM・環境音は素材が長尺で頭出しでは分かりにくいため、短い音で代用する。
- * TODO(素材): UI操作音（ui_tap）が用意できたら、鐘以外はそちらへ差し替える。
- *   いまは仮素材の break_notice を短い代表音として使っている。
+ * プレビュー音を出すのは**効果音（sfx）と鐘（bell）だけ**。BGM・環境音は連続再生される
+ * 音で、音量の変更は再生中に即反映されて耳で分かるため、別途のプレビュー音は出さない。
+ * TODO(素材): 効果音のプレビューは UI操作音（ui_tap）が用意できたら差し替える
+ *   （いまは仮素材の break_notice を代表音として使っている）。
  */
-const PREVIEW_SFX: Record<SoundCategory, SfxKey> = {
-  bgm: "break_notice",
-  ambient: "break_notice",
+const PREVIEW_SFX: Partial<Record<SoundCategory, SfxKey>> = {
   sfx: "break_notice",
   bell: "bell",
 };
@@ -275,7 +274,9 @@ export function AudioProvider({ children }: { children: ReactNode }) {
 
   const playPreview = useCallback(
     (category: SoundCategory) => {
-      playOnce(PREVIEW_SFX[category], volumesRef.current[category]);
+      // プレビュー音を出すのは効果音・鐘だけ（BGM・環境音は再生中に即反映されるため出さない）
+      const key = PREVIEW_SFX[category];
+      if (key) playOnce(key, volumesRef.current[category]);
     },
     [playOnce],
   );
