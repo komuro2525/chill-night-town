@@ -434,6 +434,8 @@ export default function PlaylistScreen() {
                 key={item.track.id}
                 item={item}
                 playing={audio.bgmTrack?.id === item.track.id}
+                // マイプレイリスト表示では追加/削除ボタンを出さない（削除は「編集」からだけ）
+                showPlaylistToggle={!isPlaylist}
                 onPlay={() => audio.playTrack(item.track.id)}
                 onToggleFavorite={() => void toggleFavorite(item)}
                 onTogglePlaylist={() => void togglePlaylist(item)}
@@ -491,12 +493,15 @@ function ToggleIcon({
 function TrackRow({
   item,
   playing,
+  showPlaylistToggle,
   onPlay,
   onToggleFavorite,
   onTogglePlaylist,
 }: {
   item: LibraryTrack;
   playing: boolean;
+  /** ＋/✓（マイプレイリスト追加・削除）ボタンを出すか。マイプレイリスト表示では出さない */
+  showPlaylistToggle: boolean;
   onPlay: () => void;
   onToggleFavorite: () => void;
   onTogglePlaylist: () => void;
@@ -531,13 +536,15 @@ function TrackRow({
             color={item.isFavorite ? LightColor : "rgba(255,255,255,0.4)"}
           />
         </Pressable>
-        <Pressable onPress={onTogglePlaylist} hitSlop={8} accessibilityLabel="マイプレイリスト">
-          <Ionicons
-            name={inPlaylist ? "checkmark-circle" : "add-circle-outline"}
-            size={24}
-            color={inPlaylist ? LightColor : "rgba(255,255,255,0.4)"}
-          />
-        </Pressable>
+        {showPlaylistToggle ? (
+          <Pressable onPress={onTogglePlaylist} hitSlop={8} accessibilityLabel="マイプレイリスト">
+            <Ionicons
+              name={inPlaylist ? "checkmark-circle" : "add-circle-outline"}
+              size={24}
+              color={inPlaylist ? LightColor : "rgba(255,255,255,0.4)"}
+            />
+          </Pressable>
+        ) : null}
       </View>
     </View>
   );
