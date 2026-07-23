@@ -73,6 +73,8 @@ export default function PlaylistScreen() {
   const [seeking, setSeeking] = useState<number | null>(null);
   // 「…」メニューを開いている対象（お気に入り・追加・クレジットの受け口）
   const [menuItem, setMenuItem] = useState<MenuTarget | null>(null);
+  // クレジット表示中の曲（タップで閉じる）
+  const [creditsTrack, setCreditsTrack] = useState<AmbientSound | null>(null);
 
   const reload = useCallback(async () => {
     if (!user) return;
@@ -152,16 +154,6 @@ export default function PlaylistScreen() {
     }
   }
 
-  // クレジット表示（要件9: フリー音源の表記。曲名＋アーティスト）
-  function showCredits(track: AmbientSound) {
-    Alert.alert(
-      track.name,
-      track.artist
-        ? `アーティスト: ${track.artist}`
-        : "アーティスト情報は登録されていません",
-      [{ text: "閉じる" }],
-    );
-  }
 
   // ドラッグ並び替えの確定（要件9: 3本線ドラッグ）。エントリ単位で position を振り直す
   async function onDragEnd(data: PlaylistItem[]) {
@@ -491,17 +483,17 @@ export default function PlaylistScreen() {
         </ScrollView>
       )}
 
-      {/* 曲の「…」メニュー（追加・お気に入り・クレジット） */}
+      {/* 曲の「…」メニュー（追加・お気に入り・クレジット）。背景1タップで閉じる */}
       <Modal
         transparent
         visible={menuItem !== null}
         animationType="fade"
         onRequestClose={() => setMenuItem(null)}
       >
-        <View style={styles.menuBackdrop}>
-          <Pressable style={StyleSheet.absoluteFill} onPress={() => setMenuItem(null)} />
+        <Pressable style={styles.menuBackdrop} onPress={() => setMenuItem(null)}>
           {menuItem ? (
-            <View style={styles.menuCard}>
+            // カードのタップは閉じる操作にしない（誤操作防止）。操作はメニュー項目で行う
+            <Pressable style={styles.menuCard} onPress={() => {}}>
               <Text style={styles.menuTitle} numberOfLines={1}>
                 {menuItem.track.name}
               </Text>
@@ -532,13 +524,36 @@ export default function PlaylistScreen() {
                   onPress={() => {
                     const it = menuItem;
                     setMenuItem(null);
-                    showCredits(it.track);
+                    setCreditsTrack(it.track);
                   }}
                 />
               </View>
+            </Pressable>
+          ) : null}
+        </Pressable>
+      </Modal>
+
+      {/* クレジット表示（曲名＋アーティスト）。どこをタップしても閉じる */}
+      <Modal
+        transparent
+        visible={creditsTrack !== null}
+        animationType="fade"
+        onRequestClose={() => setCreditsTrack(null)}
+      >
+        <Pressable style={styles.menuBackdrop} onPress={() => setCreditsTrack(null)}>
+          {creditsTrack ? (
+            <View style={styles.menuCard}>
+              <Text style={styles.menuTitle} numberOfLines={2}>
+                {creditsTrack.name}
+              </Text>
+              <Text style={styles.creditText}>
+                {creditsTrack.artist
+                  ? `アーティスト: ${creditsTrack.artist}`
+                  : "アーティスト情報は登録されていません"}
+              </Text>
             </View>
           ) : null}
-        </View>
+        </Pressable>
       </Modal>
 
       <EditFieldModal
@@ -823,4 +838,10 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.two,
   },
   menuActionText: { fontSize: 12 },
+  creditText: {
+    color: "rgba(255,255,255,0.75)",
+    fontSize: 13,
+    textAlign: "center",
+    paddingHorizontal: Spacing.two,
+  },
 });

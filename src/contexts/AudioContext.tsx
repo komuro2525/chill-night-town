@@ -530,7 +530,7 @@ export function AudioProvider({ children }: { children: ReactNode }) {
   // 新しく組んだキューを反映する。再生中/表示中の曲がキューに残っていれば位置だけ合わせて
   // 維持し、無ければ先頭へ（再生中なら先頭曲へ切替、停止中なら表示だけ更新）。
   const applyQueue = useCallback(
-    (queue: AmbientSound[]) => {
+    (queue: AmbientSound[], playFromTop = false) => {
       bgmPoolRef.current = queue;
       if (queue.length === 0) {
         bgmPlayer.current?.pause();
@@ -541,6 +541,13 @@ export function AudioProvider({ children }: { children: ReactNode }) {
         setBgmProgress(0);
         setBgmPositionSec(0);
         setBgmDurationSec(0);
+        return;
+      }
+      // タブ切替時: そのソースの先頭曲から再生する（要件9）。音量0なら再生はしない（表示のみ）
+      if (playFromTop) {
+        bgmIndexRef.current = 0;
+        loadBgmTrack(0);
+        playBgm(true);
         return;
       }
       const curId = currentTrackIdRef.current;
@@ -568,7 +575,7 @@ export function AudioProvider({ children }: { children: ReactNode }) {
 
   // DBの再生設定＋お気に入り/プレイリストを読み、キューを組み直す（要件9）。
   // ソース・シャッフルの状態もここでDB値に合わせる（DBが正）。
-  const refreshBgmQueue = useCallback(async () => {
+  const refreshBgmQueue = useCallback(async (opts?: { playFromTop?: boolean }) => {
     try {
       const user = await userRepo.getUser();
       const [tracks, settings, favoriteIds, playlistIds] = await Promise.all([
@@ -598,6 +605,7 @@ export function AudioProvider({ children }: { children: ReactNode }) {
           source: settings.source,
           shuffle: settings.shuffle,
         }),
+        opts?.playFromTop ?? false,
       );
     } catch (e) {
       console.error("BGMキューの再構築に失敗しました", e);
@@ -607,7 +615,8 @@ export function AudioProvider({ children }: { children: ReactNode }) {
   const setBgmSource = useCallback(
     async (source: BgmSource) => {
       await settingsRepo.updateBgmSource(source);
-      await refreshBgmQueue();
+      // タブ切替はそのソースの先頭曲から流す（要件9）
+      await refreshBgmQueue({ playFromTop: true });
     },
     [refreshBgmQueue],
   );
