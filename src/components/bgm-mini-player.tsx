@@ -48,9 +48,11 @@ export function BgmMiniPlayer() {
     restartBgm,
   } = useAudio();
 
-  // BGM音量0のときはミニプレイヤーを表示しない（要件9）。
-  // 曲がまだ用意できていない（プール空・読み込み中）ときも出さない
-  if (isMuted(volumes.bgm) || bgmTrack === null) return null;
+  // 曲がまだ用意できていない（プール空・読み込み中）ときは出さない。
+  // BGM音量0でも表示する（曲名タップでプレイリスト画面へ行けるように。要件9改訂）。
+  // ただし音量0では再生処理は行わない（音は鳴らない）ため「音量オフ」と添える
+  if (bgmTrack === null) return null;
+  const muted = isMuted(volumes.bgm);
 
   return (
     <View style={styles.container}>
@@ -68,15 +70,23 @@ export function BgmMiniPlayer() {
           </Text>
         ) : null}
 
-        {/* 再生位置の進捗バー（要件9: 曲がどれくらい進んだか視覚的に示す） */}
-        <View style={styles.progressTrack}>
-          <View
-            style={[
-              styles.progressFill,
-              { width: `${Math.round(Math.min(1, Math.max(0, bgmProgress)) * 100)}%` },
-            ]}
-          />
-        </View>
+        {muted ? (
+          // 音量0のときは進捗バーの代わりに「音量オフ」を示す（押しても鳴らない理由）
+          <View style={styles.mutedRow}>
+            <Ionicons name="volume-mute" size={12} color="rgba(255,255,255,0.5)" />
+            <Text style={styles.mutedText}>音量オフ</Text>
+          </View>
+        ) : (
+          /* 再生位置の進捗バー（要件9: 曲がどれくらい進んだか視覚的に示す） */
+          <View style={styles.progressTrack}>
+            <View
+              style={[
+                styles.progressFill,
+                { width: `${Math.round(Math.min(1, Math.max(0, bgmProgress)) * 100)}%` },
+              ]}
+            />
+          </View>
+        )}
       </Pressable>
 
       <View style={styles.controls}>
@@ -223,6 +233,16 @@ const styles = StyleSheet.create({
     marginTop: Spacing.two,
     backgroundColor: "rgba(255,255,255,0.18)",
     overflow: "hidden",
+  },
+  mutedRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 3,
+    marginTop: Spacing.two,
+  },
+  mutedText: {
+    color: "rgba(255,255,255,0.5)",
+    fontSize: 11,
   },
   progressFill: {
     height: "100%",
