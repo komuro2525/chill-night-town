@@ -8,18 +8,24 @@ import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
 import { LIMITS } from "@/constants/domain";
 import { Spacing } from "@/constants/theme";
+import { useSettings } from "@/contexts/SettingsContext";
 import { tagRepo } from "@/db/repositories";
 import type { StudyTag } from "@/db/types";
 import { validateTagName } from "@/lib/validation";
 
 // S10 マイタグ管理画面（要件10.9 / UC 10.7）。
-// 登録済みマイタグの名称変更（重複は不可）・論理削除。稼働中も編集・削除できる。
-// 新規作成はここには置かない（作成は学習成果記録3.4の導線）。
+// マイタグの新規追加・名称変更（重複は不可）・論理削除。稼働中も操作できる。
+// 学習成果記録（3.4）からも追加できるが、この画面からも追加できる。
 
 export default function TagsScreen() {
+  const { user } = useSettings();
   const [tags, setTags] = useState<StudyTag[]>([]);
   const [loading, setLoading] = useState(true);
   const [renaming, setRenaming] = useState<StudyTag | null>(null);
+  const [adding, setAdding] = useState(false);
+
+  // 有効なマイタグが上限に達しているか（追加不可）
+  const atLimit = tags.length >= LIMITS.MYTAG_MAX;
 
   const reload = useCallback(async () => {
     try {
@@ -72,10 +78,30 @@ export default function TagsScreen() {
   return (
     <ThemedView style={styles.container}>
       <ScrollView contentContainerStyle={styles.content}>
+        {/* 追加。上限に達しているときは押せないようにして理由を添える */}
+        <SettingSection>
+          <SettingRow
+            first
+            label="新しいタグを追加"
+            onPress={atLimit ? undefined : () => setAdding(true)}
+            disabled={atLimit}
+            right={
+              !atLimit ? (
+                <Ionicons name="add" size={22} color="rgba(255,255,255,0.9)" />
+              ) : undefined
+            }
+            note={
+              atLimit
+                ? `上限の${LIMITS.MYTAG_MAX}個に達しています。追加するには不要なタグを削除してください`
+                : undefined
+            }
+          />
+        </SettingSection>
+
         {tags.length > 0 ? (
           <SettingSection
             title={`マイタグ（${tags.length} / ${LIMITS.MYTAG_MAX}）`}
-            footer="タップで名前を変更、右のアイコンで削除できます。新しいタグは学習の記録画面で追加できます。"
+            footer="タップで名前を変更、右のアイコンで削除できます。"
           >
             {tags.map((tag, i) => (
               <SettingRow
@@ -106,11 +132,33 @@ export default function TagsScreen() {
               まだマイタグはありません
             </ThemedText>
             <ThemedText type="small" themeColor="textSecondary">
-              学習の記録画面から追加できます
+              上の「新しいタグを追加」から作れます
             </ThemedText>
           </View>
         )}
       </ScrollView>
+
+      {/* 新規追加（重複・上限は非同期で検証してモーダル内に表示） */}
+      <EditFieldModal
+        visible={adding}
+        title="新しいタグ"
+        description={`${LIMITS.TAG_NAME_MAX}文字以内で入力できます`}
+        initialValue=""
+        placeholder="例: 数学"
+        maxLength={LIMITS.TAG_NAME_MAX}
+        validate={validateTagName}
+        onCancel={() => setAdding(false)}
+        onSubmit={async (v) => {
+          if (!user) return;
+          const result = await tagRepo.createMyTag(user.id, v);
+          if (!result.ok) {
+            return result.reason === "duplicate"
+              ? "すでに同じ名前のタグがあります"
+              : `マイタグは${LIMITS.MYTAG_MAX}個までです`;
+          }
+          await reload();
+        }}
+      />
 
       {/* 名称変更（重複は非同期で検証してモーダル内に表示） */}
       <EditFieldModal
