@@ -1,10 +1,11 @@
 import { Ionicons } from "@expo/vector-icons";
 import Slider from "@react-native-community/slider";
 import { useFocusEffect } from "expo-router";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  Animated,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -81,6 +82,42 @@ export default function PlaylistScreen() {
     setMenuItem(null);
   }
 
+  // お気に入りの追加/解除を知らせるトースト（少し出してフェードで消す）
+  const [toast, setToast] = useState<{ text: string; added: boolean } | null>(null);
+  const toastOpacity = useRef(new Animated.Value(0)).current;
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const showFavoriteToast = useCallback(
+    (added: boolean) => {
+      if (toastTimer.current) clearTimeout(toastTimer.current);
+      setToast({
+        text: added ? "お気に入りに追加済み" : "お気に入りから削除済み",
+        added,
+      });
+      toastOpacity.setValue(0);
+      Animated.timing(toastOpacity, {
+        toValue: 1,
+        duration: 150,
+        useNativeDriver: true,
+      }).start();
+      toastTimer.current = setTimeout(() => {
+        Animated.timing(toastOpacity, {
+          toValue: 0,
+          duration: 250,
+          useNativeDriver: true,
+        }).start(() => setToast(null));
+      }, 1600);
+    },
+    [toastOpacity],
+  );
+
+  useEffect(
+    () => () => {
+      if (toastTimer.current) clearTimeout(toastTimer.current);
+    },
+    [],
+  );
+
   const reload = useCallback(async () => {
     if (!user) return;
     try {
@@ -127,8 +164,10 @@ export default function PlaylistScreen() {
 
   async function toggleFavorite(target: MenuTarget) {
     if (!user) return;
+    const added = !target.isFavorite;
     try {
-      await playlistRepo.setFavorite(user.id, target.track.id, !target.isFavorite);
+      await playlistRepo.setFavorite(user.id, target.track.id, added);
+      showFavoriteToast(added);
       await reload();
       await audio.refreshBgm();
     } catch (e) {
@@ -504,6 +543,21 @@ export default function PlaylistScreen() {
         </Pressable>
       ) : null}
 
+      {/* お気に入りの追加/解除トースト（操作を邪魔しないよう touch は透過） */}
+      {toast ? (
+        <Animated.View
+          pointerEvents="none"
+          style={[styles.toast, { opacity: toastOpacity }]}
+        >
+          <Ionicons
+            name={toast.added ? "star" : "star-outline"}
+            size={18}
+            color={LightColor}
+          />
+          <Text style={styles.toastText}>{toast.text}</Text>
+        </Animated.View>
+      ) : null}
+
       <EditFieldModal
         visible={nameModal}
         title="プレイリスト名"
@@ -842,4 +896,17 @@ const styles = StyleSheet.create({
     textAlign: "center",
     paddingHorizontal: Spacing.two,
   },
+  toast: {
+    position: "absolute",
+    alignSelf: "center",
+    bottom: "22%",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Spacing.two,
+    backgroundColor: "rgba(40,44,54,0.98)",
+    paddingVertical: Spacing.three,
+    paddingHorizontal: Spacing.five,
+    borderRadius: 999,
+  },
+  toastText: { color: "#ffffff", fontSize: 14, fontWeight: "500" },
 });
