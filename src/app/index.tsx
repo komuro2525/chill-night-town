@@ -101,8 +101,6 @@ export default function HomeScreen() {
   const { width: winWidth, height: winHeight } = useWindowDimensions();
   const isLandscape = winWidth > winHeight;
   const isFocused = useIsFocused();
-  // 背景の時間帯判定に使う時刻。時間帯は分単位で切り替わるため1分間隔で十分
-  const bgClock = useAppNow(60000);
   const [selected, setSelected] = useState<SelectedTown | null>(null);
   const [summary, setSummary] = useState<StudyDaySummary | null>(null);
   const [loading, setLoading] = useState(true);
@@ -602,12 +600,6 @@ export default function HomeScreen() {
   }, [reloadSummary, reloadWeather]);
   // 背景アートとLv表示に使うレベル
   const level = selected?.progress.current_level ?? 1;
-  // 背景の時間帯（要件8 / docs背景スケジュール）。1分ごとに見て、境界を跨いだら切り替える。
-  // 現状は差分素材が無く常に night 画像になるが、素材が入れば時刻に応じて変わる
-  const timeOfDay = getTimeOfDay(bgClock);
-  const art = selected
-    ? getTownArt(selected.town.code, level, timeOfDay)
-    : undefined;
 
   // 縦固定が必要な状態（操作モーダル・演出・システムイベント）。
   // これらが立っている間は横向きを許可しない＝要件2.4「操作系は縦固定／イベント時は縦へ戻す」。
@@ -657,20 +649,17 @@ export default function HomeScreen() {
       {/* 鑑賞モード中はOSのスリープを防止する（要件2.4） */}
       {immersive ? <KeepScreenAwake /> : null}
 
-      {landscapeMode ? (
-        // 横向き（要件2.4）: 街の全景だけを表示する閲覧専用ビュー。UIは持たない
-        <LandscapeHome art={art} session={timer.session} />
-      ) : art ? (
-        // 鑑賞モード中に画面をタップするとUIを復帰する（スワイプ探索は継続できる）
-        <TownBackground
-          art={art}
-          onTap={() => {
-            if (immersive) setImmersive(false);
-          }}
-        />
-      ) : (
-        <View style={styles.fallback} />
-      )}
+      {/* 背景。時間帯に応じた画像選択の1分ごとの更新はこの部品に閉じ込め、
+          ホーム全体（見張り・オーバーレイ・上部UI）を毎分再描画させない */}
+      <HomeBackground
+        landscapeMode={landscapeMode}
+        townCode={selected?.town.code}
+        level={level}
+        session={timer.session}
+        onRestoreFromImmersive={() => {
+          if (immersive) setImmersive(false);
+        }}
+      />
 
       {loading ? (
         <ActivityIndicator style={styles.centerLoader} color="#ffffff" />
@@ -1075,6 +1064,40 @@ function TopOverlay({
       </View>
     </View>
   );
+}
+
+// ホーム背景（縦＝街のパン／横＝閲覧ビュー／街のアート未登録＝暗色）。
+// 時間帯に応じた画像選択の更新（1分ごと）をこの部品に閉じ込め、ホーム全体
+// （見張り・オーバーレイ・上部UI）を毎分再描画させない（要件8 / 背景スケジュール）。
+// 現状は差分素材が無く常に night 画像だが、素材が入れば時刻に応じて切り替わる。
+function HomeBackground({
+  landscapeMode,
+  townCode,
+  level,
+  session,
+  onRestoreFromImmersive,
+}: {
+  landscapeMode: boolean;
+  /** 選択中の街コード（未選択は undefined） */
+  townCode: string | undefined;
+  level: number;
+  session: ActiveSession | null;
+  /** 鑑賞モード中に背景をタップしたときの復帰 */
+  onRestoreFromImmersive: () => void;
+}) {
+  const now = useAppNow(60000);
+  const art = townCode
+    ? getTownArt(townCode, level, getTimeOfDay(now))
+    : undefined;
+
+  if (landscapeMode) {
+    // 横向き（要件2.4）: 街の全景だけを表示する閲覧専用ビュー
+    return <LandscapeHome art={art} session={session} />;
+  }
+  if (art) {
+    return <TownBackground art={art} onTap={onRestoreFromImmersive} />;
+  }
+  return <View style={styles.fallback} />;
 }
 
 // 選択中の街の背景。画面を覆うサイズ（cover）で表示し、スワイプで街を探索する（要件2.2）。
