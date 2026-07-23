@@ -543,11 +543,14 @@ export function AudioProvider({ children }: { children: ReactNode }) {
         setBgmDurationSec(0);
         return;
       }
-      // タブ切替時: そのソースの先頭曲から再生する（要件9）。音量0なら再生はしない（表示のみ）
+      // タブ切替時: そのソースの先頭曲へ移る（要件9）。
+      // 再生中だった場合だけ先頭曲を続けて鳴らす。停止中は表示を切り替えるだけで再生しない
+      // （再生はあくまで再生ボタンから。デフォルト停止の方針）
       if (playFromTop) {
+        const wasPlaying = !!bgmPlayer.current?.playing;
         bgmIndexRef.current = 0;
         loadBgmTrack(0);
-        playBgm(true);
+        if (wasPlaying) playBgm(false);
         return;
       }
       const curId = currentTrackIdRef.current;

@@ -71,10 +71,18 @@ export default function PlaylistScreen() {
   const [nameModal, setNameModal] = useState(false);
   // シークバーのドラッグ中の値（離すまで再生位置には反映しない）
   const [seeking, setSeeking] = useState<number | null>(null);
-  // 「…」メニューを開いている対象（お気に入り・追加・クレジットの受け口）
+  // 「…」メニューを開いている対象（お気に入り・追加・クレジットの受け口）と表示モード。
+  // メニューとクレジットは同じモーダルで切り替える（別モーダルにすると開閉のラグが出るため）
   const [menuItem, setMenuItem] = useState<MenuTarget | null>(null);
-  // クレジット表示中の曲（タップで閉じる）
-  const [creditsTrack, setCreditsTrack] = useState<AmbientSound | null>(null);
+  const [menuMode, setMenuMode] = useState<"actions" | "credits">("actions");
+
+  function openMenu(target: MenuTarget) {
+    setMenuMode("actions");
+    setMenuItem(target);
+  }
+  function closeMenu() {
+    setMenuItem(null);
+  }
 
   const reload = useCallback(async () => {
     if (!user) return;
@@ -446,7 +454,7 @@ export default function PlaylistScreen() {
                   playing={audio.bgmTrack?.id === item.track.id}
                   onPlay={() => audio.playTrack(item.track.id)}
                   onOpenMenu={() =>
-                    setMenuItem({
+                    openMenu({
                       track: item.track,
                       isFavorite: item.isFavorite,
                       inPlaylist: true,
@@ -471,7 +479,7 @@ export default function PlaylistScreen() {
                 playing={audio.bgmTrack?.id === item.track.id}
                 onPlay={() => audio.playTrack(item.track.id)}
                 onOpenMenu={() =>
-                  setMenuItem({
+                  openMenu({
                     track: item.track,
                     isFavorite: item.isFavorite,
                     inPlaylist: item.inPlaylist,
@@ -483,75 +491,63 @@ export default function PlaylistScreen() {
         </ScrollView>
       )}
 
-      {/* 曲の「…」メニュー（追加・お気に入り・クレジット）。背景1タップで閉じる */}
+      {/* 曲の「…」メニュー（追加・お気に入り・クレジット）。背景1タップで閉じる。
+          クレジットは同じモーダル内で表示を切り替える（別モーダルにすると開閉のラグが出る） */}
       <Modal
         transparent
         visible={menuItem !== null}
         animationType="fade"
-        onRequestClose={() => setMenuItem(null)}
+        onRequestClose={closeMenu}
       >
-        <Pressable style={styles.menuBackdrop} onPress={() => setMenuItem(null)}>
+        <Pressable style={styles.menuBackdrop} onPress={closeMenu}>
           {menuItem ? (
-            // カードのタップは閉じる操作にしない（誤操作防止）。操作はメニュー項目で行う
-            <Pressable style={styles.menuCard} onPress={() => {}}>
-              <Text style={styles.menuTitle} numberOfLines={1}>
-                {menuItem.track.name}
-              </Text>
-              <View style={styles.menuRow}>
-                <MenuAction
-                  icon="add-circle"
-                  label="追加"
-                  active={menuItem.inPlaylist}
-                  onPress={() => {
-                    const it = menuItem;
-                    setMenuItem(null);
-                    handleAdd(it);
-                  }}
-                />
-                <MenuAction
-                  icon={menuItem.isFavorite ? "star" : "star-outline"}
-                  label="お気に入り"
-                  active={menuItem.isFavorite}
-                  onPress={() => {
-                    const it = menuItem;
-                    setMenuItem(null);
-                    void toggleFavorite(it);
-                  }}
-                />
-                <MenuAction
-                  icon="information-circle-outline"
-                  label="クレジット"
-                  onPress={() => {
-                    const it = menuItem;
-                    setMenuItem(null);
-                    setCreditsTrack(it.track);
-                  }}
-                />
+            menuMode === "credits" ? (
+              // クレジット表示: どこをタップしても閉じる（カードのタップも背景へ伝わる）
+              <View style={styles.menuCard}>
+                <Text style={styles.menuTitle} numberOfLines={2}>
+                  {menuItem.track.name}
+                </Text>
+                <Text style={styles.creditText}>
+                  {menuItem.track.artist
+                    ? `アーティスト: ${menuItem.track.artist}`
+                    : "アーティスト情報は登録されていません"}
+                </Text>
               </View>
-            </Pressable>
-          ) : null}
-        </Pressable>
-      </Modal>
-
-      {/* クレジット表示（曲名＋アーティスト）。どこをタップしても閉じる */}
-      <Modal
-        transparent
-        visible={creditsTrack !== null}
-        animationType="fade"
-        onRequestClose={() => setCreditsTrack(null)}
-      >
-        <Pressable style={styles.menuBackdrop} onPress={() => setCreditsTrack(null)}>
-          {creditsTrack ? (
-            <View style={styles.menuCard}>
-              <Text style={styles.menuTitle} numberOfLines={2}>
-                {creditsTrack.name}
-              </Text>
-              <Text style={styles.creditText}>
-                {creditsTrack.artist
-                  ? `アーティスト: ${creditsTrack.artist}`
-                  : "アーティスト情報は登録されていません"}
-              </Text>
-            </View>
+            ) : (
+              // メニュー: カードのタップは閉じない（誤操作防止）。操作は各項目で行う
+              <Pressable style={styles.menuCard} onPress={() => {}}>
+                <Text style={styles.menuTitle} numberOfLines={1}>
+                  {menuItem.track.name}
+                </Text>
+                <View style={styles.menuRow}>
+                  <MenuAction
+                    icon="add-circle"
+                    label="追加"
+                    active={menuItem.inPlaylist}
+                    onPress={() => {
+                      const it = menuItem;
+                      closeMenu();
+                      handleAdd(it);
+                    }}
+                  />
+                  <MenuAction
+                    icon={menuItem.isFavorite ? "star" : "star-outline"}
+                    label="お気に入り"
+                    active={menuItem.isFavorite}
+                    onPress={() => {
+                      const it = menuItem;
+                      closeMenu();
+                      void toggleFavorite(it);
+                    }}
+                  />
+                  <MenuAction
+                    icon="information-circle-outline"
+                    label="クレジット"
+                    onPress={() => setMenuMode("credits")}
+                  />
+                </View>
+              </Pressable>
+            )
           ) : null}
         </Pressable>
       </Modal>
