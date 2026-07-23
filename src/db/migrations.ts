@@ -31,7 +31,7 @@ type Migration = {
 
 // 現在のスキーマバージョン（db/*.sql が表す「最新」の版）。
 // スキーマを変更したら、スキーマSQLを更新しつつ本値を+1し、DELTA_MIGRATIONS に差分を追加する。
-const SCHEMA_VERSION = 10;
+const SCHEMA_VERSION = 11;
 
 // 既存DB（過去バージョン）向けの差分マイグレーション（version >= 2）。
 // 新規インストールはスキーマSQL（=最新）を適用して一気に SCHEMA_VERSION まで上がるため、
@@ -325,6 +325,34 @@ const DELTA_MIGRATIONS: Migration[] = [
              SELECT 1 FROM town_progress tp
               WHERE tp.user_id = u.id AND tp.town_id = t.id
            );
+      `);
+    },
+  },
+  {
+    version: 11,
+    up: async (db) => {
+      // タグの上限を「マイタグ(custom)のみ1ユーザー20件」から
+      // 「有効タグ全体(標準＋マイタグ)20件」へ変更する（要件3.4改訂）。
+      // 標準タグも編集・削除でき、20の枠を消費する。旧トリガーを新トリガーへ差し替える。
+      // 既存ユーザーが旧ルールで20件超のタグを持っていても行は削除しない（新規追加/復活のみ
+      // 20件未満まで抑止する。既存は grandfather として使い続けられる）。
+      await db.execAsync(`
+        DROP TRIGGER IF EXISTS trg_study_tag_mytag_limit;
+        DROP TRIGGER IF EXISTS trg_study_tag_mytag_limit_revive;
+        CREATE TRIGGER trg_study_tag_limit
+        BEFORE INSERT ON study_tag
+        WHEN NEW.is_active = 1
+         AND (SELECT COUNT(*) FROM study_tag WHERE is_active = 1) >= 20
+        BEGIN
+            SELECT RAISE(FAIL, 'タグは最大20件までです');
+        END;
+        CREATE TRIGGER trg_study_tag_limit_revive
+        BEFORE UPDATE OF is_active ON study_tag
+        WHEN OLD.is_active = 0 AND NEW.is_active = 1
+         AND (SELECT COUNT(*) FROM study_tag WHERE is_active = 1) >= 20
+        BEGIN
+            SELECT RAISE(FAIL, 'タグは最大20件までです');
+        END;
       `);
     },
   },

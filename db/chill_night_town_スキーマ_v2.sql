@@ -173,10 +173,11 @@ CREATE TABLE growth_level_threshold (
 -- =====================================================================
 -- 9. study_tag : 学習内容タグ（標準タグ + マイタグ）
 --    ・標準タグ: user_id IS NULL / マイタグ: user_id = 所有ユーザー
---    ・標準タグの投入データは6件:
---      資格勉強 / レポート・課題 / 暗記・復習 / プログラミング / 読書 / その他
---    ・マイタグは論理削除方式（is_active = 0）。削除済みと同名が入力された
---      場合は is_active = 1 へ更新して復活させる（新規行は作らない）
+--    ・標準タグの投入データは5件:
+--      資格勉強 / レポート・課題 / 暗記・復習 / プログラミング / 読書
+--    ・削除は論理削除方式（is_active = 0）。標準タグ・マイタグとも削除・編集でき、
+--      削除済みと同名が入力された場合は is_active = 1 へ更新して復活させる（新規行は作らない）
+--    ・上限は有効タグ全体（標準＋マイタグ）で20件（要件3.4）。標準タグも20の枠を消費する
 --    ・名称変更は name の更新のみで過去記録の表示に反映される
 --      （記録側は id で参照しているため）
 -- =====================================================================
@@ -202,24 +203,23 @@ CREATE UNIQUE INDEX idx_study_tag_custom_name
 
 CREATE INDEX idx_study_tag_user_active ON study_tag(user_id, is_active);
 
--- マイタグは1ユーザーあたり最大20件まで（有効 is_active=1 のもののみカウント。
--- 削除済みは上限に含めない：要件3.4）
-CREATE TRIGGER trg_study_tag_mytag_limit
+-- タグは有効(is_active=1)なものが標準・マイタグ合わせて最大20件まで（要件3.4）。
+-- 削除済み(is_active=0)は上限に含めない。標準タグも編集・削除でき、20の枠を消費する
+CREATE TRIGGER trg_study_tag_limit
 BEFORE INSERT ON study_tag
-WHEN NEW.user_id IS NOT NULL
- AND (SELECT COUNT(*) FROM study_tag WHERE user_id = NEW.user_id AND is_active = 1) >= 20
+WHEN NEW.is_active = 1
+ AND (SELECT COUNT(*) FROM study_tag WHERE is_active = 1) >= 20
 BEGIN
-    SELECT RAISE(FAIL, 'マイタグは最大20件までです');
+    SELECT RAISE(FAIL, 'タグは最大20件までです');
 END;
 
--- 削除済みマイタグの「復活」（is_active 0→1 更新）時も上限20件を担保する
-CREATE TRIGGER trg_study_tag_mytag_limit_revive
+-- 削除済みタグの「復活」（is_active 0→1 更新）時も上限20件を担保する
+CREATE TRIGGER trg_study_tag_limit_revive
 BEFORE UPDATE OF is_active ON study_tag
-WHEN NEW.user_id IS NOT NULL
- AND OLD.is_active = 0 AND NEW.is_active = 1
- AND (SELECT COUNT(*) FROM study_tag WHERE user_id = NEW.user_id AND is_active = 1) >= 20
+WHEN OLD.is_active = 0 AND NEW.is_active = 1
+ AND (SELECT COUNT(*) FROM study_tag WHERE is_active = 1) >= 20
 BEGIN
-    SELECT RAISE(FAIL, 'マイタグは最大20件までです');
+    SELECT RAISE(FAIL, 'タグは最大20件までです');
 END;
 
 -- =====================================================================

@@ -97,7 +97,7 @@ export function TagSection({
         setTagError(
           result.reason === "duplicate"
             ? "すでに同じ名前のタグがあります"
-            : `マイタグは${LIMITS.MYTAG_MAX}個までです`,
+            : `タグは${LIMITS.MYTAG_MAX}個までです`,
         );
         return;
       }

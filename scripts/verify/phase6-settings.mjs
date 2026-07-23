@@ -138,30 +138,52 @@ check("方式切替でレベルは下がらない（Lv5維持）", recompute(tow
 run("UPDATE town_progress SET current_level=1, cumulative_study_minutes=300, project_target_minutes=600 WHERE town_id=?", townB);
 check("プロジェクト型: 累計300分で Lv3 に上がる（240≤300<360）", recompute(townB, "project") === 3);
 
-console.log("D. tagRepo（マイタグ 改名・論理削除）");
+console.log("D. tagRepo（タグ 改名・論理削除・上限。標準タグも対象）");
+// 標準タグ5件がシード投入済み
+check("初期は標準タグ5件が有効", one("SELECT COUNT(*) c FROM study_tag WHERE is_active=1").c === 5);
+
 run("INSERT INTO study_tag (user_id, name, is_custom, is_active, display_order) VALUES (?, '英作文', 1, 1, 1)", userId);
 const tagId = one("SELECT id FROM study_tag WHERE name='英作文'").id;
 run("INSERT INTO study_tag (user_id, name, is_custom, is_active, display_order) VALUES (?, '古い名', 1, 0, 2)", userId); // 論理削除済み
-// rename の重複判定: 自分以外に同名（標準 or 論理削除済みマイタグ含む）があれば不可
-const conflictStd = one("SELECT id FROM study_tag WHERE name=? AND id!=? LIMIT 1", "読書", tagId);
-check("標準タグ名への改名は重複として弾ける", !!conflictStd);
-const conflictInactive = one("SELECT id FROM study_tag WHERE name=? AND id!=? LIMIT 1", "古い名", tagId);
-check("論理削除済みマイタグ名への改名も重複として弾ける", !!conflictInactive);
-const conflictFree = one("SELECT id FROM study_tag WHERE name=? AND id!=? LIMIT 1", "長文読解", tagId);
-check("未使用の名前は重複なし", !conflictFree);
-run("UPDATE study_tag SET name=? WHERE id=? AND is_custom=1", "長文読解", tagId);
-check("改名が反映される", one("SELECT name FROM study_tag WHERE id=?", tagId).name === "長文読解");
+// rename の重複判定: 自分以外に同名（標準・マイタグ・論理削除済み含む）があれば不可
+check("標準タグ名への改名は重複として弾ける",
+  !!one("SELECT id FROM study_tag WHERE name=? AND id!=? LIMIT 1", "読書", tagId));
+check("論理削除済みタグ名への改名も重複として弾ける",
+  !!one("SELECT id FROM study_tag WHERE name=? AND id!=? LIMIT 1", "古い名", tagId));
+check("未使用の名前は重複なし",
+  !one("SELECT id FROM study_tag WHERE name=? AND id!=? LIMIT 1", "長文読解", tagId));
+// 改名は is_custom を問わない（renameTag は WHERE id=? のみ）
+run("UPDATE study_tag SET name=? WHERE id=?", "長文読解", tagId);
+check("マイタグの改名が反映される", one("SELECT name FROM study_tag WHERE id=?", tagId).name === "長文読解");
+
+// 標準タグも改名・削除できる（is_custom=1 の限定がない）
+const stdId = one("SELECT id FROM study_tag WHERE name='読書'").id;
+run("UPDATE study_tag SET name=? WHERE id=?", "読書メモ", stdId);
+check("標準タグも改名できる", one("SELECT name FROM study_tag WHERE id=?", stdId).name === "読書メモ");
+run("UPDATE study_tag SET is_active=0 WHERE id=?", stdId);
+check("標準タグも論理削除できる", one("SELECT is_active FROM study_tag WHERE id=?", stdId).is_active === 0);
 
 // 論理削除: is_active=0。以後の選択肢・件数から外れるが行は残る
-run("UPDATE study_tag SET is_active=0 WHERE id=? AND is_custom=1", tagId);
+run("UPDATE study_tag SET is_active=0 WHERE id=?", tagId);
 check("論理削除後 is_active=0", one("SELECT is_active FROM study_tag WHERE id=?", tagId).is_active === 0);
-check("有効なマイタグ一覧から外れる",
-  db.prepare("SELECT id FROM study_tag WHERE is_custom=1 AND is_active=1").all().every((r) => r.id !== tagId));
-check("上限カウント（有効マイタグ）に数えない",
-  one("SELECT COUNT(*) c FROM study_tag WHERE is_custom=1 AND is_active=1").c === 0);
-check("選択肢（標準＋有効マイタグ）から外れる",
+check("選択肢（有効タグ）から外れる",
   db.prepare("SELECT id FROM study_tag WHERE is_active=1").all().every((r) => r.id !== tagId));
 check("行自体は残る（過去記録の表示用）", !!one("SELECT id FROM study_tag WHERE id=?", tagId));
+
+// 上限: 有効タグ全体（標準＋マイタグ）で20件。20件到達で新規INSERT・復活はトリガーで失敗する
+const active0 = one("SELECT COUNT(*) c FROM study_tag WHERE is_active=1").c;
+for (let i = active0; i < 20; i++) {
+  run(
+    "INSERT INTO study_tag (user_id, name, is_custom, is_active, display_order) VALUES (?, ?, 1, 1, ?)",
+    userId, `枠埋め${i}`, 100 + i,
+  );
+}
+check("有効タグを20件（標準＋マイタグ）まで作れる",
+  one("SELECT COUNT(*) c FROM study_tag WHERE is_active=1").c === 20);
+throws("20件到達後の新規INSERTはトリガーで失敗する",
+  () => run("INSERT INTO study_tag (user_id, name, is_custom, is_active, display_order) VALUES (?, '溢れる', 1, 1, 999)", userId));
+throws("20件到達後の復活（is_active 0→1）もトリガーで失敗する",
+  () => run("UPDATE study_tag SET is_active=1 WHERE id=?", tagId));
 
 db.close();
 console.log(failures === 0 ? "\n全チェック成功" : `\n${failures} 件 失敗`);

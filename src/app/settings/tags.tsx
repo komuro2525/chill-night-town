@@ -13,8 +13,9 @@ import { tagRepo } from "@/db/repositories";
 import type { StudyTag } from "@/db/types";
 import { validateTagName } from "@/lib/validation";
 
-// S10 マイタグ管理画面（要件10.9 / UC 10.7）。
-// マイタグの新規追加・名称変更（重複は不可）・論理削除。稼働中も操作できる。
+// S10 タグ管理画面（要件10.9 / UC 10.7）。
+// 標準タグ・マイタグの新規追加・名称変更（重複は不可）・論理削除。稼働中も操作できる。
+// 標準タグも編集・削除でき、有効タグ全体（標準＋マイタグ）で上限20件。
 // 学習成果記録（3.4）からも追加できるが、この画面からも追加できる。
 
 export default function TagsScreen() {
@@ -24,14 +25,14 @@ export default function TagsScreen() {
   const [renaming, setRenaming] = useState<StudyTag | null>(null);
   const [adding, setAdding] = useState(false);
 
-  // 有効なマイタグが上限に達しているか（追加不可）
+  // 有効なタグ（標準＋マイタグ）が上限に達しているか（追加不可）
   const atLimit = tags.length >= LIMITS.MYTAG_MAX;
 
   const reload = useCallback(async () => {
     try {
-      setTags(await tagRepo.listMyTags());
+      setTags(await tagRepo.listManagedTags());
     } catch (e) {
-      console.error("マイタグの読み込みに失敗しました", e);
+      console.error("タグの読み込みに失敗しました", e);
     } finally {
       setLoading(false);
     }
@@ -55,10 +56,10 @@ export default function TagsScreen() {
           onPress: () => {
             void (async () => {
               try {
-                await tagRepo.deactivateMyTag(tag.id);
+                await tagRepo.deactivateTag(tag.id);
                 await reload();
               } catch (e) {
-                console.error("マイタグの削除に失敗しました", e);
+                console.error("タグの削除に失敗しました", e);
               }
             })();
           },
@@ -100,8 +101,8 @@ export default function TagsScreen() {
 
         {tags.length > 0 ? (
           <SettingSection
-            title={`マイタグ（${tags.length} / ${LIMITS.MYTAG_MAX}）`}
-            footer="タップで名前を変更、右のアイコンで削除できます。"
+            title={`タグ（${tags.length} / ${LIMITS.MYTAG_MAX}）`}
+            footer="標準タグも含めて、タップで名前を変更、右のアイコンで削除できます。"
           >
             {tags.map((tag, i) => (
               <SettingRow
@@ -154,7 +155,7 @@ export default function TagsScreen() {
           if (!result.ok) {
             return result.reason === "duplicate"
               ? "すでに同じ名前のタグがあります"
-              : `マイタグは${LIMITS.MYTAG_MAX}個までです`;
+              : `タグは${LIMITS.MYTAG_MAX}個までです`;
           }
           await reload();
         }}
@@ -171,7 +172,7 @@ export default function TagsScreen() {
         onCancel={() => setRenaming(null)}
         onSubmit={async (v) => {
           if (!renaming) return;
-          const result = await tagRepo.renameMyTag(renaming.id, v);
+          const result = await tagRepo.renameTag(renaming.id, v);
           if (!result.ok) return "すでに同じ名前のタグがあります";
           await reload();
         }}
