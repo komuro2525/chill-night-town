@@ -79,6 +79,7 @@ import {
   setDevTimeToHour,
   useAppNow,
 } from "@/lib/clock";
+import { getTimeOfDay } from "@/lib/background-schedule";
 import { getPseudoOnlineCount } from "@/lib/pseudo-online";
 import { formatStudyDateLabel, getStudyDate, isNightTime } from "@/lib/study-day";
 import { getActualStudyMinutes, getPlannedEndMs } from "@/lib/timer";
@@ -100,6 +101,8 @@ export default function HomeScreen() {
   const { width: winWidth, height: winHeight } = useWindowDimensions();
   const isLandscape = winWidth > winHeight;
   const isFocused = useIsFocused();
+  // 背景の時間帯判定に使う時刻。時間帯は分単位で切り替わるため1分間隔で十分
+  const bgClock = useAppNow(60000);
   const [selected, setSelected] = useState<SelectedTown | null>(null);
   const [summary, setSummary] = useState<StudyDaySummary | null>(null);
   const [loading, setLoading] = useState(true);
@@ -599,7 +602,12 @@ export default function HomeScreen() {
   }, [reloadSummary, reloadWeather]);
   // 背景アートとLv表示に使うレベル
   const level = selected?.progress.current_level ?? 1;
-  const art = selected ? getTownArt(selected.town.code, level) : undefined;
+  // 背景の時間帯（要件8 / docs背景スケジュール）。1分ごとに見て、境界を跨いだら切り替える。
+  // 現状は差分素材が無く常に night 画像になるが、素材が入れば時刻に応じて変わる
+  const timeOfDay = getTimeOfDay(bgClock);
+  const art = selected
+    ? getTownArt(selected.town.code, level, timeOfDay)
+    : undefined;
 
   // 縦固定が必要な状態（操作モーダル・演出・システムイベント）。
   // これらが立っている間は横向きを許可しない＝要件2.4「操作系は縦固定／イベント時は縦へ戻す」。
