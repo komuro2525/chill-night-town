@@ -247,6 +247,13 @@ export type UserSoundPreference = {
   ambient_sound_id: number;
   is_enabled: Bool;
   is_favorite: Bool;
-  /** マイプレイリスト内の並び順（NULL=非所属） */
-  playlist_position: number | null;
+};
+
+/** マイプレイリストの並び（要件9・音楽プレイリスト）。1行=1曲・重複可 */
+export type PlaylistEntry = {
+  id: number;
+  user_id: number;
+  ambient_sound_id: number;
+  position: number;
+  created_at: string;
 };

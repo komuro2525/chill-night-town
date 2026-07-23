@@ -345,19 +345,33 @@ CREATE TABLE audio_setting (
 
 -- =====================================================================
 -- 16. user_sound_preference : ユーザーの曲ごとの設定（要件9・音楽プレイリスト）
---     ・is_favorite       : ★お気に入り（1=お気に入り）
---     ・playlist_position : マイプレイリスト内の並び順（NULL=非所属 / 非NULLでその順）
---     ・is_enabled        : 個別ON/OFF（将来拡張用。本機能では未使用）
---     ・行は★を付けた/プレイリストに入れた曲だけに作る
+--     ・is_favorite : ★お気に入り（1=お気に入り）
+--     ・is_enabled  : 個別ON/OFF（将来拡張用。本機能では未使用）
+--     ・行は★を付けた曲だけに作る。プレイリスト所属は playlist_entry で持つ
 -- =====================================================================
 CREATE TABLE user_sound_preference (
     user_id             INTEGER NOT NULL REFERENCES user(id)          ON DELETE CASCADE,
     ambient_sound_id    INTEGER NOT NULL REFERENCES ambient_sound(id) ON DELETE CASCADE,
     is_enabled          INTEGER NOT NULL DEFAULT 1 CHECK (is_enabled IN (0, 1)),
     is_favorite         INTEGER NOT NULL DEFAULT 0 CHECK (is_favorite IN (0, 1)),
-    playlist_position   INTEGER,
     PRIMARY KEY (user_id, ambient_sound_id)
 );
+
+-- =====================================================================
+-- 16b. playlist_entry : マイプレイリストの並び（要件9・音楽プレイリスト）
+--     ・プレイリストは1つ。1行=プレイリスト内の1曲（並び=position 昇順）
+--     ・同じ曲を複数入れられる（重複可）。そのため user_sound_preference とは別に
+--       「並びの実体」を持つ（1曲=1回だけの user_sound_preference では重複を表せない）
+--     ・position は追加順に採番し、並び替え時に振り直す
+-- =====================================================================
+CREATE TABLE playlist_entry (
+    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id             INTEGER NOT NULL REFERENCES user(id)          ON DELETE CASCADE,
+    ambient_sound_id    INTEGER NOT NULL REFERENCES ambient_sound(id) ON DELETE CASCADE,
+    position            INTEGER NOT NULL,
+    created_at          TEXT    NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX idx_playlist_entry_user_pos ON playlist_entry(user_id, position);
 
 -- =====================================================================
 -- 17. active_session : 計測中セッションの状態（ユーザー単位・1:1）【新規】

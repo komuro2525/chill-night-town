@@ -1,43 +1,77 @@
 // 音楽プレイリスト（要件9・音楽プレイリスト）リポジトリ。
 //
-// 曲ごとの ★お気に入り と マイプレイリスト所属・並び順を user_sound_preference で保持する。
-// 行は「★を付けた／プレイリストに入れた曲」だけに作り、無い曲は非お気に入り・非所属とみなす。
-// プレイリストは1つだけ（playlist_position の昇順が並び順）。
+// ★お気に入りは user_sound_preference（1曲=1行）で持つ。
+// マイプレイリストの並び（所属）は playlist_entry（1行=1曲・重複可）で持つ。
+// プレイリストは1つだけ（playlist_entry.position 昇順が並び順）。同じ曲を複数入れられる。
 
 import { getDatabase } from "../database";
 import type { AmbientSound } from "../types";
 
-/** 管理画面（S・プレイリスト）に出す曲＋ユーザー設定 */
+/** 一覧（すべて/お気に入り）に出す曲＋ユーザー設定 */
 export type LibraryTrack = {
   track: AmbientSound;
   isFavorite: boolean;
-  /** マイプレイリスト内の並び順（未所属は null） */
-  playlistPosition: number | null;
+  /** マイプレイリストに1回以上入っているか */
+  inPlaylist: boolean;
+};
+
+/** マイプレイリストの1エントリ（並びの1要素。同じ曲が複数並ぶことがある） */
+export type PlaylistItem = {
+  /** playlist_entry.id（並び替え・削除の単位） */
+  entryId: number;
+  track: AmbientSound;
+  isFavorite: boolean;
 };
 
 /**
- * BGMの全曲に、ユーザーの★・プレイリスト所属を左結合して返す（曲は id 昇順）。
- * user_sound_preference に行が無い曲は isFavorite=false / playlistPosition=null。
+ * BGMの全曲に、★お気に入りとプレイリスト所属の有無を付けて返す（曲は id 昇順）。
+ * すべて／お気に入りタブの一覧に使う。
  */
 export async function getBgmLibrary(userId: number): Promise<LibraryTrack[]> {
   const db = await getDatabase();
   const rows = await db.getAllAsync<
-    AmbientSound & { is_favorite: number | null; playlist_position: number | null }
+    AmbientSound & { is_favorite: number | null; in_playlist: number }
   >(
     `SELECT a.*,
-            p.is_favorite       AS is_favorite,
-            p.playlist_position AS playlist_position
+            p.is_favorite AS is_favorite,
+            EXISTS (SELECT 1 FROM playlist_entry e
+                     WHERE e.user_id = ? AND e.ambient_sound_id = a.id) AS in_playlist
        FROM ambient_sound a
        LEFT JOIN user_sound_preference p
               ON p.ambient_sound_id = a.id AND p.user_id = ?
       WHERE a.sound_type = 'bgm' AND a.is_active = 1
       ORDER BY a.id`,
     userId,
+    userId,
   );
-  return rows.map(({ is_favorite, playlist_position, ...track }) => ({
+  return rows.map(({ is_favorite, in_playlist, ...track }) => ({
     track,
     isFavorite: is_favorite === 1,
-    playlistPosition: playlist_position,
+    inPlaylist: in_playlist === 1,
+  }));
+}
+
+/** マイプレイリストの並び（エントリ）を position 昇順で返す（重複を含む） */
+export async function getPlaylist(userId: number): Promise<PlaylistItem[]> {
+  const db = await getDatabase();
+  const rows = await db.getAllAsync<
+    AmbientSound & { entry_id: number; is_favorite: number | null }
+  >(
+    `SELECT a.*,
+            e.id          AS entry_id,
+            p.is_favorite AS is_favorite
+       FROM playlist_entry e
+       JOIN ambient_sound a ON a.id = e.ambient_sound_id
+       LEFT JOIN user_sound_preference p
+              ON p.ambient_sound_id = a.id AND p.user_id = e.user_id
+      WHERE e.user_id = ? AND a.is_active = 1
+      ORDER BY e.position, e.id`,
+    userId,
+  );
+  return rows.map(({ entry_id, is_favorite, ...track }) => ({
+    entryId: entry_id,
+    track,
+    isFavorite: is_favorite === 1,
   }));
 }
 
@@ -53,19 +87,33 @@ export async function getFavoriteIds(userId: number): Promise<number[]> {
   return rows.map((r) => r.ambient_sound_id);
 }
 
-/** マイプレイリストの曲IDを並び順（playlist_position 昇順）で返す（キュー生成用） */
+/** マイプレイリストの曲IDを並び順（position 昇順）で返す（重複を含む。キュー生成用） */
 export async function getPlaylistOrderedIds(userId: number): Promise<number[]> {
   const db = await getDatabase();
   const rows = await db.getAllAsync<{ ambient_sound_id: number }>(
-    `SELECT ambient_sound_id FROM user_sound_preference
-      WHERE user_id = ? AND playlist_position IS NOT NULL
-      ORDER BY playlist_position, ambient_sound_id`,
+    `SELECT ambient_sound_id FROM playlist_entry
+      WHERE user_id = ?
+      ORDER BY position, id`,
     userId,
   );
   return rows.map((r) => r.ambient_sound_id);
 }
 
-/** 曲ごとの設定行を無ければ作る（お気に入り・プレイリストの更新前に呼ぶ） */
+/** 曲がマイプレイリストに1回以上入っているか（重複追加の確認ダイアログ判定用） */
+export async function isInPlaylist(
+  userId: number,
+  soundId: number,
+): Promise<boolean> {
+  const db = await getDatabase();
+  const row = await db.getFirstAsync<{ n: number }>(
+    "SELECT COUNT(*) AS n FROM playlist_entry WHERE user_id = ? AND ambient_sound_id = ?",
+    userId,
+    soundId,
+  );
+  return (row?.n ?? 0) > 0;
+}
+
+/** 曲ごとの設定行を無ければ作る（お気に入りの更新前に呼ぶ） */
 async function ensureRow(userId: number, soundId: number): Promise<void> {
   const db = await getDatabase();
   await db.runAsync(
@@ -94,74 +142,62 @@ export async function setFavorite(
 }
 
 /**
- * マイプレイリストへの追加・削除（要件9）。
- * 追加は末尾（現在の最大 position + 1）へ、削除は playlist_position を NULL にする。
+ * マイプレイリストへ曲を追加する（要件9）。末尾（最大 position + 1）へ足す。
+ * 同じ曲でも別エントリとして追加する（重複可）。重複の確認は呼び出し側で行う。
  */
-export async function setInPlaylist(
+export async function addToPlaylist(
   userId: number,
   soundId: number,
-  on: boolean,
 ): Promise<void> {
   const db = await getDatabase();
-  if (on) {
-    await ensureRow(userId, soundId);
-    const row = await db.getFirstAsync<{ max_pos: number | null }>(
-      "SELECT MAX(playlist_position) AS max_pos FROM user_sound_preference WHERE user_id = ?",
-      userId,
-    );
-    const nextPos = (row?.max_pos ?? 0) + 1;
-    await db.runAsync(
-      "UPDATE user_sound_preference SET playlist_position = ? WHERE user_id = ? AND ambient_sound_id = ?",
-      nextPos,
-      userId,
-      soundId,
-    );
-  } else {
-    await db.runAsync(
-      "UPDATE user_sound_preference SET playlist_position = NULL WHERE user_id = ? AND ambient_sound_id = ?",
-      userId,
-      soundId,
-    );
-  }
-}
-
-/**
- * マイプレイリストから複数曲をまとめて外す（要件9: 編集モードで複数選択＋ゴミ箱）。
- * 対象の playlist_position を NULL にする（お気に入りや行自体は残す）。1トランザクション。
- */
-export async function removeManyFromPlaylist(
-  userId: number,
-  soundIds: number[],
-): Promise<void> {
-  if (soundIds.length === 0) return;
-  const db = await getDatabase();
-  const placeholders = soundIds.map(() => "?").join(", ");
-  await db.runAsync(
-    `UPDATE user_sound_preference
-        SET playlist_position = NULL
-      WHERE user_id = ? AND ambient_sound_id IN (${placeholders})`,
+  const row = await db.getFirstAsync<{ max_pos: number | null }>(
+    "SELECT MAX(position) AS max_pos FROM playlist_entry WHERE user_id = ?",
     userId,
-    ...soundIds,
+  );
+  const nextPos = (row?.max_pos ?? 0) + 1;
+  await db.runAsync(
+    "INSERT INTO playlist_entry (user_id, ambient_sound_id, position) VALUES (?, ?, ?)",
+    userId,
+    soundId,
+    nextPos,
   );
 }
 
 /**
- * マイプレイリストを並べ替える（要件9: 編集モードでの並び替え）。
- * 渡された曲IDの順に playlist_position を 1..N で振り直す（1トランザクション）。
+ * マイプレイリストから複数エントリをまとめて削除する（要件9: 編集の複数選択＋ゴミ箱）。
+ * エントリ単位で消す（同じ曲の別エントリは残る）。お気に入り・曲自体は残る。
+ */
+export async function removeEntries(
+  userId: number,
+  entryIds: number[],
+): Promise<void> {
+  if (entryIds.length === 0) return;
+  const db = await getDatabase();
+  const placeholders = entryIds.map(() => "?").join(", ");
+  await db.runAsync(
+    `DELETE FROM playlist_entry WHERE user_id = ? AND id IN (${placeholders})`,
+    userId,
+    ...entryIds,
+  );
+}
+
+/**
+ * マイプレイリストを並べ替える（要件9: 編集モードでのドラッグ並び替え）。
+ * 渡されたエントリIDの順に position を 1..N で振り直す（1トランザクション）。
  */
 export async function reorderPlaylist(
   userId: number,
-  orderedSoundIds: number[],
+  orderedEntryIds: number[],
 ): Promise<void> {
   const db = await getDatabase();
   await db.withTransactionAsync(async () => {
     let pos = 1;
-    for (const soundId of orderedSoundIds) {
+    for (const entryId of orderedEntryIds) {
       await db.runAsync(
-        "UPDATE user_sound_preference SET playlist_position = ? WHERE user_id = ? AND ambient_sound_id = ?",
+        "UPDATE playlist_entry SET position = ? WHERE user_id = ? AND id = ?",
         pos,
         userId,
-        soundId,
+        entryId,
       );
       pos += 1;
     }

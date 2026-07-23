@@ -23,16 +23,20 @@ import { LightColor, Spacing } from "@/constants/theme";
 import { useAudio } from "@/contexts/AudioContext";
 import { useSettings } from "@/contexts/SettingsContext";
 import { playlistRepo, settingsRepo } from "@/db/repositories";
-import type { LibraryTrack } from "@/db/repositories/playlistRepo";
-import type { BgmSource } from "@/db/types";
+import type {
+  LibraryTrack,
+  PlaylistItem,
+} from "@/db/repositories/playlistRepo";
+import type { AmbientSound, BgmSource } from "@/db/types";
 import { validatePlaylistName } from "@/lib/validation";
 
 // 音楽プレイリスト画面（要件9・音楽プレイリスト）。ミニプレイヤーの曲名タップで開く。
 //
-// 上部で再生ソース（すべて/お気に入り/マイプレイリスト）とシャッフルを選び、再生ボタンで流す。
-// 再生中は現在再生中バー（シークバー＋残り時間）を出す。曲をタップするとその曲を再生する。
-// 各行で★お気に入り・＋マイプレイリスト追加/削除。マイプレイリストは「編集」で
-// 3本線ドラッグの並び替えと、複数選択＋ゴミ箱でのまとめ削除ができる。名前も編集できる。
+// 上部で再生ソース（すべて/お気に入り/マイプレイリスト）・シャッフル・1曲リピートを選び、
+// 再生ボタンで流す。再生中は現在再生中バー（シークバー＋残り時間）を出す。曲タップでその曲を再生。
+// 各曲の「…」メニューからお気に入り・プレイリストに追加・クレジット表示を行う。
+// マイプレイリストは「編集」でドラッグ並び替えと複数選択＋ゴミ箱の削除ができる。名前も編集できる。
+// プレイリストは同じ曲を複数入れられる（追加時に重複確認ダイアログを出す）。
 
 const SOURCES: { value: BgmSource; label: string }[] = [
   { value: "all", label: "すべて" },
@@ -41,6 +45,9 @@ const SOURCES: { value: BgmSource; label: string }[] = [
 ];
 
 const DANGER = "rgba(255,120,120,0.95)";
+
+/** 「…」メニューの対象（一覧の曲・プレイリストのエントリで共通に使う） */
+type MenuTarget = { track: AmbientSound; isFavorite: boolean; inPlaylist: boolean };
 
 /** 秒を m:ss へ整形する（負・非数は0扱い） */
 function formatTime(sec: number): string {
@@ -53,27 +60,30 @@ export default function PlaylistScreen() {
   const { user } = useSettings();
   const audio = useAudio();
   const [library, setLibrary] = useState<LibraryTrack[]>([]);
+  const [playlistItems, setPlaylistItems] = useState<PlaylistItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(false);
-  // 並び替え用のローカル順（ドラッグ中のスナップバックを防ぐ）と、複数選択削除の選択ID
-  const [dragData, setDragData] = useState<LibraryTrack[]>([]);
+  // 並び替え用のローカル順（ドラッグ中のスナップバックを防ぐ）と、複数選択削除の選択（エントリID）
+  const [dragData, setDragData] = useState<PlaylistItem[]>([]);
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   // プレイリスト名（編集可）とその編集ダイアログ
   const [playlistName, setPlaylistName] = useState("マイプレイリスト");
   const [nameModal, setNameModal] = useState(false);
   // シークバーのドラッグ中の値（離すまで再生位置には反映しない）
   const [seeking, setSeeking] = useState<number | null>(null);
-  // 「…」メニューを開いている曲（お気に入り・追加・クレジットの受け口）
-  const [menuItem, setMenuItem] = useState<LibraryTrack | null>(null);
+  // 「…」メニューを開いている対象（お気に入り・追加・クレジットの受け口）
+  const [menuItem, setMenuItem] = useState<MenuTarget | null>(null);
 
   const reload = useCallback(async () => {
     if (!user) return;
     try {
-      const [lib, name] = await Promise.all([
+      const [lib, plist, name] = await Promise.all([
         playlistRepo.getBgmLibrary(user.id),
+        playlistRepo.getPlaylist(user.id),
         settingsRepo.getPlaylistName(),
       ]);
       setLibrary(lib);
+      setPlaylistItems(plist);
       setPlaylistName(name);
     } catch (e) {
       console.error("曲の読み込みに失敗しました", e);
@@ -92,26 +102,15 @@ export default function PlaylistScreen() {
     () => library.filter((l) => l.isFavorite),
     [library],
   );
-  const playlist = useMemo(
-    () =>
-      library
-        .filter((l) => l.playlistPosition != null)
-        .sort((a, b) => (a.playlistPosition ?? 0) - (b.playlistPosition ?? 0)),
-    [library],
-  );
 
   // ドラッグ用のローカル順を、読み込んだプレイリストに同期する
   useEffect(() => {
-    setDragData(playlist);
-  }, [playlist]);
+    setDragData(playlistItems);
+  }, [playlistItems]);
 
   const isPlaylist = audio.bgmSource === "playlist";
-  const shown =
-    audio.bgmSource === "favorites"
-      ? favorites
-      : isPlaylist
-        ? playlist
-        : library;
+  // すべて/お気に入りタブの一覧（マイプレイリストは playlistItems を別に描く）
+  const shownLibrary = audio.bgmSource === "favorites" ? favorites : library;
 
   function selectSource(value: BgmSource) {
     setEditing(false);
@@ -119,10 +118,10 @@ export default function PlaylistScreen() {
     void audio.setBgmSource(value);
   }
 
-  async function toggleFavorite(item: LibraryTrack) {
+  async function toggleFavorite(target: MenuTarget) {
     if (!user) return;
     try {
-      await playlistRepo.setFavorite(user.id, item.track.id, !item.isFavorite);
+      await playlistRepo.setFavorite(user.id, target.track.id, !target.isFavorite);
       await reload();
       await audio.refreshBgm();
     } catch (e) {
@@ -130,29 +129,48 @@ export default function PlaylistScreen() {
     }
   }
 
-  async function togglePlaylist(item: LibraryTrack) {
+  async function doAddToPlaylist(soundId: number) {
     if (!user) return;
     try {
-      await playlistRepo.setInPlaylist(
-        user.id,
-        item.track.id,
-        item.playlistPosition == null,
-      );
+      await playlistRepo.addToPlaylist(user.id, soundId);
       await reload();
       await audio.refreshBgm();
     } catch (e) {
-      console.error("プレイリストの更新に失敗しました", e);
+      console.error("プレイリストへの追加に失敗しました", e);
     }
   }
 
-  // ドラッグ並び替えの確定（要件9: 3本線ドラッグ）
-  async function onDragEnd(data: LibraryTrack[]) {
+  // プレイリストに追加。既に入っている曲は重複確認ダイアログを出す（要件9・重複可）
+  function handleAdd(target: MenuTarget) {
+    if (target.inPlaylist) {
+      Alert.alert("この曲はすでにプレイリスト内にあります。", undefined, [
+        { text: "もう一度追加", onPress: () => void doAddToPlaylist(target.track.id) },
+        { text: "スキップ", style: "cancel" },
+      ]);
+    } else {
+      void doAddToPlaylist(target.track.id);
+    }
+  }
+
+  // クレジット表示（要件9: フリー音源の表記。曲名＋アーティスト）
+  function showCredits(track: AmbientSound) {
+    Alert.alert(
+      track.name,
+      track.artist
+        ? `アーティスト: ${track.artist}`
+        : "アーティスト情報は登録されていません",
+      [{ text: "閉じる" }],
+    );
+  }
+
+  // ドラッグ並び替えの確定（要件9: 3本線ドラッグ）。エントリ単位で position を振り直す
+  async function onDragEnd(data: PlaylistItem[]) {
     if (!user) return;
     setDragData(data); // 先に見た目を確定させてスナップバックを防ぐ
     try {
       await playlistRepo.reorderPlaylist(
         user.id,
-        data.map((d) => d.track.id),
+        data.map((d) => d.entryId),
       );
       await reload();
       await audio.refreshBgm();
@@ -161,13 +179,13 @@ export default function PlaylistScreen() {
     }
   }
 
-  function toggleSelect(id: number) {
+  function toggleSelect(entryId: number) {
     setSelectedIds((prev) =>
-      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
+      prev.includes(entryId) ? prev.filter((x) => x !== entryId) : [...prev, entryId],
     );
   }
 
-  // 複数選択した曲をプレイリストからまとめて外す（要件9: ゴミ箱）。お気に入り・曲自体は残る
+  // 複数選択したエントリをプレイリストから削除（要件9: ゴミ箱）。曲自体・お気に入りは残る
   function confirmDeleteSelected() {
     if (!user || selectedIds.length === 0) return;
     const n = selectedIds.length;
@@ -182,7 +200,7 @@ export default function PlaylistScreen() {
           onPress: () => {
             void (async () => {
               try {
-                await playlistRepo.removeManyFromPlaylist(user.id, selectedIds);
+                await playlistRepo.removeEntries(user.id, selectedIds);
                 setSelectedIds([]);
                 await reload();
                 await audio.refreshBgm();
@@ -193,17 +211,6 @@ export default function PlaylistScreen() {
           },
         },
       ],
-    );
-  }
-
-  // クレジット表示（要件9: フリー音源の表記。曲名＋アーティスト）
-  function showCredits(item: LibraryTrack) {
-    Alert.alert(
-      item.track.name,
-      item.track.artist
-        ? `アーティスト: ${item.track.artist}`
-        : "アーティスト情報は登録されていません",
-      [{ text: "閉じる" }],
     );
   }
 
@@ -220,13 +227,13 @@ export default function PlaylistScreen() {
   }
 
   const renderDragRow = useCallback(
-    ({ item, drag, isActive }: RenderItemParams<LibraryTrack>) => {
-      const checked = selectedIds.includes(item.track.id);
+    ({ item, drag, isActive }: RenderItemParams<PlaylistItem>) => {
+      const checked = selectedIds.includes(item.entryId);
       return (
         <ScaleDecorator>
           <View style={[styles.row, isActive && styles.rowActive]}>
             <Pressable
-              onPress={() => toggleSelect(item.track.id)}
+              onPress={() => toggleSelect(item.entryId)}
               hitSlop={8}
               accessibilityLabel={checked ? "選択を外す" : "選択する"}
             >
@@ -347,7 +354,7 @@ export default function PlaylistScreen() {
         </View>
       ) : null}
 
-      {/* 再生＋シャッフル */}
+      {/* 再生＋シャッフル＋リピート */}
       <View style={styles.playRow}>
         <Pressable
           onPress={() => audio.startBgm()}
@@ -386,7 +393,7 @@ export default function PlaylistScreen() {
             </Text>
             <Ionicons name="pencil" size={14} color="rgba(255,255,255,0.6)" />
           </Pressable>
-          {playlist.length > 0 ? (
+          {playlistItems.length > 0 ? (
             <View style={styles.plTools}>
               {editing ? (
                 <Pressable
@@ -394,7 +401,7 @@ export default function PlaylistScreen() {
                   disabled={selectedIds.length === 0}
                   hitSlop={8}
                   style={styles.trashBtn}
-                  accessibilityLabel="選択した曲を外す"
+                  accessibilityLabel="選択した曲を削除"
                 >
                   <Ionicons
                     name="trash-outline"
@@ -424,7 +431,7 @@ export default function PlaylistScreen() {
       {editing && isPlaylist ? (
         <DraggableFlatList
           data={dragData}
-          keyExtractor={(item) => String(item.track.id)}
+          keyExtractor={(item) => String(item.entryId)}
           onDragEnd={({ data }) => void onDragEnd(data)}
           renderItem={renderDragRow}
           containerStyle={styles.listFlex}
@@ -432,31 +439,59 @@ export default function PlaylistScreen() {
         />
       ) : (
         <ScrollView contentContainerStyle={styles.list}>
-          {shown.length === 0 ? (
+          {isPlaylist ? (
+            playlistItems.length === 0 ? (
+              <View style={styles.empty}>
+                <Text style={styles.emptyText}>
+                  「すべて」の一覧から … の「追加」でプレイリストに入れてください
+                </Text>
+              </View>
+            ) : (
+              playlistItems.map((item) => (
+                <TrackRow
+                  key={item.entryId}
+                  track={item.track}
+                  playing={audio.bgmTrack?.id === item.track.id}
+                  onPlay={() => audio.playTrack(item.track.id)}
+                  onOpenMenu={() =>
+                    setMenuItem({
+                      track: item.track,
+                      isFavorite: item.isFavorite,
+                      inPlaylist: true,
+                    })
+                  }
+                />
+              ))
+            )
+          ) : shownLibrary.length === 0 ? (
             <View style={styles.empty}>
               <Text style={styles.emptyText}>
                 {audio.bgmSource === "favorites"
                   ? "★を付けた曲がここに集まります"
-                  : isPlaylist
-                    ? "「すべて」の一覧から ＋ で曲を追加してください"
-                    : "登録された曲がありません"}
+                  : "登録された曲がありません"}
               </Text>
             </View>
           ) : (
-            shown.map((item) => (
+            shownLibrary.map((item) => (
               <TrackRow
                 key={item.track.id}
-                item={item}
+                track={item.track}
                 playing={audio.bgmTrack?.id === item.track.id}
                 onPlay={() => audio.playTrack(item.track.id)}
-                onOpenMenu={() => setMenuItem(item)}
+                onOpenMenu={() =>
+                  setMenuItem({
+                    track: item.track,
+                    isFavorite: item.isFavorite,
+                    inPlaylist: item.inPlaylist,
+                  })
+                }
               />
             ))
           )}
         </ScrollView>
       )}
 
-      {/* 曲の「…」メニュー（お気に入り・プレイリストに追加・クレジット） */}
+      {/* 曲の「…」メニュー（追加・お気に入り・クレジット） */}
       <Modal
         transparent
         visible={menuItem !== null}
@@ -473,14 +508,12 @@ export default function PlaylistScreen() {
               <View style={styles.menuRow}>
                 <MenuAction
                   icon="add-circle"
-                  label={menuItem.playlistPosition != null ? "追加済み" : "追加"}
-                  active={menuItem.playlistPosition != null}
-                  // 既に追加済みなら押せない（外すのは「編集」から）
-                  disabled={menuItem.playlistPosition != null}
+                  label="追加"
+                  active={menuItem.inPlaylist}
                   onPress={() => {
                     const it = menuItem;
                     setMenuItem(null);
-                    void togglePlaylist(it);
+                    handleAdd(it);
                   }}
                 />
                 <MenuAction
@@ -499,7 +532,7 @@ export default function PlaylistScreen() {
                   onPress={() => {
                     const it = menuItem;
                     setMenuItem(null);
-                    showCredits(it);
+                    showCredits(it.track);
                   }}
                 />
               </View>
@@ -588,12 +621,12 @@ function MenuAction({
 }
 
 function TrackRow({
-  item,
+  track,
   playing,
   onPlay,
   onOpenMenu,
 }: {
-  item: LibraryTrack;
+  track: AmbientSound;
   playing: boolean;
   onPlay: () => void;
   onOpenMenu: () => void;
@@ -604,17 +637,17 @@ function TrackRow({
       <Pressable
         style={styles.rowText}
         onPress={onPlay}
-        accessibilityLabel={`${item.track.name}を再生`}
+        accessibilityLabel={`${track.name}を再生`}
       >
         <Text
           style={[styles.trackName, playing && styles.trackNamePlaying]}
           numberOfLines={1}
         >
-          {item.track.name}
+          {track.name}
         </Text>
-        {item.track.artist ? (
+        {track.artist ? (
           <Text style={styles.trackArtist} numberOfLines={1}>
-            {item.track.artist}
+            {track.artist}
           </Text>
         ) : null}
       </Pressable>

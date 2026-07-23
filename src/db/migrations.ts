@@ -31,7 +31,7 @@ type Migration = {
 
 // 現在のスキーマバージョン（db/*.sql が表す「最新」の版）。
 // スキーマを変更したら、スキーマSQLを更新しつつ本値を+1し、DELTA_MIGRATIONS に差分を追加する。
-const SCHEMA_VERSION = 14;
+const SCHEMA_VERSION = 15;
 
 // 既存DB（過去バージョン）向けの差分マイグレーション（version >= 2）。
 // 新規インストールはスキーマSQL（=最新）を適用して一気に SCHEMA_VERSION まで上がるため、
@@ -413,6 +413,46 @@ const DELTA_MIGRATIONS: Migration[] = [
       await db.execAsync(
         "ALTER TABLE audio_setting ADD COLUMN bgm_repeat_one INTEGER NOT NULL DEFAULT 0 CHECK (bgm_repeat_one IN (0, 1))",
       );
+    },
+  },
+  {
+    version: 15,
+    up: async (db) => {
+      // マイプレイリストで同じ曲を複数入れられるようにする（要件9改訂・重複可）。
+      // 1曲=1回だけの user_sound_preference.playlist_position では重複を表せないため、
+      // 並びの実体を playlist_entry（1行=1曲・重複可）へ移す。
+      await db.execAsync(`
+        CREATE TABLE playlist_entry (
+            id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id             INTEGER NOT NULL REFERENCES user(id)          ON DELETE CASCADE,
+            ambient_sound_id    INTEGER NOT NULL REFERENCES ambient_sound(id) ON DELETE CASCADE,
+            position            INTEGER NOT NULL,
+            created_at          TEXT    NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE INDEX idx_playlist_entry_user_pos ON playlist_entry(user_id, position);
+
+        -- 既存のプレイリスト所属（playlist_position 非NULL）を playlist_entry へ移す
+        INSERT INTO playlist_entry (user_id, ambient_sound_id, position)
+        SELECT user_id, ambient_sound_id, playlist_position
+          FROM user_sound_preference
+         WHERE playlist_position IS NOT NULL;
+      `);
+
+      // user_sound_preference から playlist_position を落とす（列の削除＝作り直し）。
+      // 本テーブルを参照する外部キーは無いため DROP による連鎖削除は起きない。
+      await db.execAsync(`
+        CREATE TABLE user_sound_preference_new (
+            user_id             INTEGER NOT NULL REFERENCES user(id)          ON DELETE CASCADE,
+            ambient_sound_id    INTEGER NOT NULL REFERENCES ambient_sound(id) ON DELETE CASCADE,
+            is_enabled          INTEGER NOT NULL DEFAULT 1 CHECK (is_enabled IN (0, 1)),
+            is_favorite         INTEGER NOT NULL DEFAULT 0 CHECK (is_favorite IN (0, 1)),
+            PRIMARY KEY (user_id, ambient_sound_id)
+        );
+        INSERT INTO user_sound_preference_new (user_id, ambient_sound_id, is_enabled, is_favorite)
+        SELECT user_id, ambient_sound_id, is_enabled, is_favorite FROM user_sound_preference;
+        DROP TABLE user_sound_preference;
+        ALTER TABLE user_sound_preference_new RENAME TO user_sound_preference;
+      `);
     },
   },
 ];

@@ -1,7 +1,8 @@
 // 音楽プレイリスト（要件9）のデータ層の検証。再実行可能な手動検証。
 //
 // 目的: playlistRepo / settingsRepo（プレイリスト分）と同じSQLを node:sqlite で発行し、
-//   DBのルール（お気に入り・プレイリスト所属/並び順・再生設定の既定と CHECK）を確かめる。
+//   DBのルール（お気に入り・プレイリストの並び/重複・再生設定の既定と CHECK・マイグレーション）
+//   を確かめる。プレイリストは playlist_entry（1行=1曲・重複可）で持つ。
 //
 // 実行: node scripts/verify/playlist.mjs
 
@@ -46,97 +47,101 @@ let sourceCheck = false;
 try { run("UPDATE audio_setting SET bgm_source = 'bad'"); } catch { sourceCheck = true; }
 check("bgm_source の CHECK で不正値を弾く", sourceCheck);
 
-console.log("B. お気に入り・プレイリスト（user_sound_preference）");
+console.log("B. お気に入り（user_sound_preference）とプレイリスト（playlist_entry・重複可）");
 // BGM曲を3曲用意（シードは2曲。1曲足す）
 run("INSERT INTO ambient_sound (code, sound_type, name) VALUES ('bgm_x', 'bgm', 'X')");
 const bgm = all("SELECT id FROM ambient_sound WHERE sound_type='bgm' ORDER BY id").map((r) => r.id);
 check("BGM曲が3曲ある", bgm.length === 3);
 
-const ensure = (sid) =>
-  run(
-    "INSERT INTO user_sound_preference (user_id, ambient_sound_id) VALUES (?, ?) ON CONFLICT (user_id, ambient_sound_id) DO NOTHING",
-    userId, sid,
-  );
-
-// お気に入りON
-ensure(bgm[0]);
+// お気に入り（setFavorite 相当）
+run(
+  "INSERT INTO user_sound_preference (user_id, ambient_sound_id) VALUES (?, ?) ON CONFLICT (user_id, ambient_sound_id) DO NOTHING",
+  userId, bgm[0],
+);
 run("UPDATE user_sound_preference SET is_favorite = 1 WHERE user_id=? AND ambient_sound_id=?", userId, bgm[0]);
-const favIds = all("SELECT ambient_sound_id FROM user_sound_preference WHERE user_id=? AND is_favorite=1 ORDER BY ambient_sound_id", userId).map((r) => r.ambient_sound_id);
+const favIds = all("SELECT ambient_sound_id FROM user_sound_preference WHERE user_id=? AND is_favorite=1", userId).map((r) => r.ambient_sound_id);
 check("お気に入りを設定できる", favIds.length === 1 && favIds[0] === bgm[0]);
 
-// プレイリスト追加（末尾position）: bgm[2] → bgm[1] の順で入れる
-for (const sid of [bgm[2], bgm[1]]) {
-  ensure(sid);
-  const max = one("SELECT MAX(playlist_position) AS m FROM user_sound_preference WHERE user_id=?", userId).m;
-  run("UPDATE user_sound_preference SET playlist_position=? WHERE user_id=? AND ambient_sound_id=?", (max ?? 0) + 1, userId, sid);
-}
-const order1 = all("SELECT ambient_sound_id FROM user_sound_preference WHERE user_id=? AND playlist_position IS NOT NULL ORDER BY playlist_position", userId).map((r) => r.ambient_sound_id);
-check("追加順（末尾position）で並ぶ", JSON.stringify(order1) === JSON.stringify([bgm[2], bgm[1]]));
+// プレイリストへ追加（addToPlaylist 相当）。bgm[2] → bgm[1] → bgm[2]（重複）
+const addEntry = (sid) =>
+  run(
+    "INSERT INTO playlist_entry (user_id, ambient_sound_id, position) VALUES (?, ?, (SELECT COALESCE(MAX(position),0)+1 FROM playlist_entry WHERE user_id=?))",
+    userId, sid, userId,
+  );
+addEntry(bgm[2]);
+addEntry(bgm[1]);
+addEntry(bgm[2]); // 同じ曲をもう一度（重複）
+const ordered1 = all("SELECT ambient_sound_id FROM playlist_entry WHERE user_id=? ORDER BY position, id", userId).map((r) => r.ambient_sound_id);
+check("重複を含めて追加順に並ぶ", JSON.stringify(ordered1) === JSON.stringify([bgm[2], bgm[1], bgm[2]]));
+check("同じ曲を複数入れられる（重複可）", ordered1.filter((x) => x === bgm[2]).length === 2);
 
-// 並び替え（reorderPlaylist 相当）: [bgm[1], bgm[2]] へ
+// 並び替え（reorderPlaylist 相当）: エントリID順を逆にする
+const entries = all("SELECT id FROM playlist_entry WHERE user_id=? ORDER BY position, id", userId).map((r) => r.id);
+const reversed = [...entries].reverse();
 let pos = 1;
-for (const sid of [bgm[1], bgm[2]]) {
-  run("UPDATE user_sound_preference SET playlist_position=? WHERE user_id=? AND ambient_sound_id=?", pos++, userId, sid);
-}
-const order2 = all("SELECT ambient_sound_id FROM user_sound_preference WHERE user_id=? AND playlist_position IS NOT NULL ORDER BY playlist_position", userId).map((r) => r.ambient_sound_id);
-check("並び替えが反映される", JSON.stringify(order2) === JSON.stringify([bgm[1], bgm[2]]));
+for (const eid of reversed) run("UPDATE playlist_entry SET position=? WHERE user_id=? AND id=?", pos++, userId, eid);
+const ordered2 = all("SELECT ambient_sound_id FROM playlist_entry WHERE user_id=? ORDER BY position, id", userId).map((r) => r.ambient_sound_id);
+check("エントリ単位で並び替えできる", JSON.stringify(ordered2) === JSON.stringify([bgm[2], bgm[1], bgm[2]].reverse()));
 
-// プレイリストから削除（position=NULL）
-run("UPDATE user_sound_preference SET playlist_position=NULL WHERE user_id=? AND ambient_sound_id=?", userId, bgm[1]);
-const order3 = all("SELECT ambient_sound_id FROM user_sound_preference WHERE user_id=? AND playlist_position IS NOT NULL ORDER BY playlist_position", userId).map((r) => r.ambient_sound_id);
-check("削除するとプレイリストから外れる（お気に入りは別軸で残る）", JSON.stringify(order3) === JSON.stringify([bgm[2]]));
-check("削除しても行・お気に入りは残る", one("SELECT is_favorite FROM user_sound_preference WHERE user_id=? AND ambient_sound_id=?", userId, bgm[0]).is_favorite === 1);
+// エントリ削除（removeEntries 相当）: 先頭エントリだけ消す（同じ曲の別エントリは残る）
+const firstEntry = one("SELECT id, ambient_sound_id FROM playlist_entry WHERE user_id=? ORDER BY position, id LIMIT 1", userId);
+run(`DELETE FROM playlist_entry WHERE user_id=? AND id IN (${firstEntry.id})`, userId);
+const remain = all("SELECT ambient_sound_id FROM playlist_entry WHERE user_id=? ORDER BY position, id", userId).map((r) => r.ambient_sound_id);
+check("エントリ単位で削除でき、同じ曲の別エントリは残る", remain.length === 2 && remain.includes(firstEntry.ambient_sound_id));
+check("削除してもお気に入り・曲自体は残る", one("SELECT is_favorite FROM user_sound_preference WHERE user_id=? AND ambient_sound_id=?", userId, bgm[0]).is_favorite === 1);
 
-// 複数まとめて外す（removeManyFromPlaylist 相当）: bgm[0], bgm[2] を IN で NULL に
-run("UPDATE user_sound_preference SET playlist_position = (SELECT MAX(playlist_position)+1 FROM user_sound_preference WHERE user_id=?) WHERE user_id=? AND ambient_sound_id=?", userId, userId, bgm[0]);
-run(`UPDATE user_sound_preference SET playlist_position = NULL WHERE user_id=? AND ambient_sound_id IN (${bgm[0]}, ${bgm[2]})`, userId);
-const order4 = all("SELECT ambient_sound_id FROM user_sound_preference WHERE user_id=? AND playlist_position IS NOT NULL", userId);
-check("複数まとめて外せる（IN で position=NULL）", order4.length === 0);
-
-console.log("C. v13 マイグレーション（audio_setting 作り直し）");
-// v12 時点の audio_setting（bgm_shuffle DEFAULT 1・playlist_name 無し）を再現して v13 を適用する
+console.log("C. マイグレーション v15（playlist_entry へ移行・playlist_position を撤去）");
+// v14 時点（user_sound_preference が playlist_position を持つ）を再現して v15 を適用する
 const mdb = new DatabaseSync(":memory:");
 mdb.exec(`
   CREATE TABLE user (id INTEGER PRIMARY KEY);
   INSERT INTO user (id) VALUES (1);
-  CREATE TABLE audio_setting (
-    user_id INTEGER PRIMARY KEY REFERENCES user(id) ON DELETE CASCADE,
-    bgm_volume INTEGER NOT NULL DEFAULT 50,
-    ambient_volume INTEGER NOT NULL DEFAULT 50,
-    sfx_volume INTEGER NOT NULL DEFAULT 50,
-    bell_volume INTEGER NOT NULL DEFAULT 50,
-    bgm_source TEXT NOT NULL DEFAULT 'all',
-    bgm_shuffle INTEGER NOT NULL DEFAULT 1,
-    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+  CREATE TABLE ambient_sound (id INTEGER PRIMARY KEY);
+  INSERT INTO ambient_sound (id) VALUES (10), (11);
+  CREATE TABLE user_sound_preference (
+    user_id INTEGER NOT NULL,
+    ambient_sound_id INTEGER NOT NULL,
+    is_enabled INTEGER NOT NULL DEFAULT 1,
+    is_favorite INTEGER NOT NULL DEFAULT 0,
+    playlist_position INTEGER,
+    PRIMARY KEY (user_id, ambient_sound_id)
   );
-  INSERT INTO audio_setting (user_id, bgm_volume) VALUES (1, 70);
+  INSERT INTO user_sound_preference (user_id, ambient_sound_id, is_favorite, playlist_position) VALUES
+    (1, 10, 1, 2),   -- お気に入り＋プレイリスト2番目
+    (1, 11, 0, 1);   -- プレイリスト1番目
 `);
-// v13 の up() と同じ作り直しSQL
+// v15 の up() と同じSQL
 mdb.exec(`
-  CREATE TABLE audio_setting_new (
-    user_id INTEGER PRIMARY KEY REFERENCES user(id) ON DELETE CASCADE,
-    bgm_volume INTEGER NOT NULL DEFAULT 50 CHECK (bgm_volume BETWEEN 0 AND 100),
-    ambient_volume INTEGER NOT NULL DEFAULT 50 CHECK (ambient_volume BETWEEN 0 AND 100),
-    sfx_volume INTEGER NOT NULL DEFAULT 50 CHECK (sfx_volume BETWEEN 0 AND 100),
-    bell_volume INTEGER NOT NULL DEFAULT 50 CHECK (bell_volume BETWEEN 0 AND 100),
-    bgm_source TEXT NOT NULL DEFAULT 'all' CHECK (bgm_source IN ('all','favorites','playlist')),
-    bgm_shuffle INTEGER NOT NULL DEFAULT 0 CHECK (bgm_shuffle IN (0,1)),
-    playlist_name TEXT NOT NULL DEFAULT 'マイプレイリスト',
-    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+  CREATE TABLE playlist_entry (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      ambient_sound_id INTEGER NOT NULL,
+      position INTEGER NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
-  INSERT INTO audio_setting_new (user_id, bgm_volume, ambient_volume, sfx_volume, bell_volume, bgm_source, bgm_shuffle, playlist_name, updated_at)
-    SELECT user_id, bgm_volume, ambient_volume, sfx_volume, bell_volume, bgm_source, 0, 'マイプレイリスト', updated_at FROM audio_setting;
-  DROP TABLE audio_setting;
-  ALTER TABLE audio_setting_new RENAME TO audio_setting;
+  CREATE INDEX idx_playlist_entry_user_pos ON playlist_entry(user_id, position);
+  INSERT INTO playlist_entry (user_id, ambient_sound_id, position)
+  SELECT user_id, ambient_sound_id, playlist_position FROM user_sound_preference WHERE playlist_position IS NOT NULL;
 `);
-const m = mdb.prepare("SELECT bgm_volume, bgm_shuffle, playlist_name FROM audio_setting").get();
-check("既存の音量を保ちつつ列を追加できる", m.bgm_volume === 70);
-check("シャッフルは既定OFF(0)へそろえる", m.bgm_shuffle === 0);
-check("playlist_name の既定が入る", m.playlist_name === "マイプレイリスト");
-// v14: 1曲リピート列を ADD COLUMN で追加（作り直し不要）
-mdb.exec("ALTER TABLE audio_setting ADD COLUMN bgm_repeat_one INTEGER NOT NULL DEFAULT 0 CHECK (bgm_repeat_one IN (0, 1))");
-const m2 = mdb.prepare("SELECT bgm_repeat_one FROM audio_setting").get();
-check("v14: bgm_repeat_one を既定0で追加できる", m2.bgm_repeat_one === 0);
+mdb.exec(`
+  CREATE TABLE user_sound_preference_new (
+      user_id INTEGER NOT NULL,
+      ambient_sound_id INTEGER NOT NULL,
+      is_enabled INTEGER NOT NULL DEFAULT 1,
+      is_favorite INTEGER NOT NULL DEFAULT 0,
+      PRIMARY KEY (user_id, ambient_sound_id)
+  );
+  INSERT INTO user_sound_preference_new (user_id, ambient_sound_id, is_enabled, is_favorite)
+  SELECT user_id, ambient_sound_id, is_enabled, is_favorite FROM user_sound_preference;
+  DROP TABLE user_sound_preference;
+  ALTER TABLE user_sound_preference_new RENAME TO user_sound_preference;
+`);
+const migrated = mdb.prepare("SELECT ambient_sound_id FROM playlist_entry ORDER BY position").all().map((r) => r.ambient_sound_id);
+check("既存の所属が並び順どおり playlist_entry へ移る", JSON.stringify(migrated) === JSON.stringify([11, 10]));
+check("お気に入りは user_sound_preference に残る", mdb.prepare("SELECT is_favorite FROM user_sound_preference WHERE ambient_sound_id=10").get().is_favorite === 1);
+let dropped = false;
+try { mdb.prepare("SELECT playlist_position FROM user_sound_preference LIMIT 1").get(); } catch { dropped = true; }
+check("user_sound_preference から playlist_position が消える", dropped);
 mdb.close();
 
 db.close();
