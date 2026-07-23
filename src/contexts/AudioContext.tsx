@@ -187,6 +187,8 @@ export function AudioProvider({ children }: { children: ReactNode }) {
   const sfxPlayers = useRef(new Map<SfxKey, AudioPlayer>());
   // ダッキング中に元の音量へ戻すためのタイマー
   const duckTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // 曲タップの連打を束ねるタイマー（最後のタップだけ実際に音源を差し替えて再生する）
+  const playTrackTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   // BGM・環境音のプレイヤー（環境音は 7-4 で設定する）。ダッキングの対象
   const bgmPlayer = useRef<AudioPlayer | null>(null);
   const ambientPlayer = useRef<AudioPlayer | null>(null);
@@ -259,6 +261,7 @@ export function AudioProvider({ children }: { children: ReactNode }) {
     return () => {
       if (duckTimer.current) clearTimeout(duckTimer.current);
       if (fadeTimer.current) clearInterval(fadeTimer.current);
+      if (playTrackTimer.current) clearTimeout(playTrackTimer.current);
       players.forEach((p) => p.remove());
       players.clear();
       bgmPlayer.current?.remove();
@@ -524,13 +527,28 @@ export function AudioProvider({ children }: { children: ReactNode }) {
   }, [loadBgmTrack, playBgm]);
 
   // 一覧で選んだ曲を再生する（要件9: 曲をタップでその曲を流す）。
-  // 現在のキュー内で該当曲へ位置を合わせ、フェードインで鳴らす
+  // 連打対策: 表示（ハイライト・曲名・進捗リセット）は即時に切り替えて指に追従させ、
+  // 実際の音源差し替え＋再生は最後のタップだけ TAP_COALESCE_MS 待って行う。
+  // ネイティブの差し替え/再生を連打ぶん同期実行して取りこぼす・競合するのを防ぐ。
   const playTrack = useCallback(
     (trackId: number) => {
-      const idx = bgmPoolRef.current.findIndex((t) => t.id === trackId);
+      const pool = bgmPoolRef.current;
+      const idx = pool.findIndex((t) => t.id === trackId);
       if (idx < 0) return;
-      loadBgmTrack(idx);
-      playBgm(true);
+      const track = pool[idx];
+      // 表示だけ先に更新（軽い setState のみ。ネイティブ処理はまだ行わない）
+      bgmIndexRef.current = idx;
+      currentTrackIdRef.current = track.id;
+      setBgmTrack(track);
+      setBgmProgress(0);
+      setBgmPositionSec(0);
+      setBgmDurationSec(0);
+      // 最後のタップだけ実際に読み込んで再生する
+      if (playTrackTimer.current) clearTimeout(playTrackTimer.current);
+      playTrackTimer.current = setTimeout(() => {
+        loadBgmTrack(bgmIndexRef.current);
+        playBgm(true);
+      }, AUDIO.TAP_COALESCE_MS);
     },
     [loadBgmTrack, playBgm],
   );
