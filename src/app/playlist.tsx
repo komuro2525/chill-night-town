@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import Slider from "@react-native-community/slider";
 import { useFocusEffect } from "expo-router";
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -74,12 +74,13 @@ export default function PlaylistScreen() {
   const [menuItem, setMenuItem] = useState<MenuTarget | null>(null);
   const [menuMode, setMenuMode] = useState<"actions" | "credits">("actions");
 
-  // 行を memo 化して曲切替の再描画を関係する行だけに絞るため、コールバックは安定参照にする
-  const openMenu = useCallback((target: MenuTarget) => {
+  function openMenu(target: MenuTarget) {
     setMenuMode("actions");
     setMenuItem(target);
-  }, []);
-  const closeMenu = useCallback(() => setMenuItem(null), []);
+  }
+  function closeMenu() {
+    setMenuItem(null);
+  }
 
   // お気に入りの追加/解除を知らせるトースト（少し出してフェードで消す）
   const [toast, setToast] = useState<{ text: string; added: boolean } | null>(null);
@@ -444,11 +445,15 @@ export default function PlaylistScreen() {
                 <TrackRow
                   key={item.entryId}
                   track={item.track}
-                  isFavorite={item.isFavorite}
-                  inPlaylist
                   playing={audio.bgmTrack?.id === item.track.id}
-                  onPlay={audio.playTrack}
-                  onOpenMenu={openMenu}
+                  onPlay={() => audio.playTrack(item.track.id)}
+                  onOpenMenu={() =>
+                    openMenu({
+                      track: item.track,
+                      isFavorite: item.isFavorite,
+                      inPlaylist: true,
+                    })
+                  }
                 />
               ))
             )
@@ -465,11 +470,15 @@ export default function PlaylistScreen() {
               <TrackRow
                 key={item.track.id}
                 track={item.track}
-                isFavorite={item.isFavorite}
-                inPlaylist={item.inPlaylist}
                 playing={audio.bgmTrack?.id === item.track.id}
-                onPlay={audio.playTrack}
-                onOpenMenu={openMenu}
+                onPlay={() => audio.playTrack(item.track.id)}
+                onOpenMenu={() =>
+                  openMenu({
+                    track: item.track,
+                    isFavorite: item.isFavorite,
+                    inPlaylist: item.inPlaylist,
+                  })
+                }
               />
             ))
           )}
@@ -678,30 +687,23 @@ function MenuAction({
   );
 }
 
-// 行は memo 化する。曲を切り替えたとき、再生中ハイライトが変わる行だけが再描画され、
-// 他の行は再描画されない（＝連続タップ時に再描画とタップが衝突して取りこぼす問題を防ぐ）。
-// そのため onPlay / onOpenMenu は安定参照（曲IDやメニュー対象は行側で渡す）にしている。
-const TrackRow = memo(function TrackRow({
+function TrackRow({
   track,
-  isFavorite,
-  inPlaylist,
   playing,
   onPlay,
   onOpenMenu,
 }: {
   track: AmbientSound;
-  isFavorite: boolean;
-  inPlaylist: boolean;
   playing: boolean;
-  onPlay: (trackId: number) => void;
-  onOpenMenu: (target: MenuTarget) => void;
+  onPlay: () => void;
+  onOpenMenu: () => void;
 }) {
   return (
     <View style={[styles.row, playing && styles.rowPlaying]}>
       {/* 曲名部をタップするとその曲を再生（要件9） */}
       <Pressable
         style={styles.rowText}
-        onPress={() => onPlay(track.id)}
+        onPress={onPlay}
         accessibilityLabel={`${track.name}を再生`}
       >
         <Text
@@ -718,11 +720,7 @@ const TrackRow = memo(function TrackRow({
       </Pressable>
 
       {/* お気に入り・追加・クレジットは「…」メニューにまとめる（要件9） */}
-      <Pressable
-        onPress={() => onOpenMenu({ track, isFavorite, inPlaylist })}
-        hitSlop={8}
-        accessibilityLabel="メニュー"
-      >
+      <Pressable onPress={onOpenMenu} hitSlop={8} accessibilityLabel="メニュー">
         <Ionicons
           name="ellipsis-horizontal"
           size={22}
@@ -731,7 +729,7 @@ const TrackRow = memo(function TrackRow({
       </Pressable>
     </View>
   );
-});
+}
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#05070f" },
