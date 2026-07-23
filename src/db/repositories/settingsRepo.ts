@@ -3,7 +3,7 @@
 // 行は常に1件のため、更新は WHERE を付けず全行を対象にする（他のリポジトリと同じ方針）。
 
 import { getDatabase } from "../database";
-import type { AudioSetting, NotificationSetting } from "../types";
+import type { AudioSetting, BgmSource, NotificationSetting } from "../types";
 
 /** 音量設定を取得する（ユーザー未作成時は null） */
 export async function getAudioSetting(): Promise<AudioSetting | null> {
@@ -42,6 +42,39 @@ export async function updateAudioVolumes(volumes: {
     volumes.ambient,
     volumes.sfx,
     volumes.bell,
+  );
+}
+
+/** BGMの再生設定（ソース・シャッフル）を取得する（要件9・音楽プレイリスト） */
+export async function getPlaybackSettings(): Promise<{
+  source: BgmSource;
+  shuffle: boolean;
+}> {
+  const db = await getDatabase();
+  const row = await db.getFirstAsync<{ bgm_source: BgmSource; bgm_shuffle: number }>(
+    "SELECT bgm_source, bgm_shuffle FROM audio_setting LIMIT 1",
+  );
+  return {
+    source: row?.bgm_source ?? "all",
+    shuffle: (row?.bgm_shuffle ?? 1) === 1,
+  };
+}
+
+/** BGMの再生ソースを保存する（all / favorites / playlist）。要件9 */
+export async function updateBgmSource(source: BgmSource): Promise<void> {
+  const db = await getDatabase();
+  await db.runAsync(
+    "UPDATE audio_setting SET bgm_source = ?, updated_at = datetime('now')",
+    source,
+  );
+}
+
+/** BGMのシャッフルON/OFFを保存する。要件9 */
+export async function updateBgmShuffle(shuffle: boolean): Promise<void> {
+  const db = await getDatabase();
+  await db.runAsync(
+    "UPDATE audio_setting SET bgm_shuffle = ?, updated_at = datetime('now')",
+    shuffle ? 1 : 0,
   );
 }
 

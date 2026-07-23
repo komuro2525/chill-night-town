@@ -22,13 +22,14 @@ import {
   getSfxSource,
   type SfxKey,
 } from "@/constants/audioAssets";
-import { masterRepo, settingsRepo } from "@/db/repositories";
-import type { AmbientSound } from "@/db/types";
+import { masterRepo, playlistRepo, settingsRepo, userRepo } from "@/db/repositories";
+import type { AmbientSound, BgmSource } from "@/db/types";
 import { selectAmbientCode } from "@/lib/ambient-select";
 import {
+  avoidImmediateRepeat,
+  buildBgmQueue,
   duckedVolume,
   isMuted,
-  nextTrackIndex,
   shuffle,
   toPlayerVolume,
 } from "@/lib/audio";
@@ -91,6 +92,20 @@ type AudioContextValue = {
   skipBgm: () => void;
   /** 再生中の曲の頭に戻す（前の曲へは戻らない） */
   restartBgm: () => void;
+  /** 現在の再生ソースの先頭からフェードインで再生する（プレイリスト画面の再生ボタン） */
+  startBgm: () => void;
+
+  // --- プレイリスト（要件9・音楽プレイリスト）。プレイリスト画面が参照・操作する ---
+  /** 再生ソース（all=登録曲全部 / favorites=お気に入り / playlist=マイプレイリスト） */
+  bgmSource: BgmSource;
+  /** シャッフル再生ON/OFF（全ソース共通。一巡するまで同じ曲は再生しない） */
+  bgmShuffle: boolean;
+  /** 再生ソースを切り替えて保存し、キューを組み直す */
+  setBgmSource: (source: BgmSource) => Promise<void>;
+  /** シャッフルON/OFFを切り替えて保存し、キューを組み直す */
+  setBgmShuffle: (on: boolean) => Promise<void>;
+  /** お気に入り・プレイリストの編集後にキューを組み直す（再生中の曲は可能なら維持） */
+  refreshBgm: () => Promise<void>;
 
   // --- 環境音（要件9 / UC 9.1） ---
   /**
@@ -131,6 +146,9 @@ export function AudioProvider({ children }: { children: ReactNode }) {
   const [bgmTrack, setBgmTrack] = useState<AmbientSound | null>(null);
   const [bgmPlaying, setBgmPlaying] = useState(false);
   const [bgmProgress, setBgmProgress] = useState(0);
+  // プレイリスト（要件9）: 再生ソースとシャッフル。正はDB（audio_setting）
+  const [bgmSource, setBgmSourceState] = useState<BgmSource>("all");
+  const [bgmShuffle, setBgmShuffleState] = useState(true);
 
   // 使い捨ての効果音プレイヤー。鳴らすたびに作ると重いため、用途ごとに使い回す
   const sfxPlayers = useRef(new Map<SfxKey, AudioPlayer>());
@@ -143,9 +161,16 @@ export function AudioProvider({ children }: { children: ReactNode }) {
   const volumesRef = useRef<Volumes>(DEFAULT_VOLUMES);
   volumesRef.current = volumes;
 
-  // BGMプール（シャッフル済み）と現在の位置（要件9: シャッフル再生・曲送り）
+  // BGM再生キュー（現在の再生ソース＋シャッフルで組んだ並び）と現在の位置（要件9）
   const bgmPoolRef = useRef<AmbientSound[]>([]);
   const bgmIndexRef = useRef(0);
+  // 現在表示/再生中の曲ID。キュー組み直し時に「同じ曲を維持できるか」の判定に使う
+  const currentTrackIdRef = useRef<number | null>(null);
+  // コールバックから最新のソース・シャッフルを同期的に参照する
+  const bgmSourceRef = useRef<BgmSource>("all");
+  bgmSourceRef.current = bgmSource;
+  const bgmShuffleRef = useRef(true);
+  bgmShuffleRef.current = bgmShuffle;
   // 進行中のフェードを止めるためのタイマー
   const fadeTimer = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -348,6 +373,7 @@ export function AudioProvider({ children }: { children: ReactNode }) {
         player.replace(source);
       }
       setBgmTrack(track);
+      currentTrackIdRef.current = track.id;
       setBgmProgress(0);
       return player;
     },
@@ -375,11 +401,27 @@ export function AudioProvider({ children }: { children: ReactNode }) {
     setBgmPlaying(false);
   }, []);
 
-  // 曲が最後まで再生されたら自動で次の曲へ（要件9）。handleBgmStatus から ref 越しに呼ばれる
-  advanceRef.current = () => {
+  // 次の曲へキューを進める（再生はしない）。末尾まで来たら:
+  //   ・シャッフルON → 新しく並べ替えて先頭へ（直前の曲がすぐ来ないよう回避）＝一巡非重複
+  //   ・シャッフルOFF → 先頭へ戻る（同じ並びを繰り返す）
+  const goToNext = useCallback(() => {
     const pool = bgmPoolRef.current;
     if (pool.length === 0) return;
-    loadBgmTrack(nextTrackIndex(bgmIndexRef.current, pool.length));
+    if (bgmIndexRef.current >= pool.length - 1) {
+      if (bgmShuffleRef.current && pool.length > 1) {
+        const lastId = pool[bgmIndexRef.current]?.id ?? null;
+        bgmPoolRef.current = avoidImmediateRepeat(shuffle(pool), lastId);
+      }
+      loadBgmTrack(0);
+    } else {
+      loadBgmTrack(bgmIndexRef.current + 1);
+    }
+  }, [loadBgmTrack]);
+
+  // 曲が最後まで再生されたら自動で次の曲へ（要件9）。handleBgmStatus から ref 越しに呼ばれる
+  advanceRef.current = () => {
+    if (bgmPoolRef.current.length === 0) return;
+    goToNext();
     playBgm(false);
   };
 
@@ -389,13 +431,12 @@ export function AudioProvider({ children }: { children: ReactNode }) {
   }, [pauseBgm, playBgm]);
 
   const skipBgm = useCallback(() => {
-    const pool = bgmPoolRef.current;
-    if (pool.length === 0) return;
+    if (bgmPoolRef.current.length === 0) return;
     // 停止中はスキップで曲を切り替えるだけ（再生はしない）。再生中は次の曲を続けて鳴らす
     const wasPlaying = !!bgmPlayer.current?.playing;
-    loadBgmTrack(nextTrackIndex(bgmIndexRef.current, pool.length));
+    goToNext();
     if (wasPlaying) playBgm(false);
-  }, [loadBgmTrack, playBgm]);
+  }, [goToNext, playBgm]);
 
   const restartBgm = useCallback(() => {
     setBgmProgress(0);
@@ -403,6 +444,97 @@ export function AudioProvider({ children }: { children: ReactNode }) {
       ?.seekTo(0)
       .catch((e) => console.error("BGMの頭出しに失敗しました", e));
   }, []);
+
+  // 現在の再生ソースの位置からフェードインで再生する（プレイリスト画面の再生ボタン）
+  const startBgm = useCallback(() => playBgm(true), [playBgm]);
+
+  // --- プレイリスト（要件9・音楽プレイリスト） ---
+
+  // 新しく組んだキューを反映する。再生中/表示中の曲がキューに残っていれば位置だけ合わせて
+  // 維持し、無ければ先頭へ（再生中なら先頭曲へ切替、停止中なら表示だけ更新）。
+  const applyQueue = useCallback(
+    (queue: AmbientSound[]) => {
+      bgmPoolRef.current = queue;
+      if (queue.length === 0) {
+        bgmPlayer.current?.pause();
+        bgmIndexRef.current = 0;
+        currentTrackIdRef.current = null;
+        setBgmTrack(null);
+        setBgmPlaying(false);
+        setBgmProgress(0);
+        return;
+      }
+      const curId = currentTrackIdRef.current;
+      const idx = curId != null ? queue.findIndex((t) => t.id === curId) : -1;
+      if (idx >= 0) {
+        // 現在の曲がキューに残っている → 位置だけ合わせて維持（再生/停止はそのまま）
+        bgmIndexRef.current = idx;
+        return;
+      }
+      // 現在の曲が無い → 先頭へ
+      bgmIndexRef.current = 0;
+      if (bgmPlayer.current) {
+        const wasPlaying = bgmPlayer.current.playing;
+        loadBgmTrack(0);
+        if (wasPlaying) playBgm(false);
+      } else {
+        // プレイヤー未生成（起動直後・停止中）は表示だけ更新する
+        currentTrackIdRef.current = queue[0].id;
+        setBgmTrack(queue[0]);
+        setBgmProgress(0);
+      }
+    },
+    [loadBgmTrack, playBgm],
+  );
+
+  // DBの再生設定＋お気に入り/プレイリストを読み、キューを組み直す（要件9）。
+  // ソース・シャッフルの状態もここでDB値に合わせる（DBが正）。
+  const refreshBgmQueue = useCallback(async () => {
+    try {
+      const user = await userRepo.getUser();
+      const [tracks, settings, favoriteIds, playlistIds] = await Promise.all([
+        masterRepo.getBgmTracks(),
+        settingsRepo.getPlaybackSettings(),
+        user ? playlistRepo.getFavoriteIds(user.id) : Promise.resolve<number[]>([]),
+        user
+          ? playlistRepo.getPlaylistOrderedIds(user.id)
+          : Promise.resolve<number[]>([]),
+      ]);
+      // 音源が登録されている曲だけを対象にする
+      const playable = tracks.filter((t) => getBgmSource(t.code));
+      setBgmSourceState(settings.source);
+      setBgmShuffleState(settings.shuffle);
+      bgmSourceRef.current = settings.source;
+      bgmShuffleRef.current = settings.shuffle;
+      applyQueue(
+        buildBgmQueue({
+          tracks: playable,
+          favoriteIds,
+          playlistOrderedIds: playlistIds,
+          source: settings.source,
+          shuffle: settings.shuffle,
+        }),
+      );
+    } catch (e) {
+      console.error("BGMキューの再構築に失敗しました", e);
+    }
+  }, [applyQueue]);
+
+  const setBgmSource = useCallback(
+    async (source: BgmSource) => {
+      await settingsRepo.updateBgmSource(source);
+      await refreshBgmQueue();
+    },
+    [refreshBgmQueue],
+  );
+
+  const setBgmShuffle = useCallback(
+    async (on: boolean) => {
+      await settingsRepo.updateBgmShuffle(on);
+      await refreshBgmQueue();
+    },
+    [refreshBgmQueue],
+  );
 
   // --- 環境音（要件9 / UC 9.1） ---
 
@@ -518,30 +650,12 @@ export function AudioProvider({ children }: { children: ReactNode }) {
     [fadeBgmAndAmbient],
   );
 
-  // BGMプールを読み込む（要件9・改訂）。デフォルトは停止で、曲名だけ表示しておく。
-  // 再生はユーザーがミニプレイヤーの再生ボタンで始める（起動と同時の自動再生はしない）。
-  // 音源が登録されている曲だけをプールに入れる
+  // 起動時にBGMキューを組む（要件9・改訂）。再生ソース・シャッフルはDBから読む。
+  // デフォルトは停止で、先頭曲を表示しておく（再生はミニプレイヤー/プレイリストの再生ボタンから）。
   useEffect(() => {
     if (!ready) return;
-    let cancelled = false;
-    (async () => {
-      try {
-        const tracks = await masterRepo.getBgmTracks();
-        const playable = tracks.filter((t) => getBgmSource(t.code));
-        if (cancelled) return;
-        bgmPoolRef.current = shuffle(playable);
-        bgmIndexRef.current = 0;
-        setBgmTrack(playable.length > 0 ? bgmPoolRef.current[0] : null);
-        setBgmPlaying(false);
-        setBgmProgress(0);
-      } catch (e) {
-        console.error("BGMプールの読み込みに失敗しました", e);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [ready]);
+    void refreshBgmQueue();
+  }, [ready, refreshBgmQueue]);
 
   const setVolume = useCallback(
     async (category: SoundCategory, value: number) => {
@@ -589,6 +703,12 @@ export function AudioProvider({ children }: { children: ReactNode }) {
       toggleBgm,
       skipBgm,
       restartBgm,
+      startBgm,
+      bgmSource,
+      bgmShuffle,
+      setBgmSource,
+      setBgmShuffle,
+      refreshBgm: refreshBgmQueue,
       setAmbientForWeather,
       setGoodnight,
     }),
@@ -605,6 +725,12 @@ export function AudioProvider({ children }: { children: ReactNode }) {
       toggleBgm,
       skipBgm,
       restartBgm,
+      startBgm,
+      bgmSource,
+      bgmShuffle,
+      setBgmSource,
+      setBgmShuffle,
+      refreshBgmQueue,
       setAmbientForWeather,
       setGoodnight,
     ],

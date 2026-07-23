@@ -1,4 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
+import { useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import {
   type LayoutChangeEvent,
@@ -36,6 +37,7 @@ const PLAY_BUTTON_SIZE = 44;
 const TEXT_WIDTH = 180;
 
 export function BgmMiniPlayer() {
+  const router = useRouter();
   const {
     volumes,
     bgmTrack,
@@ -52,23 +54,30 @@ export function BgmMiniPlayer() {
 
   return (
     <View style={styles.container}>
-      {/* 長い曲名はスクロール表示（要件9。収まる曲名は静止したまま） */}
-      <MarqueeText text={bgmTrack.name} style={styles.title} width={TEXT_WIDTH} />
-      {bgmTrack.artist ? (
-        <Text style={styles.artist} numberOfLines={1}>
-          {bgmTrack.artist}
-        </Text>
-      ) : null}
+      {/* 曲名エリアをタップするとプレイリスト画面へ（要件9・音楽プレイリスト） */}
+      <Pressable
+        onPress={() => router.push("/playlist")}
+        accessibilityLabel="プレイリストを開く"
+        style={({ pressed }) => [styles.infoArea, pressed && styles.pressed]}
+      >
+        {/* 長い曲名はスクロール表示（要件9。収まる曲名は静止したまま） */}
+        <MarqueeText text={bgmTrack.name} style={styles.title} width={TEXT_WIDTH} />
+        {bgmTrack.artist ? (
+          <Text style={styles.artist} numberOfLines={1}>
+            {bgmTrack.artist}
+          </Text>
+        ) : null}
 
-      {/* 再生位置の進捗バー（要件9: 曲がどれくらい進んだか視覚的に示す） */}
-      <View style={styles.progressTrack}>
-        <View
-          style={[
-            styles.progressFill,
-            { width: `${Math.round(Math.min(1, Math.max(0, bgmProgress)) * 100)}%` },
-          ]}
-        />
-      </View>
+        {/* 再生位置の進捗バー（要件9: 曲がどれくらい進んだか視覚的に示す） */}
+        <View style={styles.progressTrack}>
+          <View
+            style={[
+              styles.progressFill,
+              { width: `${Math.round(Math.min(1, Math.max(0, bgmProgress)) * 100)}%` },
+            ]}
+          />
+        </View>
+      </Pressable>
 
       <View style={styles.controls}>
         {/* 巻き戻し: 再生中の曲の頭に戻る（前の曲へは戻らない） */}
@@ -191,6 +200,9 @@ function ControlButton({
 
 const styles = StyleSheet.create({
   container: {
+    alignItems: "flex-end",
+  },
+  infoArea: {
     alignItems: "flex-end",
   },
   title: {

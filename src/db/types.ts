@@ -224,12 +224,17 @@ export type NotificationSetting = {
   updated_at: string;
 };
 
+/** BGMの再生ソース（要件9・音楽プレイリスト） */
+export type BgmSource = "all" | "favorites" | "playlist";
+
 export type AudioSetting = {
   user_id: number;
   bgm_volume: number;
   ambient_volume: number;
   sfx_volume: number;
   bell_volume: number;
+  bgm_source: BgmSource;
+  bgm_shuffle: Bool;
   updated_at: string;
 };
 
@@ -237,4 +242,7 @@ export type UserSoundPreference = {
   user_id: number;
   ambient_sound_id: number;
   is_enabled: Bool;
+  is_favorite: Bool;
+  /** マイプレイリスト内の並び順（NULL=非所属） */
+  playlist_position: number | null;
 };

@@ -1,5 +1,7 @@
 import { AUDIO } from "@/constants/domain";
 import {
+  avoidImmediateRepeat,
+  buildBgmQueue,
   duckedVolume,
   isMuted,
   nextTrackIndex,
@@ -118,6 +120,90 @@ describe("nextTrackIndex（曲が終わったら次の曲へ。要件9）", () =
 
   test("空のプールでは0を返す（呼び出し側は再生しない）", () => {
     expect(nextTrackIndex(0, 0)).toBe(0);
+  });
+});
+
+describe("buildBgmQueue（再生ソース×シャッフルでキューを組む・要件9）", () => {
+  const tracks = [{ id: 1 }, { id: 2 }, { id: 3 }, { id: 4 }];
+
+  test("all: 登録曲全部を tracks の順で返す（シャッフルOFF）", () => {
+    const q = buildBgmQueue({
+      tracks,
+      favoriteIds: [],
+      playlistOrderedIds: [],
+      source: "all",
+      shuffle: false,
+    });
+    expect(q.map((t) => t.id)).toEqual([1, 2, 3, 4]);
+  });
+
+  test("favorites: ★の曲だけを tracks の順（安定順）で返す", () => {
+    const q = buildBgmQueue({
+      tracks,
+      favoriteIds: [3, 1],
+      playlistOrderedIds: [],
+      source: "favorites",
+      shuffle: false,
+    });
+    expect(q.map((t) => t.id)).toEqual([1, 3]);
+  });
+
+  test("playlist: playlistOrderedIds の順で返す（tracks に無いidは除く）", () => {
+    const q = buildBgmQueue({
+      tracks,
+      favoriteIds: [],
+      playlistOrderedIds: [4, 2, 99],
+      source: "playlist",
+      shuffle: false,
+    });
+    expect(q.map((t) => t.id)).toEqual([4, 2]);
+  });
+
+  test("シャッフルONでも対象は全曲ちょうど1回ずつ（落とさない・重複しない）", () => {
+    const q = buildBgmQueue({
+      tracks,
+      favoriteIds: [],
+      playlistOrderedIds: [],
+      source: "all",
+      shuffle: true,
+      random: makeSequenceRandom([0.9, 0.1, 0.5]),
+    });
+    expect(q.map((t) => t.id).sort()).toEqual([1, 2, 3, 4]);
+  });
+
+  test("お気に入り0件なら空（呼び出し側は再生しない）", () => {
+    const q = buildBgmQueue({
+      tracks,
+      favoriteIds: [],
+      playlistOrderedIds: [],
+      source: "favorites",
+      shuffle: false,
+    });
+    expect(q).toEqual([]);
+  });
+
+  test("元の tracks 配列は変更しない", () => {
+    const copy = tracks.map((t) => ({ ...t }));
+    buildBgmQueue({ tracks, favoriteIds: [2], playlistOrderedIds: [1], source: "all", shuffle: true });
+    expect(tracks).toEqual(copy);
+  });
+});
+
+describe("avoidImmediateRepeat（一巡後の再シャッフルで直前の曲を先頭に置かない・要件9）", () => {
+  test("新キューの先頭が直前の曲なら後ろへ送る", () => {
+    const q = [{ id: 3 }, { id: 1 }, { id: 2 }];
+    expect(avoidImmediateRepeat(q, 3).map((t) => t.id)).toEqual([1, 2, 3]);
+  });
+
+  test("先頭が直前の曲でなければそのまま", () => {
+    const q = [{ id: 1 }, { id: 2 }, { id: 3 }];
+    expect(avoidImmediateRepeat(q, 3).map((t) => t.id)).toEqual([1, 2, 3]);
+  });
+
+  test("1曲・空・直前なしはそのまま返す（回避のしようがない）", () => {
+    expect(avoidImmediateRepeat([{ id: 1 }], 1).map((t) => t.id)).toEqual([1]);
+    expect(avoidImmediateRepeat([], 1)).toEqual([]);
+    expect(avoidImmediateRepeat([{ id: 1 }, { id: 2 }], null).map((t) => t.id)).toEqual([1, 2]);
   });
 });
 

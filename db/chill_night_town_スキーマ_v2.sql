@@ -320,11 +320,13 @@ CREATE TABLE additional_study_time (
 CREATE INDEX idx_additional_study_time_user_date ON additional_study_time(user_id, target_date);
 
 -- =====================================================================
--- 15. audio_setting : 音量設定（ユーザー単位・1:1）
+-- 15. audio_setting : 音量設定＋BGM再生設定（ユーザー単位・1:1）
 --     ・BGM / 環境音 / 効果音 / 鐘の音 の4種を各0〜100で管理（既定値50）
 --     ・音量0の音は再生処理自体を行わない（要件9章）
 --     ・ダッキング（鐘の再生中にBGM・環境音を下げる）はアプリ側の
 --       再生制御で行い、設定値は変更しない
+--     ・bgm_source : どの曲群を流すか（all=登録曲全部 / favorites=お気に入り /
+--       playlist=マイプレイリスト）。bgm_shuffle : シャッフル再生のON/OFF（要件9・音楽プレイリスト）
 -- =====================================================================
 CREATE TABLE audio_setting (
     user_id         INTEGER PRIMARY KEY REFERENCES user(id) ON DELETE CASCADE,
@@ -332,17 +334,24 @@ CREATE TABLE audio_setting (
     ambient_volume  INTEGER NOT NULL DEFAULT 50 CHECK (ambient_volume BETWEEN 0 AND 100),
     sfx_volume      INTEGER NOT NULL DEFAULT 50 CHECK (sfx_volume     BETWEEN 0 AND 100),
     bell_volume     INTEGER NOT NULL DEFAULT 50 CHECK (bell_volume    BETWEEN 0 AND 100),
+    bgm_source      TEXT    NOT NULL DEFAULT 'all' CHECK (bgm_source IN ('all', 'favorites', 'playlist')),
+    bgm_shuffle     INTEGER NOT NULL DEFAULT 1 CHECK (bgm_shuffle IN (0, 1)),
     updated_at      TEXT    NOT NULL DEFAULT (datetime('now'))
 );
 
 -- =====================================================================
--- 16. user_sound_preference : 個別音源のON/OFF（将来のユーザー選択機能拡張用。
---     MVPでは使用しない）
+-- 16. user_sound_preference : ユーザーの曲ごとの設定（要件9・音楽プレイリスト）
+--     ・is_favorite       : ★お気に入り（1=お気に入り）
+--     ・playlist_position : マイプレイリスト内の並び順（NULL=非所属 / 非NULLでその順）
+--     ・is_enabled        : 個別ON/OFF（将来拡張用。本機能では未使用）
+--     ・行は★を付けた/プレイリストに入れた曲だけに作る
 -- =====================================================================
 CREATE TABLE user_sound_preference (
     user_id             INTEGER NOT NULL REFERENCES user(id)          ON DELETE CASCADE,
     ambient_sound_id    INTEGER NOT NULL REFERENCES ambient_sound(id) ON DELETE CASCADE,
     is_enabled          INTEGER NOT NULL DEFAULT 1 CHECK (is_enabled IN (0, 1)),
+    is_favorite         INTEGER NOT NULL DEFAULT 0 CHECK (is_favorite IN (0, 1)),
+    playlist_position   INTEGER,
     PRIMARY KEY (user_id, ambient_sound_id)
 );
 

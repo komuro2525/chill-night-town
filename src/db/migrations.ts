@@ -31,7 +31,7 @@ type Migration = {
 
 // 現在のスキーマバージョン（db/*.sql が表す「最新」の版）。
 // スキーマを変更したら、スキーマSQLを更新しつつ本値を+1し、DELTA_MIGRATIONS に差分を追加する。
-const SCHEMA_VERSION = 11;
+const SCHEMA_VERSION = 12;
 
 // 既存DB（過去バージョン）向けの差分マイグレーション（version >= 2）。
 // 新規インストールはスキーマSQL（=最新）を適用して一気に SCHEMA_VERSION まで上がるため、
@@ -353,6 +353,24 @@ const DELTA_MIGRATIONS: Migration[] = [
         BEGIN
             SELECT RAISE(FAIL, 'タグは最大20件までです');
         END;
+      `);
+    },
+  },
+  {
+    version: 12,
+    up: async (db) => {
+      // 音楽プレイリスト機能（要件9）用のカラムを追加する。
+      // audio_setting に BGM の再生ソース・シャッフル設定、user_sound_preference に
+      // お気に入り・マイプレイリストの並び順を足す。既存行は DEFAULT が入る。
+      await db.execAsync(`
+        ALTER TABLE audio_setting ADD COLUMN
+          bgm_source TEXT NOT NULL DEFAULT 'all' CHECK (bgm_source IN ('all', 'favorites', 'playlist'));
+        ALTER TABLE audio_setting ADD COLUMN
+          bgm_shuffle INTEGER NOT NULL DEFAULT 1 CHECK (bgm_shuffle IN (0, 1));
+        ALTER TABLE user_sound_preference ADD COLUMN
+          is_favorite INTEGER NOT NULL DEFAULT 0 CHECK (is_favorite IN (0, 1));
+        ALTER TABLE user_sound_preference ADD COLUMN
+          playlist_position INTEGER;
       `);
     },
   },

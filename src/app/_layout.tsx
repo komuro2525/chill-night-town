@@ -94,6 +94,10 @@ function RootNavigator() {
         options={{ headerShown: true, title: "カレンダー", headerBackTitle: "戻る" }}
       />
       <Stack.Screen
+        name="playlist"
+        options={{ headerShown: true, title: "音楽", headerBackTitle: "戻る" }}
+      />
+      <Stack.Screen
         name="settings/index"
         options={{ headerShown: true, title: "設定", headerBackTitle: "戻る" }}
       />
