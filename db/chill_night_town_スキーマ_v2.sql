@@ -326,7 +326,8 @@ CREATE INDEX idx_additional_study_time_user_date ON additional_study_time(user_i
 --     ・ダッキング（鐘の再生中にBGM・環境音を下げる）はアプリ側の
 --       再生制御で行い、設定値は変更しない
 --     ・bgm_source : どの曲群を流すか（all=登録曲全部 / favorites=お気に入り /
---       playlist=マイプレイリスト）。bgm_shuffle : シャッフル再生のON/OFF（要件9・音楽プレイリスト）
+--       playlist=マイプレイリスト）。bgm_shuffle : シャッフル再生のON/OFF（既定OFF＝並び順）
+--     ・playlist_name : マイプレイリストの表示名（ユーザーが編集できる）。要件9・音楽プレイリスト
 -- =====================================================================
 CREATE TABLE audio_setting (
     user_id         INTEGER PRIMARY KEY REFERENCES user(id) ON DELETE CASCADE,
@@ -335,7 +336,8 @@ CREATE TABLE audio_setting (
     sfx_volume      INTEGER NOT NULL DEFAULT 50 CHECK (sfx_volume     BETWEEN 0 AND 100),
     bell_volume     INTEGER NOT NULL DEFAULT 50 CHECK (bell_volume    BETWEEN 0 AND 100),
     bgm_source      TEXT    NOT NULL DEFAULT 'all' CHECK (bgm_source IN ('all', 'favorites', 'playlist')),
-    bgm_shuffle     INTEGER NOT NULL DEFAULT 1 CHECK (bgm_shuffle IN (0, 1)),
+    bgm_shuffle     INTEGER NOT NULL DEFAULT 0 CHECK (bgm_shuffle IN (0, 1)),
+    playlist_name   TEXT    NOT NULL DEFAULT 'マイプレイリスト',
     updated_at      TEXT    NOT NULL DEFAULT (datetime('now'))
 );
 

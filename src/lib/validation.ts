@@ -130,6 +130,16 @@ export function validateTagName(raw: string): string | null {
   return null;
 }
 
+/** マイプレイリスト名（必須・上限20文字）。要件9・音楽プレイリスト */
+export function validatePlaylistName(raw: string): string | null {
+  const name = raw.trim();
+  if (name.length === 0) return "プレイリストの名前を入力してください";
+  if (name.length > LIMITS.PLAYLIST_NAME_MAX) {
+    return `プレイリストの名前は${LIMITS.PLAYLIST_NAME_MAX}文字以内で入力してください`;
+  }
+  return null;
+}
+
 /** 振り返りメモ（任意・上限500文字）。要件3.4 */
 export function validateMemo(raw: string): string | null {
   if (raw.length > LIMITS.MEMO_MAX) {

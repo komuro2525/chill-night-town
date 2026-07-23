@@ -31,7 +31,7 @@ type Migration = {
 
 // 現在のスキーマバージョン（db/*.sql が表す「最新」の版）。
 // スキーマを変更したら、スキーマSQLを更新しつつ本値を+1し、DELTA_MIGRATIONS に差分を追加する。
-const SCHEMA_VERSION = 12;
+const SCHEMA_VERSION = 13;
 
 // 既存DB（過去バージョン）向けの差分マイグレーション（version >= 2）。
 // 新規インストールはスキーマSQL（=最新）を適用して一気に SCHEMA_VERSION まで上がるため、
@@ -371,6 +371,37 @@ const DELTA_MIGRATIONS: Migration[] = [
           is_favorite INTEGER NOT NULL DEFAULT 0 CHECK (is_favorite IN (0, 1));
         ALTER TABLE user_sound_preference ADD COLUMN
           playlist_position INTEGER;
+      `);
+    },
+  },
+  {
+    version: 13,
+    up: async (db) => {
+      // 音楽プレイリストの追補（要件9改訂）:
+      //   ・シャッフルの既定を ON→OFF（v12で DEFAULT 1 にしたが、既定は並び順が自然なため OFF に直す）
+      //   ・マイプレイリストの表示名 playlist_name を追加（ユーザーが編集できる）
+      // 列の CHECK/DEFAULT は ALTER で変更できないため audio_setting を作り直す。
+      // audio_setting を参照する外部キーは無いため DROP による連鎖削除は起きない。
+      // シャッフル設定は v12 で導入したばかり（未リリース）で保持すべきユーザー選択が無いため、
+      // 既存行は既定の 0（OFF）へそろえる。
+      await db.execAsync(`
+        CREATE TABLE audio_setting_new (
+            user_id         INTEGER PRIMARY KEY REFERENCES user(id) ON DELETE CASCADE,
+            bgm_volume      INTEGER NOT NULL DEFAULT 50 CHECK (bgm_volume     BETWEEN 0 AND 100),
+            ambient_volume  INTEGER NOT NULL DEFAULT 50 CHECK (ambient_volume BETWEEN 0 AND 100),
+            sfx_volume      INTEGER NOT NULL DEFAULT 50 CHECK (sfx_volume     BETWEEN 0 AND 100),
+            bell_volume     INTEGER NOT NULL DEFAULT 50 CHECK (bell_volume    BETWEEN 0 AND 100),
+            bgm_source      TEXT    NOT NULL DEFAULT 'all' CHECK (bgm_source IN ('all', 'favorites', 'playlist')),
+            bgm_shuffle     INTEGER NOT NULL DEFAULT 0 CHECK (bgm_shuffle IN (0, 1)),
+            playlist_name   TEXT    NOT NULL DEFAULT 'マイプレイリスト',
+            updated_at      TEXT    NOT NULL DEFAULT (datetime('now'))
+        );
+        INSERT INTO audio_setting_new
+            (user_id, bgm_volume, ambient_volume, sfx_volume, bell_volume, bgm_source, bgm_shuffle, playlist_name, updated_at)
+        SELECT user_id, bgm_volume, ambient_volume, sfx_volume, bell_volume, bgm_source, 0, 'マイプレイリスト', updated_at
+          FROM audio_setting;
+        DROP TABLE audio_setting;
+        ALTER TABLE audio_setting_new RENAME TO audio_setting;
       `);
     },
   },

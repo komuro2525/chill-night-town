@@ -126,6 +126,26 @@ export async function setInPlaylist(
 }
 
 /**
+ * マイプレイリストから複数曲をまとめて外す（要件9: 編集モードで複数選択＋ゴミ箱）。
+ * 対象の playlist_position を NULL にする（お気に入りや行自体は残す）。1トランザクション。
+ */
+export async function removeManyFromPlaylist(
+  userId: number,
+  soundIds: number[],
+): Promise<void> {
+  if (soundIds.length === 0) return;
+  const db = await getDatabase();
+  const placeholders = soundIds.map(() => "?").join(", ");
+  await db.runAsync(
+    `UPDATE user_sound_preference
+        SET playlist_position = NULL
+      WHERE user_id = ? AND ambient_sound_id IN (${placeholders})`,
+    userId,
+    ...soundIds,
+  );
+}
+
+/**
  * マイプレイリストを並べ替える（要件9: 編集モードでの並び替え）。
  * 渡された曲IDの順に playlist_position を 1..N で振り直す（1トランザクション）。
  */

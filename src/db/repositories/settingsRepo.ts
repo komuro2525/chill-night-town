@@ -56,8 +56,26 @@ export async function getPlaybackSettings(): Promise<{
   );
   return {
     source: row?.bgm_source ?? "all",
-    shuffle: (row?.bgm_shuffle ?? 1) === 1,
+    shuffle: (row?.bgm_shuffle ?? 0) === 1,
   };
+}
+
+/** マイプレイリストの表示名を取得する（要件9・音楽プレイリスト） */
+export async function getPlaylistName(): Promise<string> {
+  const db = await getDatabase();
+  const row = await db.getFirstAsync<{ playlist_name: string }>(
+    "SELECT playlist_name FROM audio_setting LIMIT 1",
+  );
+  return row?.playlist_name ?? "マイプレイリスト";
+}
+
+/** マイプレイリストの表示名を保存する（要件9・音楽プレイリスト） */
+export async function updatePlaylistName(name: string): Promise<void> {
+  const db = await getDatabase();
+  await db.runAsync(
+    "UPDATE audio_setting SET playlist_name = ?, updated_at = datetime('now')",
+    name,
+  );
 }
 
 /** BGMの再生ソースを保存する（all / favorites / playlist）。要件9 */
