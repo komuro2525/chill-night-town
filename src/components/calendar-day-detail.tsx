@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
+  Alert,
   Modal,
   Pressable,
   StyleSheet,
@@ -22,9 +23,14 @@ import Animated, {
   withTiming,
 } from "react-native-reanimated";
 
+import { EditFieldModal } from "@/components/settings-ui";
+import { LIMITS } from "@/constants/domain";
 import { LightColor, Spacing } from "@/constants/theme";
 import type { DayDetail, DaySessionRecord } from "@/db/repositories/calendarRepo";
+import { eventRepo } from "@/db/repositories";
+import type { CalendarEvent } from "@/db/types";
 import { formatMinutes, formatStudyDateLabel } from "@/lib/study-day";
+import { validateEventTitle } from "@/lib/validation";
 import { SessionEditModal } from "./session-edit-modal";
 
 // カレンダーの日別詳細（要件4.1）。
@@ -51,6 +57,7 @@ export function CalendarDayDetail({
   userId,
   onClose,
   onReload,
+  onEventsChanged,
 }: {
   /** 表示する学習日の詳細。null なら閉じている */
   detail: DayDetail | null;
@@ -59,10 +66,74 @@ export function CalendarDayDetail({
   onClose: () => void;
   /** 編集後にその学習日の詳細を読み直す（親が getDayDetail し直す） */
   onReload: (studyDate: string) => void;
+  /** 予定を追加/変更/削除したとき（親が月のマークを読み直す・通知を張り直す） */
+  onEventsChanged?: () => void;
 }) {
   const { height: windowHeight } = useWindowDimensions();
   // 長押しで編集中のセッション（null なら編集していない）
   const [editingSession, setEditingSession] = useState<DaySessionRecord | null>(null);
+
+  // その日の予定（4章）。日付が変わるたびに読み直す
+  const dayDate = detail?.studyDate ?? null;
+  const [events, setEvents] = useState<CalendarEvent[]>([]);
+  // 予定の追加/編集ダイアログ（null=閉、"add"=新規、event=そのタイトルを編集）
+  const [eventEditing, setEventEditing] = useState<
+    { mode: "add" } | { mode: "edit"; event: CalendarEvent } | null
+  >(null);
+
+  const reloadEvents = useCallback(async () => {
+    if (!dayDate || !userId) {
+      setEvents([]);
+      return;
+    }
+    try {
+      setEvents(await eventRepo.getEventsForDate(userId, dayDate));
+    } catch (e) {
+      console.error("予定の読み込みに失敗しました", e);
+    }
+  }, [dayDate, userId]);
+
+  useEffect(() => {
+    void reloadEvents();
+  }, [reloadEvents]);
+
+  async function submitEvent(title: string): Promise<string | void> {
+    const err = validateEventTitle(title);
+    if (err) return err;
+    if (!dayDate || !userId) return;
+    try {
+      if (eventEditing?.mode === "edit") {
+        await eventRepo.updateEventTitle(eventEditing.event.id, title.trim());
+      } else {
+        await eventRepo.addEvent(userId, dayDate, title.trim());
+      }
+      await reloadEvents();
+      onEventsChanged?.();
+    } catch (e) {
+      console.error("予定の保存に失敗しました", e);
+      return "保存に失敗しました。時間をおいて再度お試しください";
+    }
+  }
+
+  function confirmDeleteEvent(ev: CalendarEvent) {
+    Alert.alert("予定を削除しますか", `「${ev.title}」を削除します`, [
+      { text: "やめる", style: "cancel" },
+      {
+        text: "削除する",
+        style: "destructive",
+        onPress: () =>
+          void (async () => {
+            try {
+              await eventRepo.deleteEvent(ev.id);
+              await reloadEvents();
+              onEventsChanged?.();
+            } catch (e) {
+              console.error("予定の削除に失敗しました", e);
+            }
+          })(),
+      },
+    ]);
+  }
   const expandedHeight = Math.round(windowHeight * 0.9);
   const collapsedHeight = Math.round(windowHeight * 0.55);
   // シートの高さは expandedHeight 固定で、translateY で下げて既定の高さに見せる。
@@ -81,6 +152,8 @@ export function CalendarDayDetail({
   const scrollGesture = Gesture.Native();
 
   const hasRecord = detail !== null && detail.sessions.length > 0;
+  // 予定または記録があれば上寄せ、どちらも無ければ中央寄せ（静かな空表示）
+  const hasContent = hasRecord || events.length > 0;
 
   // スライドインは「新規に開いたとき」だけ行う。
   // 編集の保存後は detail を読み直すが、そのときシートを再アニメーションさせない
@@ -208,9 +281,48 @@ export function CalendarDayDetail({
               onScroll={scrollHandler}
               scrollEventThrottle={16}
               style={styles.flex}
-              contentContainerStyle={hasRecord ? styles.scroll : styles.scrollEmpty}
+              contentContainerStyle={hasContent ? styles.scroll : styles.scrollEmpty}
               showsVerticalScrollIndicator={false}
             >
+              {/* 予定（4章）。記録の有無に関わらず常に置く。タップで編集・長押しで削除 */}
+              <View style={styles.eventsSection}>
+                <View style={styles.eventsHead}>
+                  <Text style={styles.eventsTitle}>予定</Text>
+                  <Pressable
+                    onPress={() => setEventEditing({ mode: "add" })}
+                    hitSlop={8}
+                    style={({ pressed }) => [styles.eventsAdd, pressed && styles.pressedDim]}
+                  >
+                    <Text style={styles.eventsAddText}>＋ 追加</Text>
+                  </Pressable>
+                </View>
+                {events.length > 0 ? (
+                  <>
+                    {events.map((ev) => (
+                      <Pressable
+                        key={ev.id}
+                        onPress={() => setEventEditing({ mode: "edit", event: ev })}
+                        onLongPress={() => confirmDeleteEvent(ev)}
+                        delayLongPress={300}
+                        style={({ pressed }) => [styles.eventRow, pressed && styles.pressedDim]}
+                      >
+                        <Text style={styles.eventBullet}>●</Text>
+                        <Text style={styles.eventTitleText} numberOfLines={2}>
+                          {ev.title}
+                        </Text>
+                      </Pressable>
+                    ))}
+                    <Text style={styles.eventsHint}>
+                      予定をタップで編集・長押しで削除
+                    </Text>
+                  </>
+                ) : (
+                  <Text style={styles.eventsEmpty}>
+                    予定はありません（＋で追加）
+                  </Text>
+                )}
+              </View>
+
               {hasRecord ? (
               <>
               {/* その夜の天気・合計・達成 */}
@@ -285,6 +397,19 @@ export function CalendarDayDetail({
           }}
           onClose={() => setEditingSession(null)}
         />
+
+        {/* 予定の追加・タイトル編集 */}
+        <EditFieldModal
+          visible={eventEditing !== null}
+          title={eventEditing?.mode === "edit" ? "予定を編集" : "予定を追加"}
+          description={`${LIMITS.EVENT_TITLE_MAX}文字以内`}
+          initialValue={eventEditing?.mode === "edit" ? eventEditing.event.title : ""}
+          placeholder="例: テスト"
+          maxLength={LIMITS.EVENT_TITLE_MAX}
+          validate={validateEventTitle}
+          onCancel={() => setEventEditing(null)}
+          onSubmit={submitEvent}
+        />
       </GestureHandlerRootView>
     </Modal>
   );
@@ -331,6 +456,42 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
   scroll: { paddingBottom: Spacing.four },
+  eventsSection: {
+    marginBottom: Spacing.four,
+    paddingBottom: Spacing.three,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: "rgba(255,255,255,0.12)",
+  },
+  eventsHead: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: Spacing.two,
+  },
+  eventsTitle: { color: "rgba(255,255,255,0.9)", fontSize: 14, fontWeight: "600" },
+  eventsAdd: {
+    paddingVertical: Spacing.one,
+    paddingHorizontal: Spacing.three,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.3)",
+  },
+  eventsAddText: { color: "rgba(255,255,255,0.9)", fontSize: 13 },
+  eventRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Spacing.two,
+    paddingVertical: Spacing.two,
+  },
+  eventBullet: { color: LightColor, fontSize: 10 },
+  eventTitleText: { color: "rgba(255,255,255,0.95)", fontSize: 15, flex: 1 },
+  eventsHint: {
+    marginTop: Spacing.one,
+    color: "rgba(255,255,255,0.4)",
+    fontSize: 11,
+  },
+  eventsEmpty: { color: "rgba(255,255,255,0.45)", fontSize: 13 },
+  pressedDim: { opacity: 0.6 },
   // 記録が無い日: 中身を広げて中央寄せしつつ、全体を掴んで引っ張れるようにする
   scrollEmpty: { flexGrow: 1, justifyContent: "center" },
   summary: {

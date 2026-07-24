@@ -11,7 +11,7 @@ import { CalendarDayDetail } from "@/components/calendar-day-detail";
 import { MonthSummaryCard } from "@/components/month-summary-card";
 import { LightColor, Spacing } from "@/constants/theme";
 import { useSettings } from "@/contexts/SettingsContext";
-import { calendarRepo } from "@/db/repositories";
+import { calendarRepo, eventRepo } from "@/db/repositories";
 import type {
   DayDetail,
   DayMark,
@@ -34,6 +34,8 @@ export default function CalendarScreen() {
     month: today.getMonth() + 1,
   });
   const [marks, setMarks] = useState<Map<string, DayMark>>(new Map());
+  // 予定がある暦日（マーク表示用。4章）
+  const [eventDates, setEventDates] = useState<Set<string>>(new Set());
   const [summary, setSummary] = useState<MonthSummary | null>(null);
   const [detail, setDetail] = useState<DayDetail | null>(null);
   // カレンダー（夜を1日ずつ辿る）と ふりかえり（月を俯瞰）を切り替える。
@@ -47,16 +49,18 @@ export default function CalendarScreen() {
   const reload = useCallback(async () => {
     const { start, end } = getMonthRange(ym.year, ym.month);
     try {
-      const [markList, sum] = await Promise.all([
+      const [markList, sum, evDates] = await Promise.all([
         calendarRepo.getMonthMarks(start, end),
         calendarRepo.getMonthSummary(start, end),
+        user ? eventRepo.getEventDatesInRange(user.id, start, end) : Promise.resolve<string[]>([]),
       ]);
       setMarks(new Map(markList.map((m) => [m.studyDate, m])));
       setSummary(sum);
+      setEventDates(new Set(evDates));
     } catch (e) {
       console.error("カレンダーの読み込みに失敗しました", e);
     }
-  }, [ym]);
+  }, [ym, user]);
 
   useEffect(() => {
     void reload();
@@ -160,6 +164,8 @@ export default function CalendarScreen() {
                   return <View key={`b${i}`} style={styles.cell} />;
                 const mark = marks.get(cell.dateKey);
                 const isToday = cell.dateKey === todayKey;
+                // 予定がある日は数字を灯り色にする（4章）
+                const hasEvent = eventDates.has(cell.dateKey);
                 return (
                   <Pressable
                     key={cell.dateKey}
@@ -171,7 +177,11 @@ export default function CalendarScreen() {
                   >
                     <View style={[styles.cellInner, isToday && styles.cellToday]}>
                       <Text
-                        style={[styles.dayNum, isToday && styles.dayNumToday]}
+                        style={[
+                          styles.dayNum,
+                          isToday && styles.dayNumToday,
+                          hasEvent && styles.dayNumEvent,
+                        ]}
                       >
                         {cell.day}
                       </Text>
@@ -204,6 +214,8 @@ export default function CalendarScreen() {
         userId={user?.id ?? 0}
         onClose={() => setDetail(null)}
         onReload={(studyDate) => void openDay(studyDate)}
+        // 予定を追加/変更/削除したら、月のマークを読み直す（通知の張り直しは後続で追加）
+        onEventsChanged={() => void reload()}
       />
     </View>
   );
@@ -299,6 +311,11 @@ const styles = StyleSheet.create({
   dayNumToday: {
     color: LightColor,
     fontWeight: "600",
+  },
+  // 予定がある日（4章）。灯り色で「ここに何かある」をそっと示す（急かす赤にはしない）
+  dayNumEvent: {
+    color: LightColor,
+    fontWeight: "700",
   },
   mark: { fontSize: 13 },
   dot: {
