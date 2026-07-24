@@ -2,7 +2,7 @@
 //
 // 通知時刻によって文面を出し分ける:
 //   ・18:00より前（17:30〜17:59）… まだ学習を開始できない時間のため、通常の開始
-//     リマインドではなく「夜が目覚めるまであと◯分」のカウントダウン。
+//     リマインドではなく「この街が目覚めるまであと◯分」のカウントダウン。
 //     ◯分＝18:00−通知時刻（スケジュール登録時に静的に確定できる）
 //   ・18:00以降（〜翌4:30）… 通常の学習開始リマインド
 //
@@ -45,7 +45,7 @@ export function buildNotificationContent(time: string): NotificationContent {
     const remaining = NOTIFICATION_WINDOW.NIGHT_WAKE_MINUTES - toMinutesOfDay(time);
     return {
       title: "もうすぐ夜がひらきます",
-      body: `夜が目覚めるまで、あと${remaining}分。`,
+      body: `この街が目覚めるまで、あと${remaining}分。`,
     };
   }
   return {
