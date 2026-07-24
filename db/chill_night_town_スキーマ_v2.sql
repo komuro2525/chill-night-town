@@ -296,12 +296,15 @@ CREATE INDEX idx_npc_message_trigger ON npc_message(npc_id, trigger_type, emotio
 --     ・OSへのローカル通知のスケジュール登録・解除は設定保存時にアプリ側で行う
 --     ・通知許可が拒否された場合は is_enabled = 0 へ戻す
 --     ・MVPでは送信履歴を保存しない方針のため NotificationLog は作成しない
+--     ・is_enabled は学習開始リマインド、event_notice_enabled は予定のお知らせ（4章）の
+--       全体ON/OFF。予定通知は各予定の1週間前・前日の12:00に鳴らす
 -- =====================================================================
 CREATE TABLE notification_setting (
-    user_id         INTEGER PRIMARY KEY REFERENCES user(id) ON DELETE CASCADE,
-    is_enabled      INTEGER NOT NULL DEFAULT 0 CHECK (is_enabled IN (0, 1)),
-    scheduled_time  TEXT,   -- 'HH:MM' 形式
-    updated_at      TEXT    NOT NULL DEFAULT (datetime('now'))
+    user_id               INTEGER PRIMARY KEY REFERENCES user(id) ON DELETE CASCADE,
+    is_enabled            INTEGER NOT NULL DEFAULT 0 CHECK (is_enabled IN (0, 1)),
+    scheduled_time        TEXT,   -- 'HH:MM' 形式
+    event_notice_enabled  INTEGER NOT NULL DEFAULT 0 CHECK (event_notice_enabled IN (0, 1)),
+    updated_at            TEXT    NOT NULL DEFAULT (datetime('now'))
 );
 
 -- =====================================================================
@@ -318,6 +321,25 @@ CREATE TABLE additional_study_time (
 );
 
 CREATE INDEX idx_additional_study_time_user_date ON additional_study_time(user_id, target_date);
+
+-- =====================================================================
+-- 14b. calendar_event : カレンダーの予定・メモ（4章）
+--     ・event_date は「実カレンダー日付」（'YYYY-MM-DD'）。学習日ではなく暦日で持つ
+--       （例: 8/1のテスト → 8/1。その学習は前夜＝学習日7/31に行う想定）
+--     ・予定がある日はカレンダーで灯り色のマークを出す。1日に複数可
+--     ・通知（1週間前・前日の12:00）は notification_setting.event_notice_enabled が
+--       ON のときだけ、アプリ側でOSローカル通知として登録する
+-- =====================================================================
+CREATE TABLE calendar_event (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id     INTEGER NOT NULL REFERENCES user(id) ON DELETE CASCADE,
+    event_date  TEXT    NOT NULL,  -- 'YYYY-MM-DD'（暦日）
+    title       TEXT    NOT NULL,
+    created_at  TEXT    NOT NULL DEFAULT (datetime('now')),
+    updated_at  TEXT    NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX idx_calendar_event_user_date ON calendar_event(user_id, event_date);
 
 -- =====================================================================
 -- 15. audio_setting : 音量設定＋BGM再生設定（ユーザー単位・1:1）

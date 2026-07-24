@@ -362,12 +362,28 @@ StudySessionとStudyTagの多対多関係を管理する中間テーブル。1�
 
 | カラム名       | データ型     | PK  | FK      | NULL | 初期値          | 説明                              |
 | -------------- | ------------ | :-: | ------- | :--: | --------------- | --------------------------------- |
-| user_id        | INTEGER      | ○  | user.id | 不可 | なし            | 対象ユーザー（ON DELETE CASCADE） |
-| is_enabled     | INTEGER(0/1) |     |         | 不可 | 0               | 通知ON/OFF                        |
-| scheduled_time | TEXT         |     |         | 可   | なし            | 通知時刻（`HH:MM`形式）           |
-| updated_at     | TEXT         |     |         | 不可 | datetime('now') | 更新日時                          |
+| user_id               | INTEGER      | ○  | user.id | 不可 | なし            | 対象ユーザー（ON DELETE CASCADE） |
+| is_enabled            | INTEGER(0/1) |     |         | 不可 | 0               | 学習開始リマインドのON/OFF        |
+| scheduled_time        | TEXT         |     |         | 可   | なし            | 通知時刻（`HH:MM`形式）           |
+| event_notice_enabled  | INTEGER(0/1) |     |         | 不可 | 0               | 予定のお知らせ（4章）の全体ON/OFF |
+| updated_at            | TEXT         |     |         | 不可 | datetime('now') | 更新日時                          |
 
-**補足**: OSへのローカル通知のスケジュール登録・解除は設定保存時にアプリ側で行う（UC 10.3）。通知許可が拒否された場合は`is_enabled=0`へ戻す。送信履歴は保存しない【将来拡張】。
+**補足**: OSへのローカル通知のスケジュール登録・解除は設定保存時にアプリ側で行う（UC 10.3）。通知許可が拒否された場合は`is_enabled=0`へ戻す。送信履歴は保存しない【将来拡張】。`event_notice_enabled` がONのとき、各予定（calendar_event）の1週間前・前日の12:00にローカル通知を登録する。
+
+## 16b. calendar_event（カレンダーの予定・メモ）
+
+**4章**。カレンダーに置く予定・メモ。`event_date` は**暦日**（`YYYY-MM-DD`）で持つ（学習日ではない）。予定がある日はカレンダーで灯り色のマークを出す。1日に複数可。
+
+| カラム名   | データ型 | PK  | FK      | NULL | 初期値          | 説明                                            |
+| ---------- | -------- | :-: | ------- | :--: | --------------- | ----------------------------------------------- |
+| id         | INTEGER  | ○  |         | 不可 | AUTOINCREMENT   | 予定ID                                          |
+| user_id    | INTEGER  |     | user.id | 不可 | なし            | 対象ユーザー（ON DELETE CASCADE）              |
+| event_date | TEXT     |     |         | 不可 | なし            | 予定の暦日（`YYYY-MM-DD`）                      |
+| title      | TEXT     |     |         | 不可 | なし            | 予定の内容（30文字以内）                        |
+| created_at | TEXT     |     |         | 不可 | datetime('now') | 作成日時                                        |
+| updated_at | TEXT     |     |         | 不可 | datetime('now') | 更新日時                                        |
+
+**補足**: 通知（1週間前・前日の12:00）は `notification_setting.event_notice_enabled` がONのときだけ、アプリ側でOSローカル通知として登録する。
 
 ## 17. audio_setting（音量設定＋BGM再生設定）
 

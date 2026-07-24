@@ -130,6 +130,16 @@ export function validateTagName(raw: string): string | null {
   return null;
 }
 
+/** カレンダーの予定タイトル（必須・上限30文字）。4章 */
+export function validateEventTitle(raw: string): string | null {
+  const title = raw.trim();
+  if (title.length === 0) return "予定の内容を入力してください";
+  if (title.length > LIMITS.EVENT_TITLE_MAX) {
+    return `予定は${LIMITS.EVENT_TITLE_MAX}文字以内で入力してください`;
+  }
+  return null;
+}
+
 /** マイプレイリスト名（必須・上限20文字）。要件9・音楽プレイリスト */
 export function validatePlaylistName(raw: string): string | null {
   const name = raw.trim();

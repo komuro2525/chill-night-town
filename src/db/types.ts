@@ -221,6 +221,18 @@ export type NotificationSetting = {
   is_enabled: Bool;
   /** 'HH:MM' 形式 */
   scheduled_time: string | null;
+  /** 予定のお知らせ（4章）の全体ON/OFF */
+  event_notice_enabled: Bool;
+  updated_at: string;
+};
+
+/** カレンダーの予定・メモ（4章）。event_date は暦日 'YYYY-MM-DD' */
+export type CalendarEvent = {
+  id: number;
+  user_id: number;
+  event_date: string;
+  title: string;
+  created_at: string;
   updated_at: string;
 };
 

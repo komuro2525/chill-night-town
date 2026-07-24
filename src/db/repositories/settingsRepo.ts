@@ -126,3 +126,12 @@ export async function updateNotificationSetting(
     enabled ? time : null,
   );
 }
+
+/** 予定のお知らせ（4章）の全体ON/OFFを保存する。OSへの登録・解除は呼び出し側で行う */
+export async function updateEventNoticeEnabled(enabled: boolean): Promise<void> {
+  const db = await getDatabase();
+  await db.runAsync(
+    "UPDATE notification_setting SET event_notice_enabled = ?, updated_at = datetime('now')",
+    enabled ? 1 : 0,
+  );
+}

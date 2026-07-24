@@ -85,6 +85,8 @@ export const LIMITS = {
   SUBTITLE_MAX: 20,
   /** マイプレイリスト名の文字数上限 */
   PLAYLIST_NAME_MAX: 20,
+  /** カレンダーの予定タイトルの文字数上限 */
+  EVENT_TITLE_MAX: 30,
 } as const;
 
 /** 疑似オンライン人数の生成範囲（起動ごとに固定）。要件11章 */
