@@ -17,18 +17,21 @@ export type TimeOfDay = "sunrise" | "day" | "sunset" | "night" | "latenight";
  * 各季節の時間帯の「開始時刻（0時からの分）」。
  * ある時間帯は「自分の開始 〜 次の時間帯の開始の直前」まで（下限含み・上限は次帯へ）。
  * latenight は日を跨ぎ、latenight開始 〜 24:00 と 00:00 〜 sunrise開始の直前 まで。
- * 例（春）: sunrise 05:00-06:59 / day 07:00-16:59 / sunset 17:00-18:59 /
- *          night 19:00-22:59 / latenight 23:00-04:59
+ * 例（春）: sunrise 05:00-06:59 / day 07:00-17:29 / sunset 17:30-18:29 /
+ *          night 18:30-22:59 / latenight 23:00-04:59
+ *
+ * sunset帯は「空が赤くなり始め（日の入りの約35分前）〜暗くなる（日の入り後約30分＝薄明終わり）」に
+ * 合わせている（東京あたりの実際の日の入りが基準。季節ごとに代表的な時刻を採る）。
  */
 const SEASON_BOUNDARIES: Record<
   Season,
   { sunrise: number; day: number; sunset: number; night: number; latenight: number }
 > = {
-  // 分 = 時*60+分
-  spring: { sunrise: 5 * 60, day: 7 * 60, sunset: 17 * 60, night: 19 * 60, latenight: 23 * 60 },
-  summer: { sunrise: 4 * 60, day: 6 * 60, sunset: 18 * 60, night: 20 * 60, latenight: 23 * 60 },
-  autumn: { sunrise: 5 * 60, day: 7 * 60, sunset: 16 * 60 + 30, night: 18 * 60 + 30, latenight: 23 * 60 },
-  winter: { sunrise: 6 * 60, day: 8 * 60, sunset: 16 * 60, night: 18 * 60, latenight: 23 * 60 },
+  // 分 = 時*60+分。sunset/night は実際の日の入り（春≈18:00 / 夏≈18:50 / 秋≈17:15 / 冬≈16:40）に合わせる
+  spring: { sunrise: 5 * 60, day: 7 * 60, sunset: 17 * 60 + 30, night: 18 * 60 + 30, latenight: 23 * 60 },
+  summer: { sunrise: 4 * 60, day: 6 * 60, sunset: 18 * 60 + 15, night: 19 * 60 + 30, latenight: 23 * 60 },
+  autumn: { sunrise: 5 * 60, day: 7 * 60, sunset: 16 * 60 + 40, night: 17 * 60 + 45, latenight: 23 * 60 },
+  winter: { sunrise: 6 * 60, day: 8 * 60, sunset: 16 * 60, night: 17 * 60 + 10, latenight: 23 * 60 },
 };
 
 /** 月（1〜12）から季節を返す */
