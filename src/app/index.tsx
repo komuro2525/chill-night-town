@@ -18,6 +18,7 @@ import {
 } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Animated, {
+  FadeIn,
   useAnimatedStyle,
   useSharedValue,
 } from "react-native-reanimated";
@@ -93,6 +94,9 @@ import {
 // S2 ホーム画面（夜の街）。
 // Phase 2-1: 選択中の街の背景（レベル連動）＋スワイプ探索（要件2.2）＋OSステータスバー非表示。
 // 上部UI（日付・レベル・時計＝タイマー、各アイコン、BGMミニプレイヤー等）は後続の P2 で載せる。
+/** ホームで無操作が続くとアイドル最小表示へ移るまでの時間（ミリ秒） */
+const HOME_IDLE_MS = 30_000;
+
 export default function HomeScreen() {
   const { user, reload: reloadSettings, selectedTown } = useSettings();
   const timer = useTimer();
@@ -106,6 +110,10 @@ export default function HomeScreen() {
   const [loading, setLoading] = useState(true);
   // 鑑賞モード（要件2.4）: UIを一括非表示にして夜の街だけを眺める。状態は保存しない
   const [immersive, setImmersive] = useState(false);
+  // アイドル最小表示: ホームで一定時間無操作だと、操作系UIを隠して時刻など最小限だけ残す。
+  // どこかを触ると即復帰する（状態は保存しない）
+  const [idle, setIdle] = useState(false);
+  const idleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   // 開発用: 時刻の上書き（null = 実時間）。夜間帯判定の確認に使う。__DEV__ でのみ切り替える
   const [devHour, setDevHour] = useState<number | null>(null);
   // その学習日に選択済みの天気（未選択は null）。演出・記録の参照先は daily_night_weather
@@ -641,8 +649,52 @@ export default function HomeScreen() {
   // 横向きの閲覧ビューを出すか（操作/演出中は縦へ戻すため出さない）
   const landscapeMode = isLandscape && !needsPortrait;
 
+  // 通常のホームUI（上部情報・各ボタン）を出す条件。モーダル・鑑賞・横向き中は出さない
+  const uiVisible =
+    !landscapeMode && !immersive && !setupOpen && !timerOpen && !record;
+  // アイドル最小表示のカウントを動かす条件（読み込み中は動かさない）
+  const idleActive = uiVisible && !loading;
+
+  // アイドル判定はコールバックから最新の可否を見たいので ref に控える
+  const idleActiveRef = useRef(idleActive);
+  idleActiveRef.current = idleActive;
+
+  // 無操作タイマーを張り直す（対象状態のときだけ）。発火でアイドル最小表示へ移る
+  const armIdle = useCallback(() => {
+    if (idleTimer.current) clearTimeout(idleTimer.current);
+    if (!idleActiveRef.current) return;
+    idleTimer.current = setTimeout(() => setIdle(true), HOME_IDLE_MS);
+  }, []);
+
+  // 操作があった（触れた）ときに呼ぶ: 最小表示を解除し、無操作タイマーを張り直す
+  const markActive = useCallback(() => {
+    setIdle(false);
+    armIdle();
+  }, [armIdle]);
+
+  // 対象状態に入ったらタイマー開始、外れたら止めて最小表示も解除する
+  useEffect(() => {
+    if (idleActive) {
+      armIdle();
+    } else {
+      if (idleTimer.current) clearTimeout(idleTimer.current);
+      setIdle(false);
+    }
+    return () => {
+      if (idleTimer.current) clearTimeout(idleTimer.current);
+    };
+  }, [idleActive, armIdle]);
+
   return (
-    <View style={styles.container}>
+    <View
+      style={styles.container}
+      // 画面のどこかに触れたら最小表示を解除して無操作タイマーを張り直す。
+      // capture で全ての触りはじめを拾い、responder は奪わない（子の操作は妨げない）
+      onStartShouldSetResponderCapture={() => {
+        markActive();
+        return false;
+      }}
+    >
       {/* OSのステータスバー（時刻・バッテリー）を隠して全面背景にする */}
       <StatusBar hidden />
 
@@ -657,6 +709,8 @@ export default function HomeScreen() {
         level={level}
         session={timer.session}
         onRestoreFromImmersive={() => {
+          // 背景タップ: アイドル最小表示を解除（＝通常表示へ戻す）し、鑑賞モードも解除する
+          markActive();
           if (immersive) setImmersive(false);
         }}
       />
@@ -665,10 +719,14 @@ export default function HomeScreen() {
         <ActivityIndicator style={styles.centerLoader} color="#ffffff" />
       ) : null}
 
+      {/* 無操作が続いたときの最小表示（操作系UIを隠し、時刻など最小限だけ残す）。
+          背景（夜の街）はそのまま透かす。どこかに触れると通常表示へ戻る */}
+      {uiVisible && idle ? <IdleOverlay session={timer.session} /> : null}
+
       {/* 鑑賞モード中はすべてのUIを隠す（鑑賞モードボタン自身を含む）。
           横向き・タイマー設定モーダル表示中も同様に隠し、背景は夜の街だけを透かす
-          （ボタン類が透けるとごちゃついて見えるため） */}
-      {!landscapeMode && !immersive && !setupOpen && !timerOpen && !record ? (
+          （ボタン類が透けるとごちゃついて見えるため）。最小表示中も通常UIは隠す */}
+      {uiVisible && !idle ? (
         <>
           {selected ? (
             <TopOverlay
@@ -976,6 +1034,66 @@ function formatDateTimeLabel(d: Date): string {
   const mi = String(d.getMinutes()).padStart(2, "0");
   const ampm = h24 < 12 ? "AM" : "PM";
   return `${yyyy}/${mm}/${dd}(${weekday}) ${hh}:${mi} ${ampm}`;
+}
+
+// 例: 2026/08/01(月)
+function formatIdleDate(d: Date): string {
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${yyyy}/${mm}/${dd}(${WEEKDAYS[d.getDay()]})`;
+}
+
+// 例: 21:00 PM
+function formatIdleTime(d: Date): string {
+  const h24 = d.getHours();
+  const hh = String(h24).padStart(2, "0");
+  const mi = String(d.getMinutes()).padStart(2, "0");
+  return `${hh}:${mi} ${h24 < 12 ? "AM" : "PM"}`;
+}
+
+// アイドル最小表示（無操作が続いたとき）。操作系UIを隠し、時刻・日付・再生中と、
+// 計測中のみ時計＋「作業中」だけを残す。タップ検知は親が担うためここは非操作（表示専用）。
+function IdleOverlay({ session }: { session: ActiveSession | null }) {
+  const insets = useSafeAreaInsets();
+  // 分が変わったら表示も更新する（大きな時刻表示）
+  const now = useAppNow(30 * 1000);
+  const { bgmTrack } = useAudio();
+  const top = insets.top + Spacing.two;
+
+  return (
+    <Animated.View
+      style={StyleSheet.absoluteFill}
+      pointerEvents="none"
+      entering={FadeIn.duration(600)}
+    >
+      {/* 左上: バッテリー・日付・大きな時刻・再生中 */}
+      <View style={[styles.absolute, styles.topLeft, { top, left: Spacing.four }]}>
+        <BatteryIndicator />
+        <View style={styles.idleInfo}>
+          <Text style={styles.idleDate}>{formatIdleDate(now)}</Text>
+          <Text style={styles.idleTime}>{formatIdleTime(now)}</Text>
+          <Text style={styles.idleNowPlaying} numberOfLines={1}>
+            ♪ {bgmTrack ? bgmTrack.name : "音楽なし"}
+          </Text>
+        </View>
+      </View>
+
+      {/* 計測中のみ右上に時計＋「作業中」を残す（未計測時は何も出さない） */}
+      {session ? (
+        <View style={[styles.absolute, { top, right: Spacing.four }]}>
+          <ClockButton
+            size={CLOCK_SIZE}
+            now={now}
+            onPress={() => {}}
+            disabled={false}
+            endAt={new Date(getPlannedEndMs(session, now.getTime()))}
+          />
+          <MeasuringIndicator session={session} width={CLOCK_SIZE} />
+        </View>
+      ) : null}
+    </Animated.View>
+  );
 }
 
 // 上部オーバーレイ。左上: バッテリー＋日時＋今夜の学習仲間、右上: 大きな時計＝タイマー、
@@ -1300,6 +1418,34 @@ const styles = StyleSheet.create({
     color: "#ffffff",
     fontSize: 13,
     fontWeight: "500",
+    textShadowColor: "rgba(0,0,0,0.6)",
+    textShadowRadius: 4,
+  },
+  // アイドル最小表示の左上（日付・大きな時刻・再生中）
+  idleInfo: {
+    marginTop: Spacing.two,
+    gap: 2,
+  },
+  idleDate: {
+    color: "rgba(255,255,255,0.85)",
+    fontSize: 13,
+    fontWeight: "500",
+    textShadowColor: "rgba(0,0,0,0.6)",
+    textShadowRadius: 4,
+  },
+  idleTime: {
+    color: "#ffffff",
+    fontSize: 40,
+    fontWeight: "300",
+    letterSpacing: 1,
+    textShadowColor: "rgba(0,0,0,0.6)",
+    textShadowRadius: 6,
+  },
+  idleNowPlaying: {
+    marginTop: Spacing.two,
+    color: "rgba(255,255,255,0.8)",
+    fontSize: 13,
+    maxWidth: 240,
     textShadowColor: "rgba(0,0,0,0.6)",
     textShadowRadius: 4,
   },
