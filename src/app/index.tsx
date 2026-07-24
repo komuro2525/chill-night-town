@@ -689,10 +689,12 @@ export default function HomeScreen() {
   return (
     <View
       style={styles.container}
-      // 画面のどこかに触れたら最小表示を解除して無操作タイマーを張り直す。
+      // 触りはじめでは無操作タイマーを張り直すだけにする（最小表示はまだ解除しない）。
+      // 触れた瞬間に解除すると、時計を押しても onPress 前に時計が消えて詳細へ行けないため。
+      // 最小表示の解除は指を離したとき（時計以外＝背景タップ／時計＝onPressで詳細）に行う。
       // capture で全ての触りはじめを拾い、responder は奪わない（子の操作は妨げない）
       onStartShouldSetResponderCapture={() => {
-        markActive();
+        armIdle();
         return false;
       }}
     >
