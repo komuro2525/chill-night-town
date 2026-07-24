@@ -187,16 +187,9 @@ export function AudioProvider({ children }: { children: ReactNode }) {
   const sfxPlayers = useRef(new Map<SfxKey, AudioPlayer>());
   // ダッキング中に元の音量へ戻すためのタイマー
   const duckTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // BGM・環境音のプレイヤー（環境音は 7-4 で設定する）。ダッキングの対象。
-  // bgmPlayer は「いまアクティブなBGMプレイヤー」を指す（各所の一時停止/音量/シーク等はこれを操作）。
+  // BGM・環境音のプレイヤー（環境音は 7-4 で設定する）。ダッキングの対象
   const bgmPlayer = useRef<AudioPlayer | null>(null);
   const ambientPlayer = useRef<AudioPlayer | null>(null);
-  // 曲ごとのBGMプレイヤーのキャッシュ（code -> player）。曲の切替は replace ではなく
-  // プレイヤーの入れ替えで行う（replace を高速連打すると切り替わらなくなる競合を避けるため）。
-  const bgmPlayers = useRef(new Map<string, AudioPlayer>());
-  // アクティブなプレイヤーに張っている進捗リスナーの購読（切替時に張り替える）。
-  // 非アクティブなプレイヤーの状態で進捗表示を上書きしないよう、リスナーは1つだけにする。
-  const bgmStatusSub = useRef<{ remove: () => void } | null>(null);
   // 最新の音量を同期的に参照する（コールバック内で古い値を掴まないため）
   const volumesRef = useRef<Volumes>(DEFAULT_VOLUMES);
   volumesRef.current = volumes;
@@ -263,15 +256,12 @@ export function AudioProvider({ children }: { children: ReactNode }) {
   // 読むのは意図どおりのため、当該の hooks 警告は抑制する。
   useEffect(() => {
     const players = sfxPlayers.current;
-    const bgmCache = bgmPlayers.current;
     return () => {
       if (duckTimer.current) clearTimeout(duckTimer.current);
       if (fadeTimer.current) clearInterval(fadeTimer.current);
       players.forEach((p) => p.remove());
       players.clear();
-      bgmStatusSub.current?.remove();
-      bgmCache.forEach((p) => p.remove());
-      bgmCache.clear();
+      bgmPlayer.current?.remove();
       ambientPlayer.current?.remove();
     };
   }, []);
@@ -419,36 +409,19 @@ export function AudioProvider({ children }: { children: ReactNode }) {
       const pool = bgmPoolRef.current;
       if (pool.length === 0) return null;
       const track = pool[index];
-
-      // 曲ごとにプレイヤーをキャッシュして使い回す（切替は replace ではなく入れ替え）。
-      // updateInterval を指定して再生位置の更新を受け取る（進捗バー用）
-      const cache = bgmPlayers.current;
-      let player = cache.get(track.code);
-      if (!player) {
-        const source = getBgmSource(track.code);
-        if (!source) return null; // プールは登録済みの音源だけで作るため通常ここは通らない
-        player = createAudioPlayer(source, { updateInterval: 500 });
-        cache.set(track.code, player);
-      }
+      const source = getBgmSource(track.code);
+      if (!source) return null; // プールは登録済みの音源だけで作るため通常ここは通らない
 
       bgmIndexRef.current = index;
-      const prev = bgmPlayer.current;
-      if (prev && prev !== player) {
-        // 直前の曲は止めて頭出ししておく（次に選んだとき頭から鳴るように）
-        try {
-          prev.pause();
-          void prev.seekTo(0);
-        } catch {
-          // 解放済みなら無視
-        }
+      let player = bgmPlayer.current;
+      if (!player) {
+        // updateInterval を指定して再生位置の更新を受け取る（進捗バー用）
+        player = createAudioPlayer(source, { updateInterval: 500 });
+        bgmPlayer.current = player;
+        player.addListener("playbackStatusUpdate", handleBgmStatus);
+      } else {
+        player.replace(source);
       }
-      bgmPlayer.current = player;
-      // 進捗リスナーはアクティブなプレイヤーだけに張る（張り替える）
-      if (bgmStatusSub.current) bgmStatusSub.current.remove();
-      bgmStatusSub.current = player.addListener(
-        "playbackStatusUpdate",
-        handleBgmStatus,
-      );
       // 1曲リピートON時はプレイヤー自身でループさせる（曲終了イベントを待たず途切れない）
       player.loop = bgmRepeatOneRef.current;
       setBgmTrack(track);
