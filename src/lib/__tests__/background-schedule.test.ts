@@ -34,11 +34,12 @@ describe("getSeason（月で決まる季節）", () => {
   });
 });
 
-describe("getTimeOfDay 春（sunrise5:00/day7:00/sunset17:30/night18:30/latenight23:00）", () => {
+describe("getTimeOfDay 春（sunrise4:45/day5:45/sunset17:30/night18:30/latenight23:00）", () => {
   const tod = (hh: number, mm: number): TimeOfDay => getTimeOfDay(at(4, 1, hh, mm));
-  test("04:59 は latenight（日跨ぎの尾）", () => expect(tod(4, 59)).toBe("latenight"));
-  test("05:00 ちょうどは sunrise", () => expect(tod(5, 0)).toBe("sunrise"));
-  test("07:00 ちょうどは day", () => expect(tod(7, 0)).toBe("day"));
+  test("04:44 は latenight（日跨ぎの尾）", () => expect(tod(4, 44)).toBe("latenight"));
+  test("04:45 ちょうどは sunrise", () => expect(tod(4, 45)).toBe("sunrise"));
+  test("05:44 は sunrise", () => expect(tod(5, 44)).toBe("sunrise"));
+  test("05:45 ちょうどは day", () => expect(tod(5, 45)).toBe("day"));
   test("17:29 は day", () => expect(tod(17, 29)).toBe("day"));
   test("17:30 ちょうどは sunset", () => expect(tod(17, 30)).toBe("sunset"));
   test("18:29 は sunset", () => expect(tod(18, 29)).toBe("sunset"));
@@ -48,11 +49,12 @@ describe("getTimeOfDay 春（sunrise5:00/day7:00/sunset17:30/night18:30/latenigh
   test("00:00 は latenight", () => expect(tod(0, 0)).toBe("latenight"));
 });
 
-describe("getTimeOfDay 夏（sunrise4:00/day6:00/sunset18:15/night19:30/latenight23:00）", () => {
+describe("getTimeOfDay 夏（sunrise4:10/day5:10/sunset18:15/night19:30/latenight23:00）", () => {
   const tod = (hh: number, mm: number): TimeOfDay => getTimeOfDay(at(7, 1, hh, mm));
-  test("03:59 は latenight", () => expect(tod(3, 59)).toBe("latenight"));
-  test("04:00 は sunrise", () => expect(tod(4, 0)).toBe("sunrise"));
-  test("06:00 は day", () => expect(tod(6, 0)).toBe("day"));
+  test("04:09 は latenight", () => expect(tod(4, 9)).toBe("latenight"));
+  test("04:10 ちょうどは sunrise", () => expect(tod(4, 10)).toBe("sunrise"));
+  test("05:09 は sunrise", () => expect(tod(5, 9)).toBe("sunrise"));
+  test("05:10 ちょうどは day", () => expect(tod(5, 10)).toBe("day"));
   test("18:14 は day", () => expect(tod(18, 14)).toBe("day"));
   test("18:15 ちょうどは sunset", () => expect(tod(18, 15)).toBe("sunset"));
   test("19:29 は sunset", () => expect(tod(19, 29)).toBe("sunset"));
@@ -60,19 +62,24 @@ describe("getTimeOfDay 夏（sunrise4:00/day6:00/sunset18:15/night19:30/latenigh
   test("23:00 は latenight", () => expect(tod(23, 0)).toBe("latenight"));
 });
 
-describe("getTimeOfDay 秋（sunset16:40/night17:45）", () => {
+describe("getTimeOfDay 秋（sunrise5:20/day6:20/sunset16:40/night17:45）", () => {
   const tod = (hh: number, mm: number): TimeOfDay => getTimeOfDay(at(10, 1, hh, mm));
+  test("05:19 は latenight", () => expect(tod(5, 19)).toBe("latenight"));
+  test("05:20 ちょうどは sunrise", () => expect(tod(5, 20)).toBe("sunrise"));
+  test("06:19 は sunrise", () => expect(tod(6, 19)).toBe("sunrise"));
+  test("06:20 ちょうどは day", () => expect(tod(6, 20)).toBe("day"));
   test("16:39 は day", () => expect(tod(16, 39)).toBe("day"));
   test("16:40 ちょうどは sunset", () => expect(tod(16, 40)).toBe("sunset"));
   test("17:44 は sunset", () => expect(tod(17, 44)).toBe("sunset"));
   test("17:45 ちょうどは night", () => expect(tod(17, 45)).toBe("night"));
 });
 
-describe("getTimeOfDay 冬（sunrise6:00/day8:00/sunset16:00/night17:10/latenight23:00）", () => {
+describe("getTimeOfDay 冬（sunrise6:10/day7:10/sunset16:00/night17:10/latenight23:00）", () => {
   const tod = (hh: number, mm: number): TimeOfDay => getTimeOfDay(at(1, 15, hh, mm));
-  test("05:59 は latenight（sunrise開始の直前）", () => expect(tod(5, 59)).toBe("latenight"));
-  test("06:00 は sunrise", () => expect(tod(6, 0)).toBe("sunrise"));
-  test("08:00 は day", () => expect(tod(8, 0)).toBe("day"));
+  test("06:09 は latenight（sunrise開始の直前）", () => expect(tod(6, 9)).toBe("latenight"));
+  test("06:10 ちょうどは sunrise", () => expect(tod(6, 10)).toBe("sunrise"));
+  test("07:09 は sunrise", () => expect(tod(7, 9)).toBe("sunrise"));
+  test("07:10 ちょうどは day", () => expect(tod(7, 10)).toBe("day"));
   test("15:59 は day", () => expect(tod(15, 59)).toBe("day"));
   test("16:00 ちょうどは sunset", () => expect(tod(16, 0)).toBe("sunset"));
   test("17:09 は sunset", () => expect(tod(17, 9)).toBe("sunset"));

@@ -17,21 +17,24 @@ export type TimeOfDay = "sunrise" | "day" | "sunset" | "night" | "latenight";
  * 各季節の時間帯の「開始時刻（0時からの分）」。
  * ある時間帯は「自分の開始 〜 次の時間帯の開始の直前」まで（下限含み・上限は次帯へ）。
  * latenight は日を跨ぎ、latenight開始 〜 24:00 と 00:00 〜 sunrise開始の直前 まで。
- * 例（春）: sunrise 05:00-06:59 / day 07:00-17:29 / sunset 17:30-18:29 /
- *          night 18:30-22:59 / latenight 23:00-04:59
+ * 例（春）: sunrise 04:45-05:44 / day 05:45-17:29 / sunset 17:30-18:29 /
+ *          night 18:30-22:59 / latenight 23:00-04:44
  *
- * sunset帯は「空が赤くなり始め（日の入りの約35分前）〜暗くなる（日の入り後約30分＝薄明終わり）」に
- * 合わせている（東京あたりの実際の日の入りが基準。季節ごとに代表的な時刻を採る）。
+ * sunrise帯・sunset帯は実際の日の出/日の入りに合わせる:
+ *   ・sunset  = 空が赤くなり始め（日の入りの約35分前）〜暗くなる（日の入り後約30分＝薄明終わり）
+ *   ・sunrise = 空が白み始め（日の出の約30分前）〜昇りきって明るくなる（日の出後約30分）
+ * 東京あたりの実際の日の出/日の入りが基準。季節ごとに代表的な時刻を採る。
  */
 const SEASON_BOUNDARIES: Record<
   Season,
   { sunrise: number; day: number; sunset: number; night: number; latenight: number }
 > = {
-  // 分 = 時*60+分。sunset/night は実際の日の入り（春≈18:00 / 夏≈18:50 / 秋≈17:15 / 冬≈16:40）に合わせる
-  spring: { sunrise: 5 * 60, day: 7 * 60, sunset: 17 * 60 + 30, night: 18 * 60 + 30, latenight: 23 * 60 },
-  summer: { sunrise: 4 * 60, day: 6 * 60, sunset: 18 * 60 + 15, night: 19 * 60 + 30, latenight: 23 * 60 },
-  autumn: { sunrise: 5 * 60, day: 7 * 60, sunset: 16 * 60 + 40, night: 17 * 60 + 45, latenight: 23 * 60 },
-  winter: { sunrise: 6 * 60, day: 8 * 60, sunset: 16 * 60, night: 17 * 60 + 10, latenight: 23 * 60 },
+  // 分 = 時*60+分。実際の日の出（春≈5:15 / 夏≈4:40 / 秋≈5:50 / 冬≈6:40）・
+  // 日の入り（春≈18:00 / 夏≈18:50 / 秋≈17:15 / 冬≈16:40）に合わせる
+  spring: { sunrise: 4 * 60 + 45, day: 5 * 60 + 45, sunset: 17 * 60 + 30, night: 18 * 60 + 30, latenight: 23 * 60 },
+  summer: { sunrise: 4 * 60 + 10, day: 5 * 60 + 10, sunset: 18 * 60 + 15, night: 19 * 60 + 30, latenight: 23 * 60 },
+  autumn: { sunrise: 5 * 60 + 20, day: 6 * 60 + 20, sunset: 16 * 60 + 40, night: 17 * 60 + 45, latenight: 23 * 60 },
+  winter: { sunrise: 6 * 60 + 10, day: 7 * 60 + 10, sunset: 16 * 60, night: 17 * 60 + 10, latenight: 23 * 60 },
 };
 
 /** 月（1〜12）から季節を返す */
