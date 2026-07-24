@@ -36,6 +36,7 @@ import { GrowthCard } from "@/components/growth-card";
 import { GrowthHintCard } from "@/components/growth-hint-card";
 import { LevelBadge } from "@/components/level-badge";
 import { MeasuringIndicator } from "@/components/measuring-indicator";
+import { MinimalHomeUI } from "@/components/minimal-home";
 import { NpcMessageCard } from "@/components/npc-message-card";
 import { PomodoroPhaseWatcher } from "@/components/pomodoro-phase-watcher";
 import { RecordModal, type RecordValues } from "@/components/record-modal";
@@ -721,7 +722,15 @@ export default function HomeScreen() {
 
       {/* 無操作が続いたときの最小表示（操作系UIを隠し、時刻など最小限だけ残す）。
           背景（夜の街）はそのまま透かす。どこかに触れると通常表示へ戻る */}
-      {uiVisible && idle ? <IdleOverlay session={timer.session} /> : null}
+      {uiVisible && idle ? (
+        <IdleOverlay
+          session={timer.session}
+          // 最小表示中でも時計を押したら詳細（タイマー表示）へ。計測中のみ時計は出る
+          onPressTimer={() =>
+            timer.session ? setTimerOpen(true) : setSetupOpen(true)
+          }
+        />
+      ) : null}
 
       {/* 鑑賞モード中はすべてのUIを隠す（鑑賞モードボタン自身を含む）。
           横向き・タイマー設定モーダル表示中も同様に隠し、背景は夜の街だけを透かす
@@ -1036,62 +1045,24 @@ function formatDateTimeLabel(d: Date): string {
   return `${yyyy}/${mm}/${dd}(${weekday}) ${hh}:${mi} ${ampm}`;
 }
 
-// 例: 2026/08/01(月)
-function formatIdleDate(d: Date): string {
-  const yyyy = d.getFullYear();
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
-  const dd = String(d.getDate()).padStart(2, "0");
-  return `${yyyy}/${mm}/${dd}(${WEEKDAYS[d.getDay()]})`;
-}
-
-// 例: 21:00 PM
-function formatIdleTime(d: Date): string {
-  const h24 = d.getHours();
-  const hh = String(h24).padStart(2, "0");
-  const mi = String(d.getMinutes()).padStart(2, "0");
-  return `${hh}:${mi} ${h24 < 12 ? "AM" : "PM"}`;
-}
-
-// アイドル最小表示（無操作が続いたとき）。操作系UIを隠し、時刻・日付・再生中と、
-// 計測中のみ時計＋「作業中」だけを残す。タップ検知は親が担うためここは非操作（表示専用）。
-function IdleOverlay({ session }: { session: ActiveSession | null }) {
+// アイドル最小表示（無操作が続いたとき）。操作系UIを隠し、最小UI（時刻・日付・再生中と、
+// 計測中のみ時計＋作業中）だけを残す。box-none で、時計以外のタップは背景へ透過して通常
+// 表示へ戻し、時計だけはタップで詳細（タイマー表示）へ飛べる（要件2.4）。
+function IdleOverlay({
+  session,
+  onPressTimer,
+}: {
+  session: ActiveSession | null;
+  onPressTimer: () => void;
+}) {
   const insets = useSafeAreaInsets();
-  // 分が変わったら表示も更新する（大きな時刻表示）
-  const now = useAppNow(30 * 1000);
-  const { bgmTrack } = useAudio();
-  const top = insets.top + Spacing.two;
-
   return (
     <Animated.View
       style={StyleSheet.absoluteFill}
-      pointerEvents="none"
+      pointerEvents="box-none"
       entering={FadeIn.duration(600)}
     >
-      {/* 左上: バッテリー・日付・大きな時刻・再生中 */}
-      <View style={[styles.absolute, styles.topLeft, { top, left: Spacing.four }]}>
-        <BatteryIndicator />
-        <View style={styles.idleInfo}>
-          <Text style={styles.idleDate}>{formatIdleDate(now)}</Text>
-          <Text style={styles.idleTime}>{formatIdleTime(now)}</Text>
-          <Text style={styles.idleNowPlaying} numberOfLines={1}>
-            ♪ {bgmTrack ? bgmTrack.name : "音楽なし"}
-          </Text>
-        </View>
-      </View>
-
-      {/* 計測中のみ右上に時計＋「作業中」を残す（未計測時は何も出さない） */}
-      {session ? (
-        <View style={[styles.absolute, { top, right: Spacing.four }]}>
-          <ClockButton
-            size={CLOCK_SIZE}
-            now={now}
-            onPress={() => {}}
-            disabled={false}
-            endAt={new Date(getPlannedEndMs(session, now.getTime()))}
-          />
-          <MeasuringIndicator session={session} width={CLOCK_SIZE} />
-        </View>
-      ) : null}
+      <MinimalHomeUI session={session} insets={insets} onPressClock={onPressTimer} />
     </Animated.View>
   );
 }
@@ -1418,34 +1389,6 @@ const styles = StyleSheet.create({
     color: "#ffffff",
     fontSize: 13,
     fontWeight: "500",
-    textShadowColor: "rgba(0,0,0,0.6)",
-    textShadowRadius: 4,
-  },
-  // アイドル最小表示の左上（日付・大きな時刻・再生中）
-  idleInfo: {
-    marginTop: Spacing.two,
-    gap: 2,
-  },
-  idleDate: {
-    color: "rgba(255,255,255,0.85)",
-    fontSize: 13,
-    fontWeight: "500",
-    textShadowColor: "rgba(0,0,0,0.6)",
-    textShadowRadius: 4,
-  },
-  idleTime: {
-    color: "#ffffff",
-    fontSize: 40,
-    fontWeight: "300",
-    letterSpacing: 1,
-    textShadowColor: "rgba(0,0,0,0.6)",
-    textShadowRadius: 6,
-  },
-  idleNowPlaying: {
-    marginTop: Spacing.two,
-    color: "rgba(255,255,255,0.8)",
-    fontSize: 13,
-    maxWidth: 240,
     textShadowColor: "rgba(0,0,0,0.6)",
     textShadowRadius: 4,
   },
