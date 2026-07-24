@@ -444,6 +444,11 @@ export function AudioProvider({ children }: { children: ReactNode }) {
       if (bgmPoolRef.current.length === 0) return;
       const player = bgmPlayer.current ?? loadBgmTrack(bgmIndexRef.current);
       if (!player) return;
+      // 即時再生のときは走行中のフェードを止める（消し忘れると音量を下げ続けてしまう）
+      if (!fade && fadeTimer.current) {
+        clearInterval(fadeTimer.current);
+        fadeTimer.current = null;
+      }
       const target = toPlayerVolume(volumesRef.current.bgm);
       player.volume = fade ? 0 : target;
       player.play();
@@ -543,11 +548,14 @@ export function AudioProvider({ children }: { children: ReactNode }) {
       setBgmProgress(0);
       setBgmPositionSec(0);
       setBgmDurationSec(0);
-      // 最後のタップだけ実際に読み込んで再生する
+      // 最後のタップだけ実際に読み込んで再生する。
+      // 停止状態から鳴らし始めるときだけフェードイン（要件9「急に鳴らさない」）。
+      // 聴取中の曲切替は即時に鳴らす（毎回フェードで音量が0からになり無音に感じる問題を防ぐ）
       if (playTrackTimer.current) clearTimeout(playTrackTimer.current);
       playTrackTimer.current = setTimeout(() => {
+        const wasPlaying = !!bgmPlayer.current?.playing;
         loadBgmTrack(bgmIndexRef.current);
-        playBgm(true);
+        playBgm(!wasPlaying);
       }, AUDIO.TAP_COALESCE_MS);
     },
     [loadBgmTrack, playBgm],
