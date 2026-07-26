@@ -90,7 +90,7 @@ INSERT INTO growth_level_threshold (method, level, required_value) VALUES
 -- =====================================================================
 INSERT INTO ambient_sound (code, sound_type, name, artist, file_path) VALUES
     ('bgm_223am',    'bgm', '2:23 AM',                'しゃろう', 'assets/audio/bgm/2_23_AM.mp3'),
-    ('bgm_lofigirl', 'bgm', 'ローファイ少女は今日も寝不足', NULL,       'assets/audio/bgm/ローファイ少女は今日も寝不足.mp3');
+    ('bgm_lofigirl', 'bgm', 'ローファイ少女は今日も寝不足', 'しゃろう', 'assets/audio/bgm/ローファイ少女は今日も寝不足.mp3');
 
 -- 環境音の追加用雛形（ファイル調達後にコメントを外して更新する）
 -- INSERT INTO ambient_sound (code, sound_type, name, artist, file_path) VALUES

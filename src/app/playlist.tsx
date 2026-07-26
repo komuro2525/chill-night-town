@@ -283,11 +283,6 @@ export default function PlaylistScreen() {
               <Text style={styles.trackName} numberOfLines={1}>
                 {item.track.name}
               </Text>
-              {item.track.artist ? (
-                <Text style={styles.trackArtist} numberOfLines={1}>
-                  {item.track.artist}
-                </Text>
-              ) : null}
             </View>
             {/* 3本線を押しながらスライドで並び替え（要件9） */}
             <Pressable
@@ -712,11 +707,6 @@ function TrackRow({
         >
           {track.name}
         </Text>
-        {track.artist ? (
-          <Text style={styles.trackArtist} numberOfLines={1}>
-            {track.artist}
-          </Text>
-        ) : null}
       </Pressable>
 
       {/* お気に入り・追加・クレジットは「…」メニューにまとめる（要件9） */}
@@ -851,7 +841,6 @@ const styles = StyleSheet.create({
   rowText: { flex: 1 },
   trackName: { color: "rgba(255,255,255,0.95)", fontSize: 15 },
   trackNamePlaying: { color: LightColor },
-  trackArtist: { color: "rgba(255,255,255,0.55)", fontSize: 12, marginTop: 1 },
   empty: { alignItems: "center", paddingVertical: Spacing.six },
   emptyText: {
     color: "rgba(255,255,255,0.45)",

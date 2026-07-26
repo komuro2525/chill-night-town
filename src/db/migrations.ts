@@ -31,7 +31,7 @@ type Migration = {
 
 // 現在のスキーマバージョン（db/*.sql が表す「最新」の版）。
 // スキーマを変更したら、スキーマSQLを更新しつつ本値を+1し、DELTA_MIGRATIONS に差分を追加する。
-const SCHEMA_VERSION = 16;
+const SCHEMA_VERSION = 17;
 
 // 既存DB（過去バージョン）向けの差分マイグレーション（version >= 2）。
 // 新規インストールはスキーマSQL（=最新）を適用して一気に SCHEMA_VERSION まで上がるため、
@@ -473,6 +473,17 @@ const DELTA_MIGRATIONS: Migration[] = [
       `);
       await db.execAsync(
         "ALTER TABLE notification_setting ADD COLUMN event_notice_enabled INTEGER NOT NULL DEFAULT 0 CHECK (event_notice_enabled IN (0, 1))",
+      );
+    },
+  },
+  {
+    version: 17,
+    up: async (db) => {
+      // BGM音源のクレジット（アーティスト）を「しゃろう」に統一する（要件9）。
+      // 現在登録しているBGMはすべて しゃろう 制作のため、未設定・別名のものをそろえる。
+      await db.runAsync(
+        "UPDATE ambient_sound SET artist = ? WHERE sound_type = 'bgm'",
+        "しゃろう",
       );
     },
   },
