@@ -35,6 +35,9 @@ const BUTTON_SIZE = 34;
 const PLAY_BUTTON_SIZE = 44;
 // 曲名の表示幅。これを超える曲名はスクロールさせる
 const TEXT_WIDTH = 180;
+// 操作ボタン群（巻き戻し・再生・スキップ＋あいだの gap×2）の合計幅。
+// 再生バーの幅をこれに合わせて、ボタンの真上にそろえる
+const CONTROLS_WIDTH = BUTTON_SIZE * 2 + PLAY_BUTTON_SIZE + Spacing.two * 2;
 
 export function BgmMiniPlayer() {
   const router = useRouter();
@@ -242,7 +245,8 @@ const styles = StyleSheet.create({
     maxWidth: 180,
   },
   progressTrack: {
-    width: TEXT_WIDTH,
+    // ボタン群と同じ幅にして、操作ボタンの真上にそろえる
+    width: CONTROLS_WIDTH,
     height: 3,
     borderRadius: 2,
     marginTop: Spacing.two,
