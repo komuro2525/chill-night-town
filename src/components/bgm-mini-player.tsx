@@ -33,10 +33,9 @@ import { isMuted } from "@/lib/audio";
 
 const BUTTON_SIZE = 34;
 const PLAY_BUTTON_SIZE = 44;
-// 曲名の表示幅。これを超える曲名はスクロールさせる
-const TEXT_WIDTH = 180;
 // 操作ボタン群（巻き戻し・再生・スキップ＋あいだの gap×2）の合計幅。
-// 再生バーの幅をこれに合わせて、ボタンの真上にそろえる
+// 曲名・再生バーの表示幅をこれに合わせて、ボタンの真上にそろえる。
+// これを超える曲名はスクロールさせる
 const CONTROLS_WIDTH = BUTTON_SIZE * 2 + PLAY_BUTTON_SIZE + Spacing.two * 2;
 
 export function BgmMiniPlayer() {
@@ -70,7 +69,7 @@ export function BgmMiniPlayer() {
         {bgmTrack ? (
           <>
             {/* 長い曲名はスクロール表示（要件9。収まる曲名は静止したまま） */}
-            <MarqueeText text={bgmTrack.name} style={styles.title} width={TEXT_WIDTH} />
+            <MarqueeText text={bgmTrack.name} style={styles.title} width={CONTROLS_WIDTH} />
             {bgmTrack.artist ? (
               <Text style={styles.artist} numberOfLines={1}>
                 {bgmTrack.artist}
@@ -242,7 +241,7 @@ const styles = StyleSheet.create({
     color: "rgba(255,255,255,0.6)",
     fontSize: 11,
     marginTop: 1,
-    maxWidth: 180,
+    maxWidth: CONTROLS_WIDTH,
   },
   progressTrack: {
     // ボタン群と同じ幅にして、操作ボタンの真上にそろえる
