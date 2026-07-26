@@ -33,15 +33,21 @@ export type PomodoroPhase = {
  * 端末時計の変更等で負値になった場合は0に丸める（要件3.2）。
  */
 export function getElapsedSeconds(session: ActiveSession, atMs: number): number {
-  const startMs = Date.parse(session.start_time);
-  // 一時停止中は、今回の停止分をさらに差し引く（停止開始より前の時刻を渡された場合は0扱い）
+  // すべて Unix 秒（整数）で計算する。一時停止の累積 paused_accumulated_seconds は
+  // DB側で strftime('%s')＝整数秒で加算しているため、経過側もミリ秒ではなく整数秒でそろえる。
+  // そろえないと精度がズレ、一時停止/再開のたびに秒境界の丸めで経過が ±1 秒ぶれる（要件3.2）。
+  const startSec = Math.floor(Date.parse(session.start_time) / 1000);
+  const nowSec = Math.floor(atMs / 1000);
+  // 一時停止中は、今回の停止分（整数秒）をさらに差し引く（停止開始より前なら0扱い）
   const currentPauseSec = session.pause_started_at
-    ? clampNonNegativeSeconds((atMs - Date.parse(session.pause_started_at)) / 1000)
+    ? clampNonNegativeSeconds(
+        nowSec - Math.floor(Date.parse(session.pause_started_at) / 1000),
+      )
     : 0;
 
   const seconds =
-    (atMs - startMs) / 1000 - session.paused_accumulated_seconds - currentPauseSec;
-  return Math.floor(clampNonNegativeSeconds(seconds));
+    nowSec - startSec - session.paused_accumulated_seconds - currentPauseSec;
+  return clampNonNegativeSeconds(seconds);
 }
 
 /**

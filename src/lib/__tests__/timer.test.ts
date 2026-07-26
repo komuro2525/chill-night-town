@@ -84,6 +84,25 @@ describe("getElapsedSeconds（時刻差分方式の経過秒）", () => {
     const s = simple({ paused_accumulated_seconds: 99999 });
     expect(getElapsedSeconds(s, at("2026-01-10T23:30:00"))).toBe(0);
   });
+
+  it("秒未満のタイミングで一時停止→再開しても経過が飛ばない（整数秒でそろえる・要件3.2）", () => {
+    // 累積は DB の strftime('%s')＝整数秒で加算される。経過側もこれにそろえるため、
+    // 停止中に凍結される値と、再開直後の値が一致する（±1秒ぶれない）。
+    const start = "2026-01-10T23:00:00.700"; // 開始も秒未満を含む（実際の start_time と同様）
+    const pauseIso = "2026-01-10T23:05:00.900"; // 秒に丸めると 23:05:00
+    const resumeIso = "2026-01-10T23:05:01.100"; // 秒に丸めると 23:05:01（境界をまたぐ）
+
+    // 停止中に凍結される経過（= 300秒。整数秒 300 - 0）
+    const paused = simple({ start_time: start, pause_started_at: pauseIso });
+    const frozen = getElapsedSeconds(paused, at(resumeIso));
+    expect(frozen).toBe(300);
+
+    // 再開: 累積は strftime 差 = 1秒。再開直後の経過は停止時と一致する（飛ばない）
+    const accum =
+      Math.floor(at(resumeIso) / 1000) - Math.floor(at(pauseIso) / 1000); // 1
+    const resumed = simple({ start_time: start, paused_accumulated_seconds: accum });
+    expect(getElapsedSeconds(resumed, at(resumeIso))).toBe(frozen);
+  });
 });
 
 describe("getAutoEndMs / isAutoEndReached（5:00自動終了・要件3.2）", () => {

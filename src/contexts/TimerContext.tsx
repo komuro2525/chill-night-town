@@ -5,6 +5,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 
@@ -78,15 +79,33 @@ export function TimerProvider({ children }: { children: ReactNode }) {
     });
   }, [reload]);
 
-  const pause = useCallback(async () => {
-    await activeSessionRepo.pause(new Date(nowMs()).toISOString());
-    await reload();
-  }, [reload]);
+  // 一時停止/再開は「DB更新 → reload」を非同期で行う。高速で連打すると reload の完了順が
+  // 入れ替わり、古い状態が表示に残って経過が飛ぶ。直前の操作に continuation を繋いで
+  // 必ず直列に実行する（DB側は WHERE ガードで二重pause/resumeを防いでいる）。
+  const opQueue = useRef<Promise<void>>(Promise.resolve());
+  const enqueue = useCallback((op: () => Promise<void>) => {
+    const next = opQueue.current.catch(() => {}).then(op);
+    opQueue.current = next;
+    return next;
+  }, []);
 
-  const resume = useCallback(async () => {
-    await activeSessionRepo.resume(new Date(nowMs()).toISOString());
-    await reload();
-  }, [reload]);
+  const pause = useCallback(
+    () =>
+      enqueue(async () => {
+        await activeSessionRepo.pause(new Date(nowMs()).toISOString());
+        await reload();
+      }),
+    [enqueue, reload],
+  );
+
+  const resume = useCallback(
+    () =>
+      enqueue(async () => {
+        await activeSessionRepo.resume(new Date(nowMs()).toISOString());
+        await reload();
+      }),
+    [enqueue, reload],
+  );
 
   const finish = useCallback(async (): Promise<FinishResult> => {
     const current = await activeSessionRepo.getActiveSession();
