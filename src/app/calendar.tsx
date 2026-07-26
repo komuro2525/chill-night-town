@@ -19,6 +19,7 @@ import type {
 } from "@/db/repositories/calendarRepo";
 import { getMonthGrid, getMonthRange, shiftMonth } from "@/lib/calendar";
 import { now } from "@/lib/clock";
+import { refreshNotifications } from "@/lib/notification-sync";
 import { getStudyDate } from "@/lib/study-day";
 
 // S7 カレンダー画面（要件4章）。日別記録閲覧（4.1）・月次サマリー（4.2）。
@@ -214,8 +215,11 @@ export default function CalendarScreen() {
         userId={user?.id ?? 0}
         onClose={() => setDetail(null)}
         onReload={(studyDate) => void openDay(studyDate)}
-        // 予定を追加/変更/削除したら、月のマークを読み直す（通知の張り直しは後続で追加）
-        onEventsChanged={() => void reload()}
+        // 予定を追加/変更/削除したら、月のマークを読み直し、通知も張り直す
+        onEventsChanged={() => {
+          void reload();
+          void refreshNotifications();
+        }}
       />
     </View>
   );

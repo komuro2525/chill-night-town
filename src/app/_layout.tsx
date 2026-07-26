@@ -16,6 +16,7 @@ import { SettingsProvider } from "@/contexts/SettingsContext";
 import { TimerProvider } from "@/contexts/TimerContext";
 import { getDatabase } from "@/db/database";
 import { userRepo } from "@/db/repositories";
+import { refreshNotifications } from "@/lib/notification-sync";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -67,6 +68,9 @@ function RootNavigator() {
         if (!mounted) return;
         if (!hasUser) {
           router.replace("/setup");
+        } else {
+          // 起動時に通知を張り直す（端末再起動で消えた予定通知の復元・予定の増減を反映）
+          void refreshNotifications();
         }
         // TODO(P3-4): 未終了セッションがある場合の復元（要件3.2「中断からの復元」）。
         //   保存済みの時刻情報からセッションを復元し、「前回のセッションが終了して

@@ -19,11 +19,8 @@ import { useTimer } from "@/contexts/TimerContext";
 import { growthRepo, maintenanceRepo, settingsRepo, townProgressRepo, userRepo } from "@/db/repositories";
 import type { GrowthMethod } from "@/db/types";
 import { useTheme } from "@/hooks/use-theme";
-import {
-  cancelReminder,
-  ensureNotificationPermission,
-  scheduleDailyReminder,
-} from "@/lib/notifications";
+import { ensureNotificationPermission } from "@/lib/notifications";
+import { refreshNotifications } from "@/lib/notification-sync";
 import { formatMinutes } from "@/lib/study-day";
 import {
   validateDailyGoalMinutes,
@@ -59,6 +56,7 @@ export default function SettingsScreen() {
 
   const notifyEnabled = notificationSetting?.is_enabled === 1;
   const notifyTime = notificationSetting?.scheduled_time ?? null;
+  const eventNoticeEnabled = notificationSetting?.event_notice_enabled === 1;
 
   // 通知のON/OFF（要件10.3 / 12章）。ONにするときはOSの許可を確保し、
   // 拒否されたらOFFへ戻してOSの設定から変更できる旨を伝える（要件12章）。
@@ -76,11 +74,11 @@ export default function SettingsScreen() {
         }
         const time = notifyTime ?? DEFAULT_NOTIFICATION_TIME;
         await settingsRepo.updateNotificationSetting(true, time);
-        await scheduleDailyReminder(time);
       } else {
         await settingsRepo.updateNotificationSetting(false, null);
-        await cancelReminder();
       }
+      // 学習開始リマインドと予定通知をまとめて張り直す（全消し→全再登録）
+      await refreshNotifications();
       await reload();
     } catch (e) {
       console.error("通知設定の更新に失敗しました", e);
@@ -91,10 +89,31 @@ export default function SettingsScreen() {
   async function handleChangeNotificationTime(time: string) {
     try {
       await settingsRepo.updateNotificationSetting(true, time);
-      await scheduleDailyReminder(time);
+      await refreshNotifications();
       await reload();
     } catch (e) {
       console.error("通知時刻の更新に失敗しました", e);
+    }
+  }
+
+  // 予定のお知らせ（4.3）のON/OFF。ONにするときは通知許可を確保する
+  async function handleToggleEventNotice(next: boolean) {
+    try {
+      if (next) {
+        const granted = await ensureNotificationPermission();
+        if (!granted) {
+          Alert.alert(
+            "通知が許可されていません",
+            "端末の設定から Chill Night Town の通知を許可すると、予定のお知らせを受け取れます。",
+          );
+          return;
+        }
+      }
+      await settingsRepo.updateEventNoticeEnabled(next);
+      await refreshNotifications();
+      await reload();
+    } catch (e) {
+      console.error("予定通知設定の更新に失敗しました", e);
     }
   }
 
@@ -308,6 +327,16 @@ export default function SettingsScreen() {
               onPress={() => setTimeEditOpen(true)}
             />
           ) : null}
+          <SettingRow
+            label="予定のお知らせ"
+            note="カレンダーの予定の1週間前と前日の昼に、そっとお知らせします。"
+            right={
+              <Switch
+                value={eventNoticeEnabled}
+                onValueChange={(v) => void handleToggleEventNotice(v)}
+              />
+            }
+          />
         </SettingSection>
 
         {/* データ */}

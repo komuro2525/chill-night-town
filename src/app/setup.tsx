@@ -41,10 +41,8 @@ import { useSettings } from "@/contexts/SettingsContext";
 import { masterRepo, setupRepo } from "@/db/repositories";
 import type { Town } from "@/db/types";
 import { useTheme } from "@/hooks/use-theme";
-import {
-  ensureNotificationPermission,
-  scheduleDailyReminder,
-} from "@/lib/notifications";
+import { ensureNotificationPermission } from "@/lib/notifications";
+import { refreshNotifications } from "@/lib/notification-sync";
 import {
   validateDailyGoalMinutes,
   validateNickname,
@@ -144,7 +142,8 @@ export default function SetupScreen() {
         notificationEnabled: notifyOn,
         notificationTime: notifyOn ? time : null,
       });
-      if (notifyOn) await scheduleDailyReminder(time);
+      // 設定を書いた後に通知を張り直す（この時点では予定は無く学習開始リマインドのみ）
+      if (notifyOn) await refreshNotifications();
       await reload();
 
       if (notificationEnabled && !notifyOn) {
