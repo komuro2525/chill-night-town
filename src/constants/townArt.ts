@@ -16,7 +16,7 @@ type LevelArt = Record<number, ImageSourcePropType>;
 type TownArt = Partial<Record<TimeOfDay, LevelArt>>;
 
 const TOWN_ART: Record<string, TownArt> = {
-  // nightTown（海辺の港町テーマ）。night・sunset の Lv.1〜Lv.5 がそろっている。
+  // nightTown（海辺の港町テーマ）。night・sunset は Lv.1〜Lv.5、day は Lv.1〜Lv.3。
   nightTown: {
     night: {
       1: require("@/assets/images/home/nightTown/night/nightTown_night_lv1.png"),
@@ -25,6 +25,17 @@ const TOWN_ART: Record<string, TownArt> = {
       4: require("@/assets/images/home/nightTown/night/nightTown_night_lv4.png"),
       5: require("@/assets/images/home/nightTown/night/nightTown_night_lv5.png"),
     },
+    // day は Lv.1〜Lv.3 のみ制作済み。Lv.4・Lv.5 は未制作のため暫定で Lv.1 を代用する
+    day: (() => {
+      const lv1 = require("@/assets/images/home/nightTown/day/nightTown_day_lv1.png");
+      return {
+        1: lv1,
+        2: require("@/assets/images/home/nightTown/day/nightTown_day_lv2.png"),
+        3: require("@/assets/images/home/nightTown/day/nightTown_day_lv3.png"),
+        4: lv1,
+        5: lv1,
+      };
+    })(),
     sunset: {
       1: require("@/assets/images/home/nightTown/sunset/nightTown_sunset_lv1.png"),
       2: require("@/assets/images/home/nightTown/sunset/nightTown_sunset_lv2.png"),
