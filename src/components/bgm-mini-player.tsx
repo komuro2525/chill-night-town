@@ -68,13 +68,9 @@ export function BgmMiniPlayer() {
       >
         {bgmTrack ? (
           <>
-            {/* 長い曲名はスクロール表示（要件9。収まる曲名は静止したまま） */}
+            {/* 長い曲名はスクロール表示（要件9。収まる曲名は静止したまま）。
+                アーティスト（クレジット）は設定の「音楽のクレジット」と曲の「…」メニューで表示する */}
             <MarqueeText text={bgmTrack.name} style={styles.title} width={CONTROLS_WIDTH} />
-            {bgmTrack.artist ? (
-              <Text style={styles.artist} numberOfLines={1}>
-                {bgmTrack.artist}
-              </Text>
-            ) : null}
 
             {muted ? (
               // 音量0のときは進捗バーの代わりに「音量オフ」を示す（押しても鳴らない理由）
@@ -236,12 +232,6 @@ const styles = StyleSheet.create({
     color: "rgba(255,255,255,0.95)",
     fontSize: 13,
     fontWeight: "500",
-  },
-  artist: {
-    color: "rgba(255,255,255,0.6)",
-    fontSize: 11,
-    marginTop: 1,
-    maxWidth: CONTROLS_WIDTH,
   },
   progressTrack: {
     // ボタン群と同じ幅にして、操作ボタンの真上にそろえる

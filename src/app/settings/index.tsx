@@ -303,6 +303,10 @@ export default function SettingsScreen() {
             value={audio.volumes.bell}
             onChange={(v) => handleVolumeChange("bell", v)}
           />
+          <SettingRow
+            label="音楽のクレジット"
+            onPress={() => router.push("/settings/credits")}
+          />
         </SettingSection>
 
         {/* 通知（要件10.3 / 12章）。発火はOSが行う。稼働中も変更可 */}

@@ -113,6 +113,10 @@ function RootNavigator() {
         name="settings/tags"
         options={{ headerShown: true, title: "マイタグ", headerBackTitle: "戻る" }}
       />
+      <Stack.Screen
+        name="settings/credits"
+        options={{ headerShown: true, title: "音楽のクレジット", headerBackTitle: "戻る" }}
+      />
     </Stack>
   );
 }
