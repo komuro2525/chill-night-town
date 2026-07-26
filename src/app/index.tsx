@@ -8,6 +8,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  AppState,
   type ImageSourcePropType,
   Image as RNImage,
   Pressable,
@@ -685,6 +686,19 @@ export default function HomeScreen() {
       if (idleTimer.current) clearTimeout(idleTimer.current);
     };
   }, [idleActive, armIdle]);
+
+  // 前面にいる間だけ無操作を数える（見ていない時間＝背面・ロックは数えない）。
+  // 背面に入ったらタイマーを止め、前面に戻ったら通常表示に戻して数え直す
+  useEffect(() => {
+    const sub = AppState.addEventListener("change", (state) => {
+      if (state === "active") {
+        markActive();
+      } else if (idleTimer.current) {
+        clearTimeout(idleTimer.current);
+      }
+    });
+    return () => sub.remove();
+  }, [markActive]);
 
   return (
     <View
