@@ -14,7 +14,11 @@ import type { ActiveSession } from "@/db/types";
 import { MIN_SAVE_MINUTES } from "@/constants/domain";
 import { nowMs } from "@/lib/clock";
 import { getStudyDate } from "@/lib/study-day";
-import { getActualStudyMinutes } from "@/lib/timer";
+import {
+  getActualStudyMinutes,
+  withPauseStarted,
+  withResumed,
+} from "@/lib/timer";
 
 // 学習タイマーの状態と操作（要件3.2）。
 //
@@ -79,9 +83,10 @@ export function TimerProvider({ children }: { children: ReactNode }) {
     });
   }, [reload]);
 
-  // 一時停止/再開は「DB更新 → reload」を非同期で行う。高速で連打すると reload の完了順が
-  // 入れ替わり、古い状態が表示に残って経過が飛ぶ。直前の操作に continuation を繋いで
-  // 必ず直列に実行する（DB側は WHERE ガードで二重pause/resumeを防いでいる）。
+  // 一時停止/再開は、押した瞬間にローカルの session を楽観更新して表示を即座に凍結/再開する。
+  // 「DB更新 → reload」を待って反映すると、その往復のあいだ表示が動き続け、止めた後に
+  // 経過が進んで見えたり一瞬ずれたりする。表示の正は楽観更新（押下時刻 iso から算出、DBと同値）とし、
+  // DB書き込みはクラッシュ復元のために裏で直列に流す（連打時は WHERE ガードで整合を保つ）。
   const opQueue = useRef<Promise<void>>(Promise.resolve());
   const enqueue = useCallback((op: () => Promise<void>) => {
     const next = opQueue.current.catch(() => {}).then(op);
@@ -89,25 +94,35 @@ export function TimerProvider({ children }: { children: ReactNode }) {
     return next;
   }, []);
 
-  const pause = useCallback(
-    () =>
-      enqueue(async () => {
-        await activeSessionRepo.pause(new Date(nowMs()).toISOString());
-        await reload();
-      }),
-    [enqueue, reload],
-  );
+  const pause = useCallback(() => {
+    const iso = new Date(nowMs()).toISOString();
+    setSession((s) => (s ? withPauseStarted(s, iso) : s));
+    return enqueue(async () => {
+      try {
+        await activeSessionRepo.pause(iso);
+      } catch (e) {
+        console.error("一時停止の保存に失敗しました", e);
+        await reload(); // DBと表示がずれた可能性があるため正へ戻す
+      }
+    });
+  }, [enqueue, reload]);
 
-  const resume = useCallback(
-    () =>
-      enqueue(async () => {
-        await activeSessionRepo.resume(new Date(nowMs()).toISOString());
+  const resume = useCallback(() => {
+    const iso = new Date(nowMs()).toISOString();
+    setSession((s) => (s ? withResumed(s, iso) : s));
+    return enqueue(async () => {
+      try {
+        await activeSessionRepo.resume(iso);
+      } catch (e) {
+        console.error("再開の保存に失敗しました", e);
         await reload();
-      }),
-    [enqueue, reload],
-  );
+      }
+    });
+  }, [enqueue, reload]);
 
   const finish = useCallback(async (): Promise<FinishResult> => {
+    // 保留中の一時停止/再開の書き込みを反映してから読む（押下直後に終了しても取りこぼさない）
+    await opQueue.current.catch(() => {});
     const current = await activeSessionRepo.getActiveSession();
     if (!current) return { kind: "discarded" };
 

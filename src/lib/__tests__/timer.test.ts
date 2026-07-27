@@ -17,6 +17,8 @@ import {
   getPomodoroPhase,
   isAutoEndReached,
   shouldAutoFinish,
+  withPauseStarted,
+  withResumed,
 } from "../timer";
 
 /** 時刻文字列をミリ秒へ */
@@ -108,6 +110,47 @@ describe("getElapsedSeconds（時刻差分方式の経過秒）", () => {
     const s = simple({ start_time: start, paused_accumulated_ms: 5 * 200 });
     // 10分経過・停止合計1.0秒 → 実働 599 秒
     expect(getElapsedSeconds(s, at("2026-01-10T23:10:00.000"))).toBe(599);
+  });
+});
+
+describe("withPauseStarted / withResumed（押した瞬間に表示を凍結/再開する楽観更新）", () => {
+  it("一時停止を記録し、経過が押下時刻で凍結される", () => {
+    const s = simple({ start_time: "2026-01-10T23:00:00.000" });
+    const pauseIso = "2026-01-10T23:05:00.400";
+    const paused = withPauseStarted(s, pauseIso);
+    expect(paused.pause_started_at).toBe(pauseIso);
+    // 停止後はどの時刻で見ても押下時点の経過（300秒）で止まる
+    expect(getElapsedSeconds(paused, at("2026-01-10T23:09:00.000"))).toBe(300);
+  });
+
+  it("既に停止中なら二重に停止しない（同じ参照を返す）", () => {
+    const s = simple({ pause_started_at: "2026-01-10T23:05:00.000" });
+    expect(withPauseStarted(s, "2026-01-10T23:06:00.000")).toBe(s);
+  });
+
+  it("再開で今回の停止分（ミリ秒）が累積へ正確に加算される", () => {
+    const s = simple({
+      pause_started_at: "2026-01-10T23:05:00.400",
+      paused_accumulated_ms: 1000,
+    });
+    const resumed = withResumed(s, "2026-01-10T23:05:03.900"); // 3.5秒停止
+    expect(resumed.pause_started_at).toBeNull();
+    expect(resumed.paused_accumulated_ms).toBe(1000 + 3500);
+  });
+
+  it("停止中でなければ何もしない（同じ参照を返す）", () => {
+    const s = simple();
+    expect(withResumed(s, "2026-01-10T23:05:00.000")).toBe(s);
+  });
+
+  it("停止→即再開しても経過が飛ばない（凍結値と再開直後が一致・要件3.2）", () => {
+    const s = simple({ start_time: "2026-01-10T23:00:00.700" });
+    const pauseIso = "2026-01-10T23:05:00.900";
+    const resumeIso = "2026-01-10T23:05:01.100";
+    const paused = withPauseStarted(s, pauseIso);
+    const frozen = getElapsedSeconds(paused, at(resumeIso));
+    const resumed = withResumed(paused, resumeIso);
+    expect(getElapsedSeconds(resumed, at(resumeIso))).toBe(frozen);
   });
 });
 

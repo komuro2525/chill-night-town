@@ -52,6 +52,38 @@ function currentPauseMs(session: ActiveSession, atMs: number): number {
 }
 
 /**
+ * 一時停止をローカルに反映した session を返す（表示を押した瞬間に凍結するための楽観更新）。
+ * DB書き込みと同じ pausedAtIso を渡すことで、後からDBを読んでも値が一致する。既に停止中なら変化なし。
+ */
+export function withPauseStarted(
+  session: ActiveSession,
+  pausedAtIso: string,
+): ActiveSession {
+  if (session.pause_started_at) return session;
+  return { ...session, pause_started_at: pausedAtIso };
+}
+
+/**
+ * 再開をローカルに反映した session を返す（今回の停止分をミリ秒で累積へ加算）。
+ * DB（julianday）とは丸めで最大±1msの差が出るが、表示は秒単位のため影響しない。停止中でなければ変化なし。
+ */
+export function withResumed(
+  session: ActiveSession,
+  resumedAtIso: string,
+): ActiveSession {
+  if (!session.pause_started_at) return session;
+  const addMs = Math.max(
+    0,
+    Date.parse(resumedAtIso) - Date.parse(session.pause_started_at),
+  );
+  return {
+    ...session,
+    paused_accumulated_ms: session.paused_accumulated_ms + addMs,
+    pause_started_at: null,
+  };
+}
+
+/**
  * 5:00 自動終了の時刻（ミリ秒）。
  * 開始時刻が属する学習日サイクルの終わり（翌5:00）を返す（要件3.2 / 0章）。
  * 例: 1/10 23:30 開始 → 1/11 5:00 ／ 1/11 1:30 開始（学習日は1/10）→ 1/11 5:00
