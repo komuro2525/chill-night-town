@@ -661,8 +661,12 @@ export default function HomeScreen() {
   // 通常のホームUI（上部情報・各ボタン）を出す条件。モーダル・鑑賞・横向き中は出さない
   const uiVisible =
     !landscapeMode && !immersive && !setupOpen && !timerOpen && !record;
-  // アイドル最小表示のカウントを動かす条件（読み込み中は動かさない）
-  const idleActive = uiVisible && !loading;
+  // アイドル最小表示のカウントを動かす条件（読み込み中は動かさない）。
+  // isFocused を条件に含めるのは、ホームは他画面へ移動してもマウントされ続けるため。
+  // これが無いと、カレンダー等に居る間も裏で無操作を数え、戻ると最小化済みになる。
+  // フォーカスが外れれば idleActive=false になり、下の effect がタイマーを止めて
+  // 最小表示も解除する。戻ってくると数え直す（要件2.1のアイドル最小化はホーム限定）。
+  const idleActive = uiVisible && !loading && isFocused;
 
   // アイドル判定はコールバックから最新の可否を見たいので ref に控える
   const idleActiveRef = useRef(idleActive);
