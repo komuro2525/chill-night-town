@@ -10,7 +10,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { Spacing } from "@/constants/theme";
 import type { ActiveSession, NightWeather } from "@/db/types";
-import { useAppNow } from "@/lib/clock";
+import { useTimerNow } from "@/hooks/use-timer-now";
 import {
   getActualStudySeconds,
   getElapsedSeconds,
@@ -64,12 +64,12 @@ export function TimerDisplay({
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const circle = Math.min(CIRCLE_MAX, width - Spacing.four * 2);
-  const now = useAppNow(1000);
+  const now = useTimerNow(session);
 
   const isPaused = session.pause_started_at !== null;
-  const elapsed = getElapsedSeconds(session, now.getTime());
+  const elapsed = getElapsedSeconds(session, now);
   // 表示する時間は「実績学習時間」。ポモドーロの休憩フェーズは含めない（要件0章）
-  const actual = getActualStudySeconds(session, now.getTime());
+  const actual = getActualStudySeconds(session, now);
   const phase =
     session.timer_mode === "pomodoro"
       ? getPomodoroPhase(session, elapsed)
@@ -77,7 +77,7 @@ export function TimerDisplay({
   // 終わりの位置（ホーム画面の時計の赤い針と同じ時刻）。
   // 計測中はタイマー表示が画面を覆い時計が見えないため、ここにも置く。
   // カウントダウンにはしない（減っていく数字で急かさないため）
-  const plannedEnd = new Date(getPlannedEndMs(session, now.getTime()));
+  const plannedEnd = new Date(getPlannedEndMs(session, now));
 
   return (
     <View style={styles.overlay}>

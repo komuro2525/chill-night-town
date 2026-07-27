@@ -52,6 +52,27 @@ function currentPauseMs(session: ActiveSession, atMs: number): number {
 }
 
 /**
+ * 経過（秒）の表示が次に変わるまでのミリ秒。表示更新の tick をこの境界に合わせるために使う。
+ *
+ * 固定間隔（マウント基準の setInterval(1000)）で更新すると、tick の位相が経過の秒境界とズレる。
+ * すると「数字が切り替わる瞬間に一時停止すると、正確な凍結値だけ先に1秒進む／再開で1秒戻る」
+ * という表示のズレが起きる。境界ちょうどで更新すれば、表示と凍結値が常に一致する（要件3.2）。
+ * 一時停止中は表示が動かないため、頻繁な更新は不要。
+ */
+export function msUntilNextElapsedTick(
+  session: ActiveSession,
+  atMs: number,
+): number {
+  if (session.pause_started_at) return 60_000;
+  const elapsedMs = Math.max(
+    0,
+    atMs - Date.parse(session.start_time) - session.paused_accumulated_ms,
+  );
+  const rem = 1000 - (elapsedMs % 1000);
+  return rem === 1000 ? 1000 : rem; // ちょうど境界なら次の1秒
+}
+
+/**
  * 一時停止をローカルに反映した session を返す（表示を押した瞬間に凍結するための楽観更新）。
  * DB書き込みと同じ pausedAtIso を渡すことで、後からDBを読んでも値が一致する。既に停止中なら変化なし。
  */

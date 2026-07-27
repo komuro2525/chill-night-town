@@ -1,7 +1,7 @@
 import { StyleSheet, Text } from "react-native";
 
 import type { ActiveSession } from "@/db/types";
-import { useAppNow } from "@/lib/clock";
+import { useTimerNow } from "@/hooks/use-timer-now";
 import {
   getActualStudySeconds,
   getElapsedSeconds,
@@ -15,9 +15,9 @@ import { formatDuration } from "./timer-display";
 // ポモドーロモードの場合は現在フェーズ。タップでタイマー表示を再展開する
 // （タップの受け口は時計側が持つ）。
 //
-// 1秒ごとに更新するため独立した部品にしている。上部オーバーレイ本体に
-// useAppNow(1000) を持たせると、時計・バッテリー・レベル・学習時間まで
-// 毎秒描き直すことになるため、更新をこの1行に閉じ込める。
+// 経過の秒境界に合わせて更新するため独立した部品にしている。上部オーバーレイ本体に
+// この毎秒更新を持たせると、時計・バッテリー・レベル・学習時間まで描き直すことになるため、
+// 更新をこの部品に閉じ込める。useTimerNow は一時停止/再開の瞬間も正確に反映する。
 
 export function MeasuringIndicator({
   session,
@@ -27,13 +27,13 @@ export function MeasuringIndicator({
   /** 時計と同じ幅に揃えて中央寄せする */
   width: number;
 }) {
-  const now = useAppNow(1000);
+  const now = useTimerNow(session);
 
   const isPaused = session.pause_started_at !== null;
-  const actual = getActualStudySeconds(session, now.getTime());
+  const actual = getActualStudySeconds(session, now);
   const phase =
     session.timer_mode === "pomodoro"
-      ? getPomodoroPhase(session, getElapsedSeconds(session, now.getTime()))
+      ? getPomodoroPhase(session, getElapsedSeconds(session, now))
       : null;
 
   // 一時停止中はフェーズより「止まっている」ことを優先して伝える

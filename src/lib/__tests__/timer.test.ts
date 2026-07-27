@@ -16,6 +16,7 @@ import {
   getPlannedMinutes,
   getPomodoroPhase,
   isAutoEndReached,
+  msUntilNextElapsedTick,
   shouldAutoFinish,
   withPauseStarted,
   withResumed,
@@ -151,6 +152,38 @@ describe("withPauseStarted / withResumed（押した瞬間に表示を凍結/再
     const frozen = getElapsedSeconds(paused, at(resumeIso));
     const resumed = withResumed(paused, resumeIso);
     expect(getElapsedSeconds(resumed, at(resumeIso))).toBe(frozen);
+  });
+});
+
+describe("msUntilNextElapsedTick（経過の秒境界に表示更新を合わせる）", () => {
+  it("秒の途中では次の境界までの残りミリ秒を返す", () => {
+    const s = simple({ start_time: "2026-01-10T23:00:00.000" });
+    expect(msUntilNextElapsedTick(s, at("2026-01-10T23:00:05.300"))).toBe(700);
+  });
+
+  it("境界ちょうどでは次の1秒を返す（0を返さない）", () => {
+    const s = simple({ start_time: "2026-01-10T23:00:00.000" });
+    expect(msUntilNextElapsedTick(s, at("2026-01-10T23:00:05.000"))).toBe(1000);
+  });
+
+  it("開始時刻の秒未満ぶんも境界に反映される（表示が切り替わる瞬間に合う）", () => {
+    // 開始が .700 なら、経過秒が変わるのは各秒の .700。5.100 の次の境界は 5.700＝残り600ms
+    const s = simple({ start_time: "2026-01-10T23:00:00.700" });
+    expect(msUntilNextElapsedTick(s, at("2026-01-10T23:00:05.100"))).toBe(600);
+  });
+
+  it("一時停止の累積ぶんだけ境界がずれる", () => {
+    // 累積300ms → 経過は (now-start-300ms)。5.100 で経過4800ms、次の境界まで200ms
+    const s = simple({
+      start_time: "2026-01-10T23:00:00.000",
+      paused_accumulated_ms: 300,
+    });
+    expect(msUntilNextElapsedTick(s, at("2026-01-10T23:00:05.100"))).toBe(200);
+  });
+
+  it("一時停止中は表示が動かないため頻繁に更新しない", () => {
+    const s = simple({ pause_started_at: "2026-01-10T23:05:00.000" });
+    expect(msUntilNextElapsedTick(s, at("2026-01-10T23:05:10.000"))).toBe(60_000);
   });
 });
 
