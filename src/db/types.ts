@@ -161,7 +161,8 @@ export type ActiveSession = {
   pomodoro_break_minutes: number | null;
   pomodoro_loop_count: number | null;
   start_time: string;
-  paused_accumulated_seconds: number;
+  /** 一時停止の累積（ミリ秒）。秒未満の停止でも誤差が積もらないよう ms 精度で持つ */
+  paused_accumulated_ms: number;
   /** 一時停止中のみ値を持つ。計測中は null */
   pause_started_at: string | null;
   break_suggest_threshold_minutes: number | null;

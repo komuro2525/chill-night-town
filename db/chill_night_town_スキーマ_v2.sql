@@ -401,8 +401,9 @@ CREATE INDEX idx_playlist_entry_user_pos ON playlist_entry(user_id, position);
 --     ・計測中のみ1件存在する（非計測時は0件）。
 --       学習終了時に study_session へ変換して本テーブルの行を削除する。
 --       アプリ起動時に行が存在すれば「未終了セッションあり」と判定する
---     ・経過時間 = 現在時刻 - start_time - paused_accumulated_seconds
---       （一時停止中はさらに pause_started_at からの経過を除く）
+--     ・経過時間 = 現在時刻 - start_time - paused_accumulated_ms
+--       （一時停止中はさらに pause_started_at からの経過を除く）。
+--       秒未満の停止でも丸め誤差が積もらないよう、累積はミリ秒で持つ
 --     ・ポモドーロの現在フェーズ（何ループ目の作業/休憩か）は
 --       経過時間と設定値からアプリ側で算出する（フェーズ自体は保存不要）
 --     ・一時停止・再開のたびに本テーブルを即時更新することで、
@@ -422,7 +423,7 @@ CREATE TABLE active_session (
     pomodoro_break_minutes          INTEGER CHECK (pomodoro_break_minutes IS NULL OR pomodoro_break_minutes BETWEEN 1 AND 30),
     pomodoro_loop_count             INTEGER CHECK (pomodoro_loop_count    IS NULL OR pomodoro_loop_count    BETWEEN 1 AND 10),
     start_time                      TEXT    NOT NULL,  -- ISO8601
-    paused_accumulated_seconds      INTEGER NOT NULL DEFAULT 0 CHECK (paused_accumulated_seconds >= 0),
+    paused_accumulated_ms           INTEGER NOT NULL DEFAULT 0 CHECK (paused_accumulated_ms >= 0),  -- 一時停止の累積（ミリ秒）
     pause_started_at                TEXT,              -- 一時停止中のみ値を持つ。計測中はNULL
     break_suggest_threshold_minutes INTEGER CHECK (break_suggest_threshold_minutes IS NULL OR break_suggest_threshold_minutes > 0),
     updated_at                      TEXT    NOT NULL DEFAULT (datetime('now')),

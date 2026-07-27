@@ -31,7 +31,7 @@ type Migration = {
 
 // 現在のスキーマバージョン（db/*.sql が表す「最新」の版）。
 // スキーマを変更したら、スキーマSQLを更新しつつ本値を+1し、DELTA_MIGRATIONS に差分を追加する。
-const SCHEMA_VERSION = 17;
+const SCHEMA_VERSION = 18;
 
 // 既存DB（過去バージョン）向けの差分マイグレーション（version >= 2）。
 // 新規インストールはスキーマSQL（=最新）を適用して一気に SCHEMA_VERSION まで上がるため、
@@ -485,6 +485,18 @@ const DELTA_MIGRATIONS: Migration[] = [
         "UPDATE ambient_sound SET artist = ? WHERE sound_type = 'bgm'",
         "しゃろう",
       );
+    },
+  },
+  {
+    version: 18,
+    up: async (db) => {
+      // 一時停止の累積を秒→ミリ秒精度へ変更する（要件3.2）。
+      // 秒だけだと、秒未満の一時停止/再開を繰り返したとき丸め誤差が積もり経過がずれる。
+      // active_session は計測中のみ1件の一時テーブル。列名変更で CHECK も維持される。
+      await db.execAsync(`
+        ALTER TABLE active_session RENAME COLUMN paused_accumulated_seconds TO paused_accumulated_ms;
+        UPDATE active_session SET paused_accumulated_ms = paused_accumulated_ms * 1000;
+      `);
     },
   },
 ];

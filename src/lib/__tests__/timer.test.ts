@@ -26,7 +26,7 @@ const base = {
   user_id: 1,
   town_id: 1,
   start_time: "2026-01-10T23:00:00",
-  paused_accumulated_seconds: 0,
+  paused_accumulated_ms: 0,
   pause_started_at: null,
   break_suggest_threshold_minutes: null,
   updated_at: "2026-01-10T23:00:00",
@@ -65,7 +65,7 @@ describe("getElapsedSeconds（時刻差分方式の経過秒）", () => {
 
   it("一時停止して再開した分は経過から除かれる", () => {
     // 10分停止して40分経過 → 実際に動いていたのは30分
-    const s = simple({ paused_accumulated_seconds: 600 });
+    const s = simple({ paused_accumulated_ms: 600 * 1000 });
     expect(getElapsedSeconds(s, at("2026-01-10T23:40:00"))).toBe(1800);
   });
 
@@ -81,27 +81,33 @@ describe("getElapsedSeconds（時刻差分方式の経過秒）", () => {
   });
 
   it("一時停止の累積が経過を上回っても0で下げ止まる", () => {
-    const s = simple({ paused_accumulated_seconds: 99999 });
+    const s = simple({ paused_accumulated_ms: 99999 * 1000 });
     expect(getElapsedSeconds(s, at("2026-01-10T23:30:00"))).toBe(0);
   });
 
-  it("秒未満のタイミングで一時停止→再開しても経過が飛ばない（整数秒でそろえる・要件3.2）", () => {
-    // 累積は DB の strftime('%s')＝整数秒で加算される。経過側もこれにそろえるため、
-    // 停止中に凍結される値と、再開直後の値が一致する（±1秒ぶれない）。
+  it("秒未満の一時停止→再開でも経過がずれない（累積をミリ秒で持つ・要件3.2）", () => {
+    // 累積を秒（整数）で持つと、秒未満の停止で丸め誤差が出て経過が飛んだりずれたりした。
+    // ミリ秒で持つことで、停止中に凍結される値と再開直後の値が一致する。
     const start = "2026-01-10T23:00:00.700"; // 開始も秒未満を含む（実際の start_time と同様）
-    const pauseIso = "2026-01-10T23:05:00.900"; // 秒に丸めると 23:05:00
-    const resumeIso = "2026-01-10T23:05:01.100"; // 秒に丸めると 23:05:01（境界をまたぐ）
+    const pauseIso = "2026-01-10T23:05:00.900";
+    const resumeIso = "2026-01-10T23:05:01.100"; // 実際の停止は 0.2 秒（秒境界はまたぐ）
 
-    // 停止中に凍結される経過（= 300秒。整数秒 300 - 0）
+    // 停止中に凍結される経過（= 開始からの経過をそのまま切り捨て）
     const paused = simple({ start_time: start, pause_started_at: pauseIso });
     const frozen = getElapsedSeconds(paused, at(resumeIso));
-    expect(frozen).toBe(300);
 
-    // 再開: 累積は strftime 差 = 1秒。再開直後の経過は停止時と一致する（飛ばない）
-    const accum =
-      Math.floor(at(resumeIso) / 1000) - Math.floor(at(pauseIso) / 1000); // 1
-    const resumed = simple({ start_time: start, paused_accumulated_seconds: accum });
+    // 再開: 累積は実際の停止時間（ミリ秒）。再開直後の経過は停止時と一致する（飛ばない）
+    const accumMs = at(resumeIso) - at(pauseIso); // 200ms
+    const resumed = simple({ start_time: start, paused_accumulated_ms: accumMs });
     expect(getElapsedSeconds(resumed, at(resumeIso))).toBe(frozen);
+  });
+
+  it("秒未満の一時停止を何度繰り返しても、累積ぶんだけ正確に差し引かれる（要件3.2）", () => {
+    // 0.2秒の停止を5回（計1.0秒）。秒精度だと丸め誤差が積もってずれるが、ミリ秒なら正確。
+    const start = "2026-01-10T23:00:00.000";
+    const s = simple({ start_time: start, paused_accumulated_ms: 5 * 200 });
+    // 10分経過・停止合計1.0秒 → 実働 599 秒
+    expect(getElapsedSeconds(s, at("2026-01-10T23:10:00.000"))).toBe(599);
   });
 });
 
@@ -275,7 +281,7 @@ describe("getPlannedEndMs（時計に示す終わりの位置）", () => {
 
   it("一時停止した分だけ終わりが後ろへずれる", () => {
     // 10分停止していれば 24:00 → 翌0:10
-    const s = simple({ paused_accumulated_seconds: 600 });
+    const s = simple({ paused_accumulated_ms: 600 * 1000 });
     expect(getPlannedEndMs(s, at("2026-01-10T23:30:00"))).toBe(
       at("2026-01-11T00:10:00"),
     );
@@ -320,7 +326,7 @@ describe("getEndMs（記録する終了時刻）", () => {
 
   it("一時停止を挟んだポモドーロでは、停止分だけ完了時刻が後ろへずれる", () => {
     // 10分停止していれば、完了は 23:55 + 10分 = 翌0:05
-    const s = pomodoro({ paused_accumulated_seconds: 600 });
+    const s = pomodoro({ paused_accumulated_ms: 600 * 1000 });
     expect(getEndMs(s, at("2026-01-11T01:00:00"))).toBe(at("2026-01-11T00:05:00"));
   });
 });

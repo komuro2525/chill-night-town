@@ -19,7 +19,7 @@ const base = {
   user_id: 1,
   town_id: 1,
   start_time: "2026-01-10T21:00:00",
-  paused_accumulated_seconds: 0,
+  paused_accumulated_ms: 0,
   pause_started_at: null,
   updated_at: "2026-01-10T21:00:00",
 };
@@ -214,7 +214,7 @@ describe("続けることを選んだら、次の基準を必ず先送りする�
     // 30分休憩して再開した状態（基準120分）
     const s = simple({
       break_suggest_threshold_minutes: getContinueThreshold(60),
-      paused_accumulated_seconds: 30 * 60,
+      paused_accumulated_ms: 30 * 60 * 1000,
     });
     // 開始21:00・休憩30分 → 実績120分になるのは 23:30
     expect(shouldSuggestBreak(s, 0, at("2026-01-10T23:29:00"), true)).toBe(false);

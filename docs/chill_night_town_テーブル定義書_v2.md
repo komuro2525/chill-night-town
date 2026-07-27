@@ -264,13 +264,13 @@ StudySessionとStudyTagの多対多関係を管理する中間テーブル。1�
 | pomodoro_break_minutes          | INTEGER  |     |                  | 可   | なし            | ポモドーロの休憩時間（分）。シンプルの場合はNULL                                                                                                                   |
 | pomodoro_loop_count             | INTEGER  |     |                  | 可   | なし            | ポモドーロの繰り返し回数。シンプルの場合はNULL                                                                                                                     |
 | start_time                      | TEXT     |     |                  | 不可 | なし            | 計測開始日時（ISO8601）                                                                                                                                            |
-| paused_accumulated_seconds      | INTEGER  |     |                  | 不可 | 0               | これまでの一時停止時間の累積（秒）                                                                                                                                 |
-| pause_started_at                | TEXT     |     |                  | 可   | なし            | 一時停止中の場合、その開始日時。計測中はNULL。**本カラムと累積秒数の2つで、経過時間の差分算出と中断復元の両方を実現する**                                          |
+| paused_accumulated_ms           | INTEGER  |     |                  | 不可 | 0               | これまでの一時停止時間の累積（ミリ秒）。秒未満の停止を繰り返しても丸め誤差が積もらないよう ms 精度で持つ                                                            |
+| pause_started_at                | TEXT     |     |                  | 可   | なし            | 一時停止中の場合、その開始日時。計測中はNULL。**本カラムと累積ミリ秒の2つで、経過時間の差分算出と中断復元の両方を実現する**                                        |
 | break_suggest_threshold_minutes | INTEGER  |     |                  | 可   | なし            | 次回の休憩提案を表示する基準（その学習日の実績合計・分）。初期値は一日の学習目標時間から算出し、「継続」選択で+60、延長宣言で「現在の実績合計+宣言時間」へ更新する |
 | updated_at                      | TEXT     |     |                  | 不可 | datetime('now') | 更新日時                                                                                                                                                           |
 
 **仕様補足**:
-- 経過時間 ＝ 現在時刻 −`start_time`−`paused_accumulated_seconds`（一時停止中はさらに`pause_started_at`からの経過を除く）。ポモドーロの現在フェーズ（何ループ目の作業/休憩か）は、この経過時間と設定値からアプリ側で算出する（フェーズ自体は保存不要）。
+- 経過時間 ＝ 現在時刻 −`start_time`−`paused_accumulated_ms`（一時停止中はさらに`pause_started_at`からの経過を除く）。ポモドーロの現在フェーズ（何ループ目の作業/休憩か）は、この経過時間と設定値からアプリ側で算出する（フェーズ自体は保存不要）。
 - 一時停止・再開のたびに本テーブルを即時更新することで、クラッシュ時も直前の状態から復元できる。
 - CHECK制約により、`timer_mode='simple'`のとき`planned_minutes`必須・`pomodoro_*`はNULL、`timer_mode='pomodoro'`のときはその逆をDBレベルで担保する。
 - **本テーブルは夜の天気を持たない。** タイマー設定（3.1）で選択した天気は、開始時に `daily_night_weather` へ確定する。演出も記録も参照先はそちらであり、計測状態が天気を重複して持つ必要はない（要件2.5）。

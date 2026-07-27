@@ -55,7 +55,7 @@ export async function create(input: CreateActiveSessionInput): Promise<void> {
     `INSERT INTO active_session
        (user_id, town_id, timer_mode,
         planned_minutes, pomodoro_work_minutes, pomodoro_break_minutes, pomodoro_loop_count,
-        start_time, paused_accumulated_seconds, pause_started_at,
+        start_time, paused_accumulated_ms, pause_started_at,
         break_suggest_threshold_minutes)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, NULL, ?)`,
     input.userId,
@@ -84,16 +84,16 @@ export async function pause(pausedAt: string): Promise<void> {
 /**
  * 再開する。今回の停止時間を累積へ加算し、停止開始時刻を消す。
  * 加算は SQL 内で行い、読み出し→計算→書き戻しの競合を避ける。
- * 端末時計の変更で負値になる場合に備え、0未満は加算しない（要件3.2）。
+ * julianday でミリ秒差を求め、秒未満の停止も丸めずに積む（要件3.2）。
+ * 端末時計の変更で負値になる場合に備え、0未満は加算しない。
  */
 export async function resume(resumedAt: string): Promise<void> {
   const db = await getDatabase();
   await db.runAsync(
     `UPDATE active_session
-        SET paused_accumulated_seconds =
-              paused_accumulated_seconds
-              + MAX(0, CAST(strftime('%s', ?) AS INTEGER)
-                       - CAST(strftime('%s', pause_started_at) AS INTEGER)),
+        SET paused_accumulated_ms =
+              paused_accumulated_ms
+              + MAX(0, CAST(ROUND((julianday(?) - julianday(pause_started_at)) * 86400000) AS INTEGER)),
             pause_started_at = NULL,
             updated_at = datetime('now')
       WHERE pause_started_at IS NOT NULL`,

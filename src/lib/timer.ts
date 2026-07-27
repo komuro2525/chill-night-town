@@ -12,7 +12,7 @@
 
 import { STUDY_DAY } from "@/constants/domain";
 import type { ActiveSession } from "@/db/types";
-import { clampNonNegativeSeconds, getStudyDate } from "./study-day";
+import { getStudyDate } from "./study-day";
 
 /** ポモドーロの現在フェーズ */
 export type PomodoroPhase = {
@@ -33,21 +33,22 @@ export type PomodoroPhase = {
  * 端末時計の変更等で負値になった場合は0に丸める（要件3.2）。
  */
 export function getElapsedSeconds(session: ActiveSession, atMs: number): number {
-  // すべて Unix 秒（整数）で計算する。一時停止の累積 paused_accumulated_seconds は
-  // DB側で strftime('%s')＝整数秒で加算しているため、経過側もミリ秒ではなく整数秒でそろえる。
-  // そろえないと精度がズレ、一時停止/再開のたびに秒境界の丸めで経過が ±1 秒ぶれる（要件3.2）。
-  const startSec = Math.floor(Date.parse(session.start_time) / 1000);
-  const nowSec = Math.floor(atMs / 1000);
-  // 一時停止中は、今回の停止分（整数秒）をさらに差し引く（停止開始より前なら0扱い）
-  const currentPauseSec = session.pause_started_at
-    ? clampNonNegativeSeconds(
-        nowSec - Math.floor(Date.parse(session.pause_started_at) / 1000),
-      )
-    : 0;
+  // 経過も一時停止の累積もミリ秒で計算する。累積を秒（整数）で持つと、秒未満の
+  // 一時停止/再開を繰り返したとき丸め誤差が積もって経過がずれるため、ms 精度でそろえる（要件3.2）。
+  const ms =
+    atMs -
+    Date.parse(session.start_time) -
+    session.paused_accumulated_ms -
+    currentPauseMs(session, atMs);
+  // 端末時計の巻き戻し等で負になった場合は0に丸める（要件3.2）
+  return Math.floor(Math.max(0, ms) / 1000);
+}
 
-  const seconds =
-    nowSec - startSec - session.paused_accumulated_seconds - currentPauseSec;
-  return clampNonNegativeSeconds(seconds);
+/** 現在進行中の一時停止のミリ秒（停止していなければ0。時計の巻き戻しに備え0で下げ止める） */
+function currentPauseMs(session: ActiveSession, atMs: number): number {
+  return session.pause_started_at
+    ? Math.max(0, atMs - Date.parse(session.pause_started_at))
+    : 0;
 }
 
 /**
@@ -210,14 +211,10 @@ export function getPlannedEndMs(session: ActiveSession, atMs: number): number {
       ? (session.planned_minutes ?? 0) * 60
       : getLayout(session).totalSec;
 
-  // これまでに止めていた時間（一時停止中は今回の分も含む）
-  const pausedSec =
-    session.paused_accumulated_seconds +
-    (session.pause_started_at
-      ? clampNonNegativeSeconds((atMs - Date.parse(session.pause_started_at)) / 1000)
-      : 0);
+  // これまでに止めていた時間（一時停止中は今回の分も含む・ミリ秒）
+  const pausedMs = session.paused_accumulated_ms + currentPauseMs(session, atMs);
 
-  const end = Date.parse(session.start_time) + (plannedSec + pausedSec) * 1000;
+  const end = Date.parse(session.start_time) + plannedSec * 1000 + pausedMs;
   return Math.min(end, getAutoEndMs(session));
 }
 
@@ -244,14 +241,7 @@ export function getEndMs(session: ActiveSession, atMs: number): number {
   if (getElapsedSeconds(session, capped) < totalSec) return capped;
 
   // 全ループ完了後に終了した場合、完了した瞬間を終了時刻とする
-  // （完了時刻 = 開始 + 全ループ + それまでの一時停止の合計）
-  const pausedMs =
-    (session.paused_accumulated_seconds +
-      (session.pause_started_at
-        ? clampNonNegativeSeconds(
-            (capped - Date.parse(session.pause_started_at)) / 1000,
-          )
-        : 0)) *
-    1000;
+  // （完了時刻 = 開始 + 全ループ + それまでの一時停止の合計・ミリ秒）
+  const pausedMs = session.paused_accumulated_ms + currentPauseMs(session, capped);
   return Math.min(Date.parse(session.start_time) + totalSec * 1000 + pausedMs, capped);
 }
