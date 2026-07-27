@@ -6,6 +6,7 @@
 import {
   getMonthGrid,
   getMonthRange,
+  isMonthComplete,
   pickMostFrequent,
   shiftMonth,
 } from "../calendar";
@@ -71,6 +72,31 @@ describe("getMonthRange（集計の絞り込み範囲）", () => {
   it("平年2月は末日28、うるう年2月は29", () => {
     expect(getMonthRange(2026, 2).end).toBe("2026-02-28");
     expect(getMonthRange(2028, 2).end).toBe("2028-02-29");
+  });
+});
+
+describe("isMonthComplete（完了した過去月の判定）", () => {
+  it("今日の学習日が属する当月は未完了（false）", () => {
+    // 2026-01 の途中（15日）に見ている当月は、まだ終わっていない
+    expect(isMonthComplete(2026, 1, "2026-01-15")).toBe(false);
+  });
+
+  it("月末当日はまだ未完了（末日を過ぎていない）", () => {
+    expect(isMonthComplete(2026, 1, "2026-01-31")).toBe(false);
+  });
+
+  it("翌月に入っていれば前月は完了（true）", () => {
+    expect(isMonthComplete(2026, 1, "2026-02-01")).toBe(true);
+  });
+
+  it("未来の月は未完了（false）", () => {
+    expect(isMonthComplete(2026, 3, "2026-01-15")).toBe(false);
+  });
+
+  it("年をまたいでも判定できる", () => {
+    // 2025-12 は 2026-01 時点で完了、2026-01 は 2025-12 時点で未完了
+    expect(isMonthComplete(2025, 12, "2026-01-01")).toBe(true);
+    expect(isMonthComplete(2026, 1, "2025-12-31")).toBe(false);
   });
 });
 

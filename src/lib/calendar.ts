@@ -53,6 +53,23 @@ export function getMonthRange(
   };
 }
 
+/**
+ * その月が「完了した過去月」か（=その月の最終学習日を過ぎているか）。
+ *
+ * 月の記録は study_date が [start, end] に入るセッションで構成される。今日の学習日が
+ * その月末（end）より後なら、その月はもう終わっている。現在進行中の月・未来の月は false。
+ * 学習日は 'YYYY-MM-DD' 固定長のため、辞書順比較で日付の前後を判定できる。
+ *
+ * @param todayKey 今日の学習日（getStudyDate(now()) の結果）
+ */
+export function isMonthComplete(
+  year: number,
+  month: number,
+  todayKey: string,
+): boolean {
+  return getMonthRange(year, month).end < todayKey;
+}
+
 /** 1か月前後へ移動する（月の切り替え）。年またぎも正しく扱う */
 export function shiftMonth(
   year: number,

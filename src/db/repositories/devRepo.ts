@@ -223,3 +223,94 @@ export async function seedCalendarSampleData(): Promise<void> {
     }
   });
 }
+
+/**
+ * ふりかえりメッセージ確認用に、当年の4〜6月の月次ダミー記録を入れる（開発用）。
+ *
+ * 目的: カレンダーの「ふりかえり」（要件4.2拡張）は、完了した月の感情のカテゴリ傾向に
+ *   応じてメッセージを出し分ける。傾向の異なる月が無いと確認できないため、当年の
+ *   4〜6月にそれぞれ別の傾向を持つ記録を投入する:
+ *     ・4月: 前向き優勢＋しんどさ散見（positive_with_negative）
+ *     ・5月: しんどさが多い中に前向きも差す（persevered_with_light）
+ *     ・6月: 山あり谷あり（mixed）
+ *   街の成長には反映しない（カレンダー表示の確認だけが目的）。
+ *
+ * 感情id/天気idはシード順（emotion 1〜4=ポジ / 5〜7=ニュートラル / 8〜11=ネガ）。
+ * 各エントリ: [日, 実績分, 感情id, 天気id]。1日1セッション・21時開始（当日帰属）。
+ */
+export async function seedMonthlyReviewSampleData(): Promise<void> {
+  const db = await getDatabase();
+  const user = await db.getFirstAsync<{ id: number; daily_goal_minutes: number }>(
+    "SELECT id, daily_goal_minutes FROM user LIMIT 1",
+  );
+  const town = await db.getFirstAsync<{ town_id: number }>(
+    "SELECT town_id FROM town_progress WHERE is_selected = 1 LIMIT 1",
+  );
+  if (!user || !town) return;
+
+  const year = new Date().getFullYear();
+  const days = [3, 6, 8, 11, 14, 17, 20, 23, 26, 28];
+
+  // 月ごとの [実績分, 感情id, 天気id]（days と同じ並び）。感情の配分で傾向が決まる。
+  const months: { month: number; rows: [number, number, number][] }[] = [
+    {
+      // 4月: ポジ6・ニュートラル1・ネガ3 → positive_with_negative
+      month: 4,
+      rows: [
+        [90, 2, 6], [45, 1, 1], [120, 8, 7], [30, 3, 3], [60, 2, 2],
+        [75, 9, 9], [40, 4, 6], [100, 3, 4], [50, 10, 8], [80, 5, 1],
+      ],
+    },
+    {
+      // 5月: ポジ3・ニュートラル1・ネガ6 → persevered_with_light
+      month: 5,
+      rows: [
+        [50, 8, 7], [90, 1, 2], [30, 9, 9], [120, 10, 6], [60, 2, 1],
+        [45, 8, 8], [80, 11, 3], [100, 4, 6], [40, 9, 10], [70, 6, 5],
+      ],
+    },
+    {
+      // 6月: ポジ4・ニュートラル3・ネガ3 → mixed
+      month: 6,
+      rows: [
+        [60, 1, 1], [80, 5, 3], [40, 8, 6], [100, 2, 2], [50, 6, 7],
+        [75, 9, 9], [90, 3, 4], [30, 7, 5], [110, 10, 8], [45, 4, 6],
+      ],
+    },
+  ];
+
+  await db.withTransactionAsync(async () => {
+    for (const { month, rows } of months) {
+      for (let i = 0; i < rows.length; i++) {
+        const [minutes, emotionId, weatherId] = rows[i];
+        const start = new Date(year, month - 1, days[i], 21, 0, 0, 0);
+        const studyDate = formatDateKey(start);
+        const end = new Date(start.getTime() + minutes * 60 * 1000);
+
+        await db.runAsync(
+          `INSERT INTO study_session
+             (user_id, town_id, emotion_id, timer_mode, study_date,
+              start_time, end_time, planned_minutes, duration_minutes)
+           VALUES (?, ?, ?, 'simple', ?, ?, ?, ?, ?)`,
+          user.id, town.town_id, emotionId, studyDate,
+          start.toISOString(), end.toISOString(), minutes, minutes,
+        );
+
+        await db.runAsync(
+          `INSERT INTO daily_night_weather (user_id, study_date, night_weather_id)
+           VALUES (?, ?, ?)
+           ON CONFLICT (user_id, study_date)
+           DO UPDATE SET night_weather_id = excluded.night_weather_id`,
+          user.id, studyDate, weatherId,
+        );
+
+        if (minutes >= user.daily_goal_minutes) {
+          await db.runAsync(
+            "INSERT OR IGNORE INTO daily_goal_achievement (user_id, study_date) VALUES (?, ?)",
+            user.id, studyDate,
+          );
+        }
+      }
+    }
+  });
+}

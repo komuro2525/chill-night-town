@@ -17,8 +17,14 @@ import type {
   DayMark,
   MonthSummary,
 } from "@/db/repositories/calendarRepo";
-import { getMonthGrid, getMonthRange, shiftMonth } from "@/lib/calendar";
+import {
+  getMonthGrid,
+  getMonthRange,
+  isMonthComplete,
+  shiftMonth,
+} from "@/lib/calendar";
 import { now } from "@/lib/clock";
+import { buildReviewMessage, tallyFromCounts } from "@/lib/monthly-review";
 import { refreshNotifications } from "@/lib/notification-sync";
 import { getStudyDate } from "@/lib/study-day";
 
@@ -76,6 +82,30 @@ export default function CalendarScreen() {
   }
 
   const grid = getMonthGrid(ym.year, ym.month);
+
+  // 完了した月に限り、その月の感情傾向＋最多感情に応じたねぎらいの一言（要件4.2拡張）。
+  // 進行中の月・記録の無い月には出さない。同じ月は毎回同じ文面（buildReviewMessage が年月固定）。
+  const reviewMessage =
+    summary &&
+    summary.sessionCount > 0 &&
+    isMonthComplete(ym.year, ym.month, todayKey)
+      ? buildReviewMessage({
+          tally: tallyFromCounts(
+            summary.emotionCounts.map((e) => ({
+              category: e.emotion.category,
+              count: e.count,
+            })),
+          ),
+          topEmotionLabel: summary.topEmotion
+            ? `${summary.topEmotion.emoji} ${summary.topEmotion.name}`
+            : null,
+          topWeatherLabel: summary.topWeather
+            ? `${summary.topWeather.emoji} ${summary.topWeather.name}`
+            : null,
+          year: ym.year,
+          month: ym.month,
+        })
+      : null;
 
   // 横スワイプでタブ切替（左＝ふりかえりへ / 右＝カレンダーへ）。
   // 2タブなので方向でそのまま行き先が決まる
@@ -204,7 +234,7 @@ export default function CalendarScreen() {
           </>
         ) : (
           /* 月次サマリー・天気アルバム（要件4.2） */
-          <MonthSummaryCard summary={summary} />
+          <MonthSummaryCard summary={summary} reviewMessage={reviewMessage} />
         )}
           </View>
         </GestureDetector>

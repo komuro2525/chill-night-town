@@ -56,7 +56,14 @@ function BarChart({ data }: { data: BarDatum[] }) {
   );
 }
 
-export function MonthSummaryCard({ summary }: { summary: MonthSummary | null }) {
+export function MonthSummaryCard({
+  summary,
+  // 完了した月のねぎらいメッセージ（要件4.2拡張）。無い月・進行中の月は null
+  reviewMessage = null,
+}: {
+  summary: MonthSummary | null;
+  reviewMessage?: string | null;
+}) {
   // 全11種のうち何種の天気を集めたか（アルバムの充実度）
   const collectedKinds = summary?.weatherAlbum.length ?? 0;
 
@@ -87,6 +94,14 @@ export function MonthSummaryCard({ summary }: { summary: MonthSummary | null }) 
 
   return (
     <View style={styles.card}>
+      {/* 完了した月のねぎらいの一言（静かなトーン。あるときだけ） */}
+      {reviewMessage ? (
+        <View style={styles.review}>
+          <Text style={styles.reviewLabel}>今月のふりかえり</Text>
+          <Text style={styles.reviewText}>{reviewMessage}</Text>
+        </View>
+      ) : null}
+
       {/* 総学習時間・学習回数 */}
       <View style={styles.statsRow}>
         <Stat label="学習した時間" value={formatMinutes(summary.totalMinutes)} />
@@ -153,6 +168,22 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(18,26,46,0.6)",
     padding: Spacing.four,
     gap: Spacing.three,
+  },
+  review: {
+    gap: Spacing.two,
+    paddingBottom: Spacing.three,
+    borderBottomWidth: 1,
+    borderBottomColor: "rgba(255,255,255,0.08)",
+  },
+  reviewLabel: {
+    color: LightColor,
+    fontSize: 11,
+    letterSpacing: 1,
+  },
+  reviewText: {
+    color: "rgba(255,255,255,0.9)",
+    fontSize: 14,
+    lineHeight: 23,
   },
   statsRow: {
     flexDirection: "row",

@@ -597,13 +597,20 @@ export default function HomeScreen() {
       console.error("レベルの切り替えに失敗しました", e);
     }
   }, [user, selected?.progress.project_target_minutes]);
-  // 開発用: カレンダー確認用に過去数日分のダミー記録を入れる（__DEV__ 限定）
+  // 開発用: カレンダー確認用のダミー記録をまとめて入れる（__DEV__ 限定）。
+  // 過去数日ぶん（日別マーク・複数セッション確認用）＋当年4〜6月の傾向違い
+  // （ふりかえりメッセージ確認用）を1ボタンで投入する。
   const handleSeedCalendar = useCallback(async () => {
     try {
       await devRepo.seedCalendarSampleData();
+      await devRepo.seedMonthlyReviewSampleData();
       await reloadSummary();
       await reloadWeather();
-      if (__DEV__) Alert.alert("ダミー記録", "過去数日分のダミー記録を入れました。カレンダーで確認できます。");
+      if (__DEV__)
+        Alert.alert(
+          "ダミー記録",
+          "過去数日ぶんと、4〜6月の傾向違いの記録を入れました。カレンダーの日別と各月の「ふりかえり」を確認できます。",
+        );
     } catch (e) {
       console.error("ダミー記録の投入に失敗しました", e);
     }
@@ -1346,7 +1353,7 @@ function DevPanel({
           今夜の学習時間を初期化
         </ThemedText>
       </Pressable>
-      {/* カレンダー確認用に過去数日分のダミー記録を入れる */}
+      {/* カレンダー確認用のダミー記録（過去数日＋4〜6月の傾向違い）をまとめて入れる */}
       <Pressable onPress={onSeedCalendar} style={styles.devButton}>
         <ThemedText type="small" style={styles.devButtonText}>
           カレンダー用のダミー記録を入れる
