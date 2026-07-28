@@ -367,8 +367,10 @@ export default function HomeScreen() {
         await reloadSummary();
         await applyGrowth(result.minutes, result.studyDate);
         // 終了演出（要件3.3）: 鐘を鳴らし、その間BGM・環境音を下げる（ダッキング）。
-        // 鐘の音量が0なら演出表示のみで無音（AudioContext 側で判定・UC 3.3 備考）
-        audio.playBell();
+        // 鐘の音量が0なら演出表示のみで無音（AudioContext 側で判定・UC 3.3 備考）。
+        // 街ごとに鐘の音色を変える（未登録の街は既定音）。計測中は街を切り替えられない
+        // ため、選択中の街＝そのセッションの街になる。
+        audio.playBell(selected?.town.code);
         setRecord({
           id: result.sessionId,
           minutes: result.minutes,
@@ -378,7 +380,7 @@ export default function HomeScreen() {
     } catch (e) {
       console.error("学習の終了に失敗しました", e);
     }
-  }, [timer, reloadSummary, applyGrowth, audio]);
+  }, [timer, reloadSummary, applyGrowth, audio, selected?.town.code]);
 
   // 自動終了（要件3.2）。鑑賞モード中に起きた場合はUIを復帰させてから表示する（要件2.4）
   const handleAutoFinish = useCallback(async () => {

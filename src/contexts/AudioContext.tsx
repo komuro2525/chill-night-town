@@ -20,6 +20,7 @@ import {
   getAmbientSource,
   getBgmSource,
   getSfxSource,
+  getTownBell,
   type SfxKey,
 } from "@/constants/audioAssets";
 import { masterRepo, playlistRepo, settingsRepo, userRepo } from "@/db/repositories";
@@ -76,8 +77,9 @@ type AudioContextValue = {
   /**
    * 終了演出の鐘を鳴らす（要件3.3）。再生中はBGM・環境音を下げ、終了後に戻す。
    * 鐘の音量が0のときは何もしない（演出表示のみ進める）。
+   * townCode を渡すとその街の音色で鳴らす（街ごとの鐘が未登録なら既定音）。
    */
-  playBell: () => void;
+  playBell: (townCode?: string | null) => void;
 
   // --- BGM（要件9 / UC 9.2）。ミニプレイヤーが参照・操作する ---
   /** 再生中のBGM（曲名・クレジット表示用。プール無し・BGM音量0のときは null） */
@@ -185,6 +187,9 @@ export function AudioProvider({ children }: { children: ReactNode }) {
 
   // 使い捨ての効果音プレイヤー。鳴らすたびに作ると重いため、用途ごとに使い回す
   const sfxPlayers = useRef(new Map<SfxKey, AudioPlayer>());
+  // 街ごとの鐘のプレイヤー。音源（require の戻り値）をキーにして、同じ音源は共有する
+  // （街ごとの鐘が無い街は既定音を共有し、無駄なプレイヤーを作らない）。要件3.3
+  const bellPlayers = useRef(new Map<string, AudioPlayer>());
   // ダッキング中に元の音量へ戻すためのタイマー
   const duckTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   // BGM・環境音のプレイヤー（環境音は 7-4 で設定する）。ダッキングの対象
@@ -256,11 +261,14 @@ export function AudioProvider({ children }: { children: ReactNode }) {
   // 読むのは意図どおりのため、当該の hooks 警告は抑制する。
   useEffect(() => {
     const players = sfxPlayers.current;
+    const bells = bellPlayers.current;
     return () => {
       if (duckTimer.current) clearTimeout(duckTimer.current);
       if (fadeTimer.current) clearInterval(fadeTimer.current);
       players.forEach((p) => p.remove());
       players.clear();
+      bells.forEach((p) => p.remove());
+      bells.clear();
       bgmPlayer.current?.remove();
       ambientPlayer.current?.remove();
     };
@@ -316,23 +324,50 @@ export function AudioProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  const playBell = useCallback(() => {
-    const bellVolume = volumesRef.current.bell;
-    // 鐘の音量が0なら演出表示のみ（音の処理は一切行わない。UC 3.3 備考）
-    if (isMuted(bellVolume)) return;
+  /** 街ごとの鐘のプレイヤーを用意する（未制作の街は既定音へフォールバック） */
+  const getBellPlayer = useCallback(
+    (townCode?: string | null): AudioPlayer | null => {
+      const source = getTownBell(townCode);
+      // 既定の鐘も未制作なら鳴らさない
+      if (!source) return null;
+      // require の戻り値をキーにする（同一ファイルは同一値＝街をまたいで共有できる）
+      const key = String(source);
+      const existing = bellPlayers.current.get(key);
+      if (existing) return existing;
+      const player = createAudioPlayer(source);
+      bellPlayers.current.set(key, player);
+      return player;
+    },
+    [],
+  );
 
-    const player = getSfxPlayer("bell");
-    if (!player) return;
+  // 終了演出の鐘（要件3.3）。選択中の街コードを渡すと、その街の音色で鳴らす
+  // （街ごとの鐘が未登録なら既定音）。街を渡さなければ既定音になる。
+  const playBell = useCallback(
+    (townCode?: string | null) => {
+      const bellVolume = volumesRef.current.bell;
+      // 鐘の音量が0なら演出表示のみ（音の処理は一切行わない。UC 3.3 備考）
+      if (isMuted(bellVolume)) return;
 
-    applyDucking(true);
-    playOnce("bell", bellVolume);
+      const player = getBellPlayer(townCode);
+      if (!player) return;
 
-    // 鐘の長さぶん下げてから戻す。duration が取れない場合に備えて既定値を用意する
-    const durationMs =
-      player.duration > 0 ? player.duration * 1000 : AUDIO.FADE_IN_MS;
-    if (duckTimer.current) clearTimeout(duckTimer.current);
-    duckTimer.current = setTimeout(() => applyDucking(false), durationMs);
-  }, [applyDucking, getSfxPlayer, playOnce]);
+      applyDucking(true);
+      player.volume = toPlayerVolume(bellVolume);
+      // 前回の再生位置が末尾のままだと鳴らないため、毎回頭へ戻してから再生する
+      player
+        .seekTo(0)
+        .then(() => player.play())
+        .catch((e) => console.error("鐘の再生に失敗しました", e));
+
+      // 鐘の長さぶん下げてから戻す。duration が取れない場合に備えて既定値を用意する
+      const durationMs =
+        player.duration > 0 ? player.duration * 1000 : AUDIO.FADE_IN_MS;
+      if (duckTimer.current) clearTimeout(duckTimer.current);
+      duckTimer.current = setTimeout(() => applyDucking(false), durationMs);
+    },
+    [applyDucking, getBellPlayer],
+  );
 
   const playPreview = useCallback(
     (category: SoundCategory) => {

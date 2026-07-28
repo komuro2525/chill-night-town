@@ -67,3 +67,25 @@ export function getAmbientSource(code: string): AudioSource | undefined {
 export function getSfxSource(key: SfxKey): AudioSource | undefined {
   return SFX[key];
 }
+
+/**
+ * 街ごとの終了演出の鐘（要件3.3）。街コードをキーに音色を変える。
+ * 背景アート（townArt.ts）と同じ「街コード→アセット」方式。素材は街ごとに
+ * assets/audio/bell/<townCode>/<townCode>_bell.mp3 へ置く（詳細は同フォルダの README）。
+ *
+ * 未登録の街は既定の鐘（SFX.bell）へフォールバックする（背景が night に落ちるのと同じ）。
+ * これにより素材が無い街でも終了演出は必ず鳴る。素材が届いた街から下に1行足すだけで有効になる。
+ *
+ * TODO(素材): 現状は全街とも素材未制作のため未登録＝全街が既定の鐘。届いた街から登録する。
+ *   例) nightTown: require("@/assets/audio/bell/nightTown/nightTown_bell.mp3"),
+ */
+const TOWN_BELL: Record<string, AudioSource> = {};
+
+/**
+ * 選択中の街の終了演出の鐘を返す。街ごとの鐘が登録されていればそれを、
+ * 無ければ既定の鐘（SFX.bell）を返す。既定も未制作なら undefined（＝鳴らさない）。
+ */
+export function getTownBell(townCode: string | null | undefined): AudioSource | undefined {
+  if (townCode && TOWN_BELL[townCode]) return TOWN_BELL[townCode];
+  return SFX.bell;
+}
