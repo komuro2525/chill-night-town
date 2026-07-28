@@ -14,8 +14,13 @@ export function GrowthHintCard() {
   // 閉じた瞬間にDB更新の完了を待たず消すためのローカル状態
   const [closed, setClosed] = useState(false);
 
+  // 初回チュートリアルを見終えてから出す（チュートリアル → 育て方のお知らせ の順）
   const visible =
-    ready && user !== null && user.growth_hint_dismissed === 0 && !closed;
+    ready &&
+    user !== null &&
+    user.tutorial_completed === 1 &&
+    user.growth_hint_dismissed === 0 &&
+    !closed;
 
   async function handleDismiss() {
     setClosed(true);

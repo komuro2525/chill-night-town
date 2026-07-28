@@ -372,6 +372,15 @@ export default function SettingsScreen() {
           />
         </SettingSection>
 
+        {/* 使い方（タップで各機能の説明一覧へ） */}
+        <SettingSection title="使い方">
+          <SettingRow
+            first
+            label="使い方"
+            onPress={() => router.push("/settings/help")}
+          />
+        </SettingSection>
+
         {/* データ */}
         <SettingSection title="データ">
           <SettingRow
@@ -388,6 +397,7 @@ export default function SettingsScreen() {
           />
         </SettingSection>
       </ScrollView>
+
 
       {/* 通知時刻の編集（通知ONのあいだのみ） */}
       <EditFieldModal

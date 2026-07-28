@@ -1,9 +1,15 @@
 import { useEffect, useState } from "react";
-import { Modal, Pressable, ScrollView, StyleSheet, Text } from "react-native";
+import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 
+import { getTutorialPage } from "@/constants/tutorial";
 import { LightColor, Spacing } from "@/constants/theme";
-import { masterRepo } from "@/db/repositories";
+import { useSettings } from "@/contexts/SettingsContext";
+import { masterRepo, userRepo } from "@/db/repositories";
 import type { NightWeather } from "@/db/types";
+
+// 初めて天気の選択欄を開いたとき、この機能の説明を一度だけ選択欄の上に重ねる（要件1.3）。
+// ホーム・タイマー設定のどちらから開いても同じキー("weather")で、片方で見れば再表示しない。
+const WEATHER_TUTORIAL = getTutorialPage("weather");
 
 // 今夜の天気の選択欄（要件2.5 / 3.1 / 3.4）。
 //
@@ -30,6 +36,29 @@ export function WeatherPicker({
 }) {
   const [weathers, setWeathers] = useState<NightWeather[]>([]);
 
+  // 天気機能の初回説明（選択欄に重ねて出す）。片方で見れば以後は出さない
+  const { user, reload: reloadSettings } = useSettings();
+  const [introClosed, setIntroClosed] = useState(false);
+  const seenFeatures = (user?.tutorial_seen_features ?? "")
+    .split(",")
+    .filter(Boolean);
+  const showIntro =
+    visible &&
+    WEATHER_TUTORIAL !== undefined &&
+    user !== null &&
+    !seenFeatures.includes("weather") &&
+    !introClosed;
+
+  async function closeIntro() {
+    setIntroClosed(true);
+    try {
+      await userRepo.markFeatureTutorialSeen("weather");
+      await reloadSettings();
+    } catch (e) {
+      console.error("天気説明の既読記録に失敗しました", e);
+    }
+  }
+
   useEffect(() => {
     let mounted = true;
     masterRepo
@@ -50,6 +79,7 @@ export function WeatherPicker({
       animationType="fade"
       onRequestClose={onClose}
     >
+      <View style={styles.root}>
       <Pressable style={styles.backdrop} onPress={onClose}>
         {/* カード内のタップで閉じないよう、伝播を止める */}
         <Pressable style={styles.card} onPress={() => {}}>
@@ -89,18 +119,79 @@ export function WeatherPicker({
           </Pressable>
         </Pressable>
       </Pressable>
+
+      {/* 初回だけ、天気機能の説明を選択欄の上に重ねる（Modalを重ねず同一Modal内のViewで出す） */}
+      {showIntro && WEATHER_TUTORIAL ? (
+        <View style={styles.introCover}>
+          <View style={styles.introCard}>
+            <Text style={styles.introTitle}>{WEATHER_TUTORIAL.title}</Text>
+            {WEATHER_TUTORIAL.body.map((paragraph, i) => (
+              <Text key={i} style={styles.introBody}>
+                {paragraph}
+              </Text>
+            ))}
+            <Pressable
+              onPress={() => void closeIntro()}
+              style={({ pressed }) => [styles.introButton, pressed && styles.pressed]}
+              accessibilityLabel="わかった"
+            >
+              <Text style={styles.introButtonText}>わかった</Text>
+            </Pressable>
+          </View>
+        </View>
+      ) : null}
+      </View>
     </Modal>
   );
 }
 
 
 const styles = StyleSheet.create({
+  root: {
+    flex: 1,
+  },
   backdrop: {
     flex: 1,
     backgroundColor: "rgba(3,6,15,0.75)",
     alignItems: "center",
     justifyContent: "center",
     padding: Spacing.four,
+  },
+  introCover: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(6,10,20,0.98)",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: Spacing.five,
+  },
+  introCard: {
+    width: "100%",
+    maxWidth: 340,
+    gap: Spacing.three,
+  },
+  introTitle: {
+    color: "rgba(255,255,255,0.96)",
+    fontSize: 20,
+    fontWeight: "700",
+    letterSpacing: 1,
+  },
+  introBody: {
+    color: "rgba(255,255,255,0.82)",
+    fontSize: 15,
+    lineHeight: 26,
+  },
+  introButton: {
+    marginTop: Spacing.two,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: LightColor,
+    paddingVertical: Spacing.three,
+    alignItems: "center",
+  },
+  introButtonText: {
+    color: LightColor,
+    fontSize: 15,
+    fontWeight: "600",
   },
   card: {
     width: "100%",

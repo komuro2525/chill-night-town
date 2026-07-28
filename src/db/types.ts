@@ -43,6 +43,10 @@ export type User = {
   growth_hint_dismissed: Bool;
   /** 選択中のNPC（夜の街の住人）。メッセージの声色を決める（要件7.1）。既定=1 */
   selected_npc_id: number;
+  /** 初回チュートリアル（使い方・最小限）を見終えたか（1=表示済み） */
+  tutorial_completed: Bool;
+  /** 機能ごとの初回説明を見たか（カンマ区切りのキー集合）。空文字＝未読 */
+  tutorial_seen_features: string;
   created_at: string;
   updated_at: string;
 };

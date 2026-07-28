@@ -80,6 +80,8 @@
 | pomodoro_loop_count         | INTEGER      |     |     | 不可 | 1               | ポモドーロ: 前回の繰り返し回数。CHECK: 1〜10                                                                                            |
 | growth_hint_dismissed       | INTEGER(0/1) |     |     | 不可 | 0               | 初回ホームで表示する「街の育て方」お知らせ（成長方式の案内）を表示済みか。1=表示済み（以後出さない）。CHECK: 0/1                        |
 | selected_npc_id             | INTEGER      | FK  | npc.id | 不可 | 1               | 選択中のNPC（夜の街の住人）。アプリで出るメッセージの声色を決める（要件7.1）。設定で変更可。既定=最初の住人(1)。ON DELETE RESTRICT      |
+| tutorial_completed          | INTEGER(0/1) |     |     | 不可 | 0               | 初回チュートリアル（使い方カルーセル・最小限）を見終えたか。1=表示済み。初期設定完了後に一度だけ自動表示。CHECK: 0/1 |
+| tutorial_seen_features      | TEXT         |     |     | 不可 | ''              | 機能ごとの初回説明を見たか（カンマ区切りのキー集合。例: `calendar,weather`）。初めてその画面/操作に触れたとき一度だけ出す。要件1.3 |
 | created_at                  | TEXT         |     |     | 不可 | datetime('now') | 作成日時                                                                                                                                |
 | updated_at                  | TEXT         |     |     | 不可 | datetime('now') | 更新日時                                                                                                                                |
 

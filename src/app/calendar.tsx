@@ -8,6 +8,7 @@ import {
 import { runOnJS } from "react-native-reanimated";
 
 import { CalendarDayDetail } from "@/components/calendar-day-detail";
+import { FeatureTutorial } from "@/components/feature-tutorial";
 import { MonthSummaryCard } from "@/components/month-summary-card";
 import { LightColor, Spacing } from "@/constants/theme";
 import { useSettings } from "@/contexts/SettingsContext";
@@ -120,6 +121,8 @@ export default function CalendarScreen() {
 
   return (
     <View style={styles.container}>
+      {/* 初めてカレンダーを開いたとき一度だけ、この機能の説明を出す */}
+      <FeatureTutorial featureKey="calendar" />
       <ScrollView contentContainerStyle={styles.scroll}>
         {/* 月の切り替え */}
         <View style={styles.monthBar}>

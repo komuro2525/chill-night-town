@@ -67,6 +67,35 @@ export async function markGrowthHintDismissed(): Promise<void> {
   await db.runAsync("UPDATE user SET growth_hint_dismissed = 1");
 }
 
+/**
+ * 初回チュートリアル（使い方）を見終えたことを記録する。
+ * 初期設定完了後に一度だけ表示し、閉じたら二度と自動表示しない（設定からは何度でも閲覧可）。
+ */
+export async function markTutorialCompleted(): Promise<void> {
+  const db = await getDatabase();
+  await db.runAsync("UPDATE user SET tutorial_completed = 1");
+}
+
+/**
+ * 機能ごとの初回説明を「見た」と記録する（初めてその画面/操作に触れたとき一度だけ出す）。
+ * カンマ区切りのキー集合に追記する（重複は追加しない）。
+ */
+export async function markFeatureTutorialSeen(featureKey: string): Promise<void> {
+  const db = await getDatabase();
+  const row = await db.getFirstAsync<{ tutorial_seen_features: string }>(
+    "SELECT tutorial_seen_features FROM user LIMIT 1",
+  );
+  const seen = new Set(
+    (row?.tutorial_seen_features ?? "").split(",").filter(Boolean),
+  );
+  if (seen.has(featureKey)) return;
+  seen.add(featureKey);
+  await db.runAsync(
+    "UPDATE user SET tutorial_seen_features = ?",
+    [...seen].join(","),
+  );
+}
+
 // --- 設定変更（要件10章）。user は単一行のため WHERE は不要 ---
 // 値の形式検証（空文字・値域）は呼び出し側で validation.ts を通すこと。
 

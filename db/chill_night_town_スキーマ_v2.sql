@@ -42,6 +42,10 @@ CREATE TABLE user (
     growth_hint_dismissed       INTEGER NOT NULL DEFAULT 0  CHECK (growth_hint_dismissed IN (0, 1)),
     -- 選択中のNPC（夜の街の住人）。メッセージの声色を決める（要件7.1）。既定は最初の住人=1
     selected_npc_id             INTEGER NOT NULL DEFAULT 1  REFERENCES npc(id) ON DELETE RESTRICT,
+    -- 初回チュートリアル（使い方カルーセル・最小限）を見終えたか。1=表示済み（初期設定完了後に一度だけ出す）
+    tutorial_completed          INTEGER NOT NULL DEFAULT 0  CHECK (tutorial_completed IN (0, 1)),
+    -- 機能ごとの初回説明を見たか（カンマ区切りのキー集合）。初めてその画面/操作に触れたとき一度だけ出す
+    tutorial_seen_features      TEXT    NOT NULL DEFAULT '',
     created_at                  TEXT    NOT NULL DEFAULT (datetime('now')),
     updated_at                  TEXT    NOT NULL DEFAULT (datetime('now'))
 );

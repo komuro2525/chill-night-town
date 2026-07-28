@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, View } from "react-native";
 
+import { FeatureTutorial } from "@/components/feature-tutorial";
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
 import { LightColor, Spacing } from "@/constants/theme";
@@ -55,6 +56,8 @@ export default function NpcScreen() {
 
   return (
     <ThemedView style={styles.container}>
+      {/* 初めて「夜の住人」を開いたとき一度だけ、この機能の説明を出す */}
+      <FeatureTutorial featureKey="npc" />
       <ScrollView contentContainerStyle={styles.content}>
         <ThemedText type="small" themeColor="textSecondary" style={styles.intro}>
           この街には、夜ごとに言葉を添えてくれる住人がいます。誰の声で過ごすか、いつでも選べます。

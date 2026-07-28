@@ -34,7 +34,10 @@ import { ClockButton } from "@/components/clock-button";
 import { GoodnightOverlay } from "@/components/goodnight-overlay";
 import { LandscapeHome } from "@/components/landscape-home";
 import { GrowthCard } from "@/components/growth-card";
+import { FirstRunTutorial } from "@/components/first-run-tutorial";
 import { GrowthHintCard } from "@/components/growth-hint-card";
+import { TutorialOverlay } from "@/components/tutorial-overlay";
+import { getTutorialPage } from "@/constants/tutorial";
 import { LevelBadge } from "@/components/level-badge";
 import { MeasuringIndicator } from "@/components/measuring-indicator";
 import { MinimalHomeUI } from "@/components/minimal-home";
@@ -99,6 +102,12 @@ import {
 /** ホームで無操作が続くとアイドル最小表示へ移るまでの時間（ミリ秒） */
 const HOME_IDLE_MS = 30_000;
 
+// 初めておやすみを押したときに出す説明ページ（1ページ）。存在しなければ空
+const GOODNIGHT_INTRO_PAGES = (() => {
+  const page = getTutorialPage("goodnight");
+  return page ? [page] : [];
+})();
+
 export default function HomeScreen() {
   const { user, reload: reloadSettings, selectedTown } = useSettings();
   const timer = useTimer();
@@ -151,6 +160,8 @@ export default function HomeScreen() {
   const [breakTotal, setBreakTotal] = useState<number | null>(null);
   // おやすみ（要件13）。暗転画面に出すNPCの一言。null なら暗転していない
   const [goodnightMessage, setGoodnightMessage] = useState<string | null>(null);
+  // 初めておやすみを押したときに出す説明（閉じたら実際に眠る）
+  const [goodnightIntro, setGoodnightIntro] = useState(false);
   // 開発用: 習慣型のレベルアップ閾値（1レベルあたりの必要経験値）。本番=5 / テスト=1
   const [habitStep, setHabitStep] = useState(HABIT_STEP_PRODUCTION);
   // 復元の判定が済んだか。済むまでは自動終了の見張りを動かさない
@@ -491,9 +502,8 @@ export default function HomeScreen() {
   // おやすみ（要件13 / UC 13.1）。夜を閉じる演出。
   // タイマー稼働中（一時停止中を含む）は実行しない（呼び出し側でグレーアウト＋メッセージ）。
   // 確認 → 音のフェードアウト → 暗転＋NPCのおやすみメッセージ、の順で進める。
-  const handleGoodnight = useCallback(async () => {
-    // 鑑賞モード中でも押せるよう、UIは戻しておく
-    setImmersive(false);
+  // 実際に夜を閉じる（音のフェードアウト → 暗転＋NPCのおやすみメッセージ）
+  const runGoodnight = useCallback(async () => {
     try {
       // おやすみはセッションに紐づかないため、現在選択中のNPCで出す（要件7.1・13）
       const message = await masterRepo.pickNpcMessage(
@@ -507,6 +517,19 @@ export default function HomeScreen() {
       console.error("おやすみの準備に失敗しました", e);
     }
   }, [audio, user?.selected_npc_id]);
+
+  const handleGoodnight = useCallback(async () => {
+    // 鑑賞モード中でも押せるよう、UIは戻しておく
+    setImmersive(false);
+    // 初めておやすみを押したときは、先に短い説明を出してから眠る（要件1.3・機能ごとの初回説明）
+    const seen = (user?.tutorial_seen_features ?? "").split(",").filter(Boolean);
+    if (user && !seen.includes("goodnight")) {
+      setGoodnightIntro(true);
+      return;
+    }
+    await runGoodnight();
+  }, [user, runGoodnight]);
+
 
   // 暗転画面をタップしてホームへ戻る（音はフェードインで再開。要件13）
   const handleWake = useCallback(() => {
@@ -801,8 +824,27 @@ export default function HomeScreen() {
           <View style={[styles.absolute, styles.miniPlayer]}>
             <BgmMiniPlayer />
           </View>
+          {/* 初回（初期設定完了後）に一度だけ使い方チュートリアル（最小限）を出す。閉じたら育て方のお知らせ */}
+          <FirstRunTutorial />
           {/* 初回ホーム表示で一度だけ案内する（要件6.2） */}
           <GrowthHintCard />
+          {/* 初めておやすみを押したときの説明。閉じたら既読にして実際に眠る */}
+          <TutorialOverlay
+            visible={goodnightIntro}
+            pages={GOODNIGHT_INTRO_PAGES}
+            onClose={() => {
+              setGoodnightIntro(false);
+              void (async () => {
+                try {
+                  await userRepo.markFeatureTutorialSeen("goodnight");
+                  await reloadSettings();
+                } catch (e) {
+                  console.error("おやすみ説明の既読記録に失敗しました", e);
+                }
+                await runGoodnight();
+              })();
+            }}
+          />
           <DevPanel
             townLevel={selected?.progress.current_level ?? 1}
             onCycleLevel={() => void handleCycleLevel()}

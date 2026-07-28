@@ -35,7 +35,7 @@ type Migration = {
 
 // 現在のスキーマバージョン（db/*.sql が表す「最新」の版）。
 // スキーマを変更したら、スキーマSQLを更新しつつ本値を+1し、DELTA_MIGRATIONS に差分を追加する。
-const SCHEMA_VERSION = 20;
+const SCHEMA_VERSION = 22;
 
 // 既存DB（過去バージョン）向けの差分マイグレーション（version >= 2）。
 // 新規インストールはスキーマSQL（=最新）を適用して一気に SCHEMA_VERSION まで上がるため、
@@ -531,6 +531,26 @@ const DELTA_MIGRATIONS: Migration[] = [
       // v19 で一度流した端末にも、もう一度流せば最新の文面へ更新される。
       const npcSql = await loadSqlAsset(SEED_NPC_V19_MODULE);
       await db.execAsync(stripOuterTransaction(npcSql));
+    },
+  },
+  {
+    version: 21,
+    up: async (db) => {
+      // 初回チュートリアル（使い方カルーセル）を見終えたかのフラグを追加。既定0＝未表示。
+      // 既存ユーザーも次回起動で一度だけ表示される。REFERENCES は無いので単純に足すだけでよい。
+      await db.execAsync(
+        "ALTER TABLE user ADD COLUMN tutorial_completed INTEGER NOT NULL DEFAULT 0",
+      );
+    },
+  },
+  {
+    version: 22,
+    up: async (db) => {
+      // 機能ごとの初回説明（初めてその画面/操作に触れたとき一度だけ出す）の既読キー集合。
+      // 初回チュートリアルを軽くするため、天気/カレンダー/夜の住人/おやすみは各機能の初回へ移した。
+      await db.execAsync(
+        "ALTER TABLE user ADD COLUMN tutorial_seen_features TEXT NOT NULL DEFAULT ''",
+      );
     },
   },
 ];
