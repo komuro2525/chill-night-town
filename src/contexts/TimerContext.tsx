@@ -46,6 +46,8 @@ export type FinishResult =
        * 目標達成判定・成果記録の表示は必ずこの値を使う
        */
       studyDate: string;
+      /** 開始時に選択されていたNPC（スナップショット・要件7.1）。終了/達成メッセージをこの住人で出す */
+      npcId: number | null;
     }
   /** 実績1分未満のため保存せず破棄した（要件3.2） */
   | { kind: "discarded" };
@@ -144,6 +146,8 @@ export function TimerProvider({ children }: { children: ReactNode }) {
       sessionId,
       minutes,
       studyDate: getStudyDate(new Date(Date.parse(current.start_time))),
+      // 開始時のNPC（この夜の付き添い）で終了/達成メッセージを出すため引き継ぐ
+      npcId: current.npc_id,
     };
   }, [reload]);
 

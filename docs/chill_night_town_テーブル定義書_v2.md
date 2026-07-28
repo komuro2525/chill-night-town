@@ -79,6 +79,7 @@
 | pomodoro_break_minutes      | INTEGER      |     |     | 不可 | 5               | ポモドーロ: 前回の休憩時間(分)。CHECK: 1〜30                                                                                            |
 | pomodoro_loop_count         | INTEGER      |     |     | 不可 | 1               | ポモドーロ: 前回の繰り返し回数。CHECK: 1〜10                                                                                            |
 | growth_hint_dismissed       | INTEGER(0/1) |     |     | 不可 | 0               | 初回ホームで表示する「街の育て方」お知らせ（成長方式の案内）を表示済みか。1=表示済み（以後出さない）。CHECK: 0/1                        |
+| selected_npc_id             | INTEGER      | FK  | npc.id | 不可 | 1               | 選択中のNPC（夜の街の住人）。アプリで出るメッセージの声色を決める（要件7.1）。設定で変更可。既定=最初の住人(1)。ON DELETE RESTRICT      |
 | created_at                  | TEXT         |     |     | 不可 | datetime('now') | 作成日時                                                                                                                                |
 | updated_at                  | TEXT         |     |     | 不可 | datetime('now') | 更新日時                                                                                                                                |
 
@@ -158,10 +159,12 @@
 | ----------- | ------------ | :-: | --- | :--: | --------------- | ---------------- |
 | id          | INTEGER      | ○  |     | 不可 | 自動採番        | NPC ID（主キー） |
 | name        | TEXT         |     |     | 不可 | なし            | NPC名            |
-| description | TEXT         |     |     | 可   | なし            | NPCの説明        |
-| image_path  | TEXT         |     |     | 可   | なし            | 立ち絵画像パス   |
+| description | TEXT         |     |     | 可   | なし            | NPCの紹介文（設定のNPC選択画面で人物紹介として表示。立ち絵は将来） |
+| image_path  | TEXT         |     |     | 可   | なし            | 立ち絵画像パス（当面は未使用・紹介文で代替）   |
 | is_active   | INTEGER(0/1) |     |     | 不可 | 1               | 有効/無効フラグ  |
 | created_at  | TEXT         |     |     | 不可 | datetime('now') | 作成日時         |
+
+**補足**: NPCは複数登録し、`user.selected_npc_id` で選択（要件7.1）。当初は3人（書店の店主／喫茶店のマスター／天文台の管理人）。選んだNPCの声色でメッセージが出る。学習セッションは開始時のNPCを `active_session.npc_id` に固定し、今夜の終了/達成メッセージはその住人で出す（スナップショット）。おやすみは現在の選択で出す。全員「責めない・急かさない」基調は共通で、違うのは声色。
 
 ## 7. npc_message（NPCメッセージマスタ）
 
@@ -264,6 +267,7 @@ StudySessionとStudyTagの多対多関係を管理する中間テーブル。1�
 | pomodoro_break_minutes          | INTEGER  |     |                  | 可   | なし            | ポモドーロの休憩時間（分）。シンプルの場合はNULL                                                                                                                   |
 | pomodoro_loop_count             | INTEGER  |     |                  | 可   | なし            | ポモドーロの繰り返し回数。シンプルの場合はNULL                                                                                                                     |
 | start_time                      | TEXT     |     |                  | 不可 | なし            | 計測開始日時（ISO8601）                                                                                                                                            |
+| npc_id                          | INTEGER  | FK  | npc.id           | 可   | なし            | 開始時に選択されていたNPC（要件7.1）。終了/達成メッセージをこの住人の声色で出す（その夜の付き添いを固定＝天気・感情と同じスナップショット）。NULLなら既定。ON DELETE RESTRICT |
 | paused_accumulated_ms           | INTEGER  |     |                  | 不可 | 0               | これまでの一時停止時間の累積（ミリ秒）。秒未満の停止を繰り返しても丸め誤差が積もらないよう ms 精度で持つ                                                            |
 | pause_started_at                | TEXT     |     |                  | 可   | なし            | 一時停止中の場合、その開始日時。計測中はNULL。**本カラムと累積ミリ秒の2つで、経過時間の差分算出と中断復元の両方を実現する**                                        |
 | break_suggest_threshold_minutes | INTEGER  |     |                  | 可   | なし            | 次回の休憩提案を表示する基準（その学習日の実績合計・分）。初期値は一日の学習目標時間から算出し、「継続」選択で+60、延長宣言で「現在の実績合計+宣言時間」へ更新する |

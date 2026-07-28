@@ -11,6 +11,10 @@ import { loadSqlAsset } from "./sql-loader";
 const SCHEMA_SQL_MODULE = require("../../db/chill_night_town_スキーマ_v2.sql") as number;
 // eslint-disable-next-line @typescript-eslint/no-require-imports -- 同上
 const SEED_SQL_MODULE = require("../../db/chill_night_town_シードデータ.sql") as number;
+// 追加NPC（2・3人目）のマスタ＋メッセージ＋紹介文。新規初期化と v19 デルタの
+// 両方から exec して、100本超のメッセージを単一の出所にする（二重管理を避ける）。
+// eslint-disable-next-line @typescript-eslint/no-require-imports -- 同上
+const SEED_NPC_V19_MODULE = require("../../db/seed_npc_v19.sql") as number;
 
 /**
  * シードSQLはファイル自身が `BEGIN TRANSACTION; ... COMMIT;` で囲まれている。
@@ -31,7 +35,7 @@ type Migration = {
 
 // 現在のスキーマバージョン（db/*.sql が表す「最新」の版）。
 // スキーマを変更したら、スキーマSQLを更新しつつ本値を+1し、DELTA_MIGRATIONS に差分を追加する。
-const SCHEMA_VERSION = 18;
+const SCHEMA_VERSION = 20;
 
 // 既存DB（過去バージョン）向けの差分マイグレーション（version >= 2）。
 // 新規インストールはスキーマSQL（=最新）を適用して一気に SCHEMA_VERSION まで上がるため、
@@ -499,6 +503,36 @@ const DELTA_MIGRATIONS: Migration[] = [
       `);
     },
   },
+  {
+    version: 19,
+    up: async (db) => {
+      // NPC（夜の街の住人）を複数から選べるようにする（要件7.1の拡張）。
+      // ・user.selected_npc_id: 選択中のNPC（既定=最初の住人=1）
+      // ・active_session.npc_id: 開始時のNPCスナップショット（今夜の語りを固定・NULLなら既定へ）
+      // 既存の active_session は計測中のみ1件の一時テーブルのため、NULL 許容で足すだけでよい。
+      // ALTER ADD COLUMN には REFERENCES を付けない: SQLite は「FK有効時に REFERENCES 付き列を
+      // 追加する場合、既定値は NULL でなければならない」制約があり、NOT NULL DEFAULT 1 と両立しない。
+      // FK は新規インストールのスキーマSQL（CREATE TABLE）側にのみ持たせる（列の値はアプリが保証）。
+      await db.execAsync(`
+        ALTER TABLE user ADD COLUMN selected_npc_id INTEGER NOT NULL DEFAULT 1;
+        ALTER TABLE active_session ADD COLUMN npc_id INTEGER;
+      `);
+      // 追加NPC（2・3人目）のマスタ＋メッセージ＋紹介文を投入（新規初期化と同じSQL）。
+      // emotion / npc(1) は既存DBに既にあるため、そのまま流せる。
+      const npcSql = await loadSqlAsset(SEED_NPC_V19_MODULE);
+      await db.execAsync(stripOuterTransaction(npcSql));
+    },
+  },
+  {
+    version: 20,
+    up: async (db) => {
+      // NPCメッセージ・紹介文の刷新（声色を強化して3人を判別しやすく／紹介文に改行）。
+      // seed_npc_v19.sql は冒頭で npc_message を全消しして入れ直す冪等スクリプトのため、
+      // v19 で一度流した端末にも、もう一度流せば最新の文面へ更新される。
+      const npcSql = await loadSqlAsset(SEED_NPC_V19_MODULE);
+      await db.execAsync(stripOuterTransaction(npcSql));
+    },
+  },
 ];
 
 /** 現在の DB バージョンを取得する（未設定なら0） */
@@ -511,14 +545,17 @@ async function getUserVersion(db: SQLiteDatabase): Promise<number> {
 
 /** 新規DBへ最新スキーマ＋シードを適用し、SCHEMA_VERSION まで一気に上げる */
 async function initializeFreshDatabase(db: SQLiteDatabase): Promise<void> {
-  const [schemaSql, seedSql] = await Promise.all([
+  const [schemaSql, seedSql, npcSql] = await Promise.all([
     loadSqlAsset(SCHEMA_SQL_MODULE),
     loadSqlAsset(SEED_SQL_MODULE),
+    loadSqlAsset(SEED_NPC_V19_MODULE),
   ]);
   await db.withTransactionAsync(async () => {
-    // スキーマ（DDL・トリガー）→ シード（マスタ投入）の順に適用する
+    // スキーマ（DDL・トリガー）→ シード（マスタ投入）→ 追加NPC の順に適用する
     await db.execAsync(schemaSql);
     await db.execAsync(stripOuterTransaction(seedSql));
+    // 追加NPC（2・3人目）。本体シードで emotion / npc(1) が入った後に流す
+    await db.execAsync(stripOuterTransaction(npcSql));
     // PRAGMA はプレースホルダを使えないため整数リテラルを埋め込む（内部定義値で安全）
     await db.execAsync(`PRAGMA user_version = ${SCHEMA_VERSION}`);
   });

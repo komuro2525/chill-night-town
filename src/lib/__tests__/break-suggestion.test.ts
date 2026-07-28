@@ -19,6 +19,7 @@ const base = {
   user_id: 1,
   town_id: 1,
   start_time: "2026-01-10T21:00:00",
+  npc_id: 1,
   paused_accumulated_ms: 0,
   pause_started_at: null,
   updated_at: "2026-01-10T21:00:00",

@@ -41,6 +41,8 @@ export type User = {
   pomodoro_loop_count: number;
   /** 初回ホームの成長方式お知らせを表示済みか（1=表示済み） */
   growth_hint_dismissed: Bool;
+  /** 選択中のNPC（夜の街の住人）。メッセージの声色を決める（要件7.1）。既定=1 */
+  selected_npc_id: number;
   created_at: string;
   updated_at: string;
 };
@@ -161,6 +163,8 @@ export type ActiveSession = {
   pomodoro_break_minutes: number | null;
   pomodoro_loop_count: number | null;
   start_time: string;
+  /** 開始時に選択されていたNPC（要件7.1）。終了/達成メッセージをこの住人で出す。NULLなら既定 */
+  npc_id: number | null;
   /** 一時停止の累積（ミリ秒）。秒未満の停止でも誤差が積もらないよう ms 精度で持つ */
   paused_accumulated_ms: number;
   /** 一時停止中のみ値を持つ。計測中は null */

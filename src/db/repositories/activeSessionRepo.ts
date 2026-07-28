@@ -40,6 +40,8 @@ export type CreateActiveSessionInput = {
   startTime: string;
   /** 次に休憩提案を出す基準（その学習日の実績合計・分）。要件5.1 */
   breakSuggestThresholdMinutes: number | null;
+  /** 開始時に選択中のNPC。今夜の終了/達成メッセージをこの住人で出す（スナップショット・要件7.1） */
+  npcId: number;
 };
 
 /**
@@ -55,9 +57,9 @@ export async function create(input: CreateActiveSessionInput): Promise<void> {
     `INSERT INTO active_session
        (user_id, town_id, timer_mode,
         planned_minutes, pomodoro_work_minutes, pomodoro_break_minutes, pomodoro_loop_count,
-        start_time, paused_accumulated_ms, pause_started_at,
+        start_time, npc_id, paused_accumulated_ms, pause_started_at,
         break_suggest_threshold_minutes)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, NULL, ?)`,
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, NULL, ?)`,
     input.userId,
     input.townId,
     input.timerMode,
@@ -66,6 +68,7 @@ export async function create(input: CreateActiveSessionInput): Promise<void> {
     input.pomodoroBreakMinutes ?? null,
     input.pomodoroLoopCount ?? null,
     input.startTime,
+    input.npcId,
     input.breakSuggestThresholdMinutes,
   );
 }

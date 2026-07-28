@@ -158,6 +158,8 @@ export default function HomeScreen() {
   const [restoreChecked, setRestoreChecked] = useState(false);
   // レベルアップ演出を閉じた後にNPCへ渡す感情（記録の保存時=選択値／離脱時=null）
   const pendingNpcEmotion = useRef<number | null>(null);
+  // このセッションのNPC（開始時のスナップショット）。終了/達成メッセージをこの住人で出す（要件7.1）
+  const pendingNpcId = useRef<number | null>(null);
 
   // 当学習日の集計を読み直す。学習日は共通関数で算出する（要件0章 / CLAUDE.md）
   const reloadSummary = useCallback(async () => {
@@ -302,6 +304,8 @@ export default function HomeScreen() {
             summary?.totalMinutes ?? 0,
             plannedMinutes,
           ),
+          // 開始時のNPCを固定（この夜の終了/達成メッセージはこの住人で出す・要件7.1）
+          npcId: user.selected_npc_id,
         });
         setWeather(v.weather);
         await timer.reload();
@@ -371,6 +375,8 @@ export default function HomeScreen() {
         // 街ごとに鐘の音色を変える（未登録の街は既定音）。計測中は街を切り替えられない
         // ため、選択中の街＝そのセッションの街になる。
         audio.playBell(selected?.town.code);
+        // この夜の付き添いNPC（開始時のスナップショット）を控える。終了/達成メッセージに使う
+        pendingNpcId.current = result.npcId;
         setRecord({
           id: result.sessionId,
           minutes: result.minutes,
@@ -489,13 +495,18 @@ export default function HomeScreen() {
     // 鑑賞モード中でも押せるよう、UIは戻しておく
     setImmersive(false);
     try {
-      const message = await masterRepo.pickNpcMessage("goodnight", null);
+      // おやすみはセッションに紐づかないため、現在選択中のNPCで出す（要件7.1・13）
+      const message = await masterRepo.pickNpcMessage(
+        "goodnight",
+        null,
+        user?.selected_npc_id ?? masterRepo.DEFAULT_NPC_ID,
+      );
       audio.setGoodnight(true);
       setGoodnightMessage(message ?? "おやすみなさい。またこの街で。");
     } catch (e) {
       console.error("おやすみの準備に失敗しました", e);
     }
-  }, [audio]);
+  }, [audio, user?.selected_npc_id]);
 
   // 暗転画面をタップしてホームへ戻る（音はフェードインで再開。要件13）
   const handleWake = useCallback(() => {
@@ -511,6 +522,8 @@ export default function HomeScreen() {
         await masterRepo.pickNpcMessage(
           growth?.goalAchieved ? "goal_achieved" : "study_end",
           emotionId,
+          // 開始時のNPC（スナップショット）で語る。途中で選択を変えても今夜は変わらない
+          pendingNpcId.current ?? masterRepo.DEFAULT_NPC_ID,
         ),
       );
     },

@@ -110,6 +110,10 @@ function RootNavigator() {
         options={{ headerShown: true, title: "街の切り替え", headerBackTitle: "戻る" }}
       />
       <Stack.Screen
+        name="settings/npc"
+        options={{ headerShown: true, title: "夜の住人", headerBackTitle: "戻る" }}
+      />
+      <Stack.Screen
         name="settings/tags"
         options={{ headerShown: true, title: "マイタグ", headerBackTitle: "戻る" }}
       />

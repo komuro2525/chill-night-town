@@ -40,6 +40,8 @@ CREATE TABLE user (
     pomodoro_loop_count         INTEGER NOT NULL DEFAULT 1  CHECK (pomodoro_loop_count BETWEEN 1 AND 10),
     -- 初回ホームの「街の育て方」お知らせ（成長方式の案内）を表示済みか。1=表示済み（以後出さない）
     growth_hint_dismissed       INTEGER NOT NULL DEFAULT 0  CHECK (growth_hint_dismissed IN (0, 1)),
+    -- 選択中のNPC（夜の街の住人）。メッセージの声色を決める（要件7.1）。既定は最初の住人=1
+    selected_npc_id             INTEGER NOT NULL DEFAULT 1  REFERENCES npc(id) ON DELETE RESTRICT,
     created_at                  TEXT    NOT NULL DEFAULT (datetime('now')),
     updated_at                  TEXT    NOT NULL DEFAULT (datetime('now'))
 );
@@ -423,6 +425,9 @@ CREATE TABLE active_session (
     pomodoro_break_minutes          INTEGER CHECK (pomodoro_break_minutes IS NULL OR pomodoro_break_minutes BETWEEN 1 AND 30),
     pomodoro_loop_count             INTEGER CHECK (pomodoro_loop_count    IS NULL OR pomodoro_loop_count    BETWEEN 1 AND 10),
     start_time                      TEXT    NOT NULL,  -- ISO8601
+    -- 開始時に選択されていたNPC（要件7.1）。終了/達成メッセージはこの住人の声色で出す
+    -- （その夜の付き添いを固定＝天気・感情と同じスナップショット思想）。NULLなら既定へ
+    npc_id                          INTEGER REFERENCES npc(id) ON DELETE RESTRICT,
     paused_accumulated_ms           INTEGER NOT NULL DEFAULT 0 CHECK (paused_accumulated_ms >= 0),  -- 一時停止の累積（ミリ秒）
     pause_started_at                TEXT,              -- 一時停止中のみ値を持つ。計測中はNULL
     break_suggest_threshold_minutes INTEGER CHECK (break_suggest_threshold_minutes IS NULL OR break_suggest_threshold_minutes > 0),
