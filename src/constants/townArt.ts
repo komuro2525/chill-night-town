@@ -16,7 +16,7 @@ type LevelArt = Record<number, ImageSourcePropType>;
 type TownArt = Partial<Record<TimeOfDay, LevelArt>>;
 
 const TOWN_ART: Record<string, TownArt> = {
-  // nightTown（海辺の港町テーマ）。night・day・sunset・sunrise とも Lv.1〜Lv.5。
+  // nightTown（海辺の港町テーマ）。全時間帯（night / day / sunset / sunrise / latenight）が Lv.1〜Lv.5 まで揃っている。
   nightTown: {
     night: {
       1: require("@/assets/images/home/nightTown/night/nightTown_night_lv1.png"),
@@ -45,6 +45,13 @@ const TOWN_ART: Record<string, TownArt> = {
       3: require("@/assets/images/home/nightTown/sunrise/nightTown_sunrise_lv3.png"),
       4: require("@/assets/images/home/nightTown/sunrise/nightTown_sunrise_lv4.png"),
       5: require("@/assets/images/home/nightTown/sunrise/nightTown_sunrise_lv5.png"),
+    },
+    latenight: {
+      1: require("@/assets/images/home/nightTown/latenight/nightTown_latenight_lv1.png"),
+      2: require("@/assets/images/home/nightTown/latenight/nightTown_latenight_lv2.png"),
+      3: require("@/assets/images/home/nightTown/latenight/nightTown_latenight_lv3.png"),
+      4: require("@/assets/images/home/nightTown/latenight/nightTown_latenight_lv4.png"),
+      5: require("@/assets/images/home/nightTown/latenight/nightTown_latenight_lv5.png"),
     },
   },
   // castleTown。画像は Lv.5 の night が1枚のみ。暫定で全レベルに同じ画像を使う。
