@@ -33,7 +33,7 @@ import { BgmMiniPlayer } from "@/components/bgm-mini-player";
 import { ClockButton } from "@/components/clock-button";
 import { GoodnightOverlay } from "@/components/goodnight-overlay";
 import { LandscapeHome } from "@/components/landscape-home";
-import { GrowthCard } from "@/components/growth-card";
+import { LevelUpOverlay } from "@/components/level-up-overlay";
 import { FirstRunTutorial } from "@/components/first-run-tutorial";
 import { GrowthHintCard } from "@/components/growth-hint-card";
 import { TutorialOverlay } from "@/components/tutorial-overlay";
@@ -152,10 +152,14 @@ export default function HomeScreen() {
   // 直近の成長結果（要件6.1）。NPCメッセージの出し分けと演出に使う
   const [growth, setGrowth] = useState<GrowthResult | null>(null);
   // レベルアップ・完成の演出（要件6.1）。到達レベル。null なら表示しない
-  const [growthCard, setGrowthCard] = useState<{
+  const [levelUp, setLevelUp] = useState<{
     level: number;
     completed: boolean;
   } | null>(null);
+  // 演出が暗転しきるまで背景・Lv表示に使い続ける旧レベル（要件6.1 / UC 6.1）。
+  // 成長処理の時点でDBは新レベルに確定するが、暗転の裏で差し替えたいので
+  // それまでは上がる前のレベルを見せておく（記録画面の裏で先に変わらないように）
+  const [bgLevelHold, setBgLevelHold] = useState<number | null>(null);
   // S5 休憩提案（要件5.1）。表示中の実績合計（分）。null なら非表示
   const [breakTotal, setBreakTotal] = useState<number | null>(null);
   // おやすみ（要件13）。暗転画面に出すNPCの一言。null なら暗転していない
@@ -319,6 +323,8 @@ export default function HomeScreen() {
           npcId: user.selected_npc_id,
         });
         setWeather(v.weather);
+        // 前回の演出が途中で失われていた場合の保険（旧レベルの背景を残さない）
+        setBgLevelHold(null);
         await timer.reload();
         setSetupOpen(false);
         setTimerOpen(true);
@@ -349,6 +355,10 @@ export default function HomeScreen() {
           goalMinutes: user.daily_goal_minutes,
         });
         setGrowth(result);
+        // レベルが上がった場合は、演出が暗転しきるまで上がる前のレベルを見せておく。
+        // 下の setSelected でDBの新レベルが入るため、これが無いと記録画面（S6）の裏で
+        // 背景が無演出のまま切り替わり、レベルアップが先にわかってしまう
+        if (result?.leveledUp) setBgLevelHold(result.fromLevel);
         // 演出（レベルアップ・NPCの言葉）はここでは出さない。記録画面（S6）を
         // 閉じた後に出す（showPostRecord）。記録画面と同時に出すと、演出は Modal で
         // 最前面に来るため記録画面を覆い、操作できなくなるため。
@@ -554,7 +564,7 @@ export default function HomeScreen() {
   );
 
   // 記録画面を閉じた後の流れ（要件6.1 / 7.1）。
-  // レベルが上がっていれば演出を先に出し、閉じたらNPCの言葉（成長の事実 → 言葉の順）。
+  // レベルが上がっていれば演出を先に出し、終わったらNPCの言葉（成長の事実 → 言葉の順）。
   // 上がっていなければNPCの言葉だけを出す。保存・離脱のどちらからも通す。
   const showPostRecord = useCallback(
     (emotionId: number | null) => {
@@ -562,7 +572,7 @@ export default function HomeScreen() {
       if (growth?.leveledUp) {
         // 演出を閉じたときにNPCを出すため、感情を保持しておく
         pendingNpcEmotion.current = emotionId;
-        setGrowthCard({ level: growth.toLevel, completed: growth.completed });
+        setLevelUp({ level: growth.toLevel, completed: growth.completed });
       } else {
         void showNpcMessage(emotionId);
       }
@@ -630,6 +640,8 @@ export default function HomeScreen() {
         user.growth_method,
         selected?.progress.project_target_minutes ?? null,
       );
+      // 演出用の保持レベルが残っていると切り替えが見えないので解除する
+      setBgLevelHold(null);
       setSelected(await townProgressRepo.getSelectedTown());
     } catch (e) {
       console.error("レベルの切り替えに失敗しました", e);
@@ -653,8 +665,9 @@ export default function HomeScreen() {
       console.error("ダミー記録の投入に失敗しました", e);
     }
   }, [reloadSummary, reloadWeather]);
-  // 背景アートとLv表示に使うレベル
-  const level = selected?.progress.current_level ?? 1;
+  // 背景アートとLv表示に使うレベル。レベルアップ演出中は暗転しきるまで
+  // 上がる前のレベルを見せる（背景とLv表示が同時に切り替わる）
+  const level = bgLevelHold ?? selected?.progress.current_level ?? 1;
 
   // 縦固定が必要な状態（操作モーダル・演出・システムイベント）。
   // これらが立っている間は横向きを許可しない＝要件2.4「操作系は縦固定／イベント時は縦へ戻す」。
@@ -665,7 +678,7 @@ export default function HomeScreen() {
     record !== null ||
     breakTotal !== null ||
     restoreMinutes !== null ||
-    growthCard !== null ||
+    levelUp !== null ||
     npcMessage !== null ||
     goodnightMessage !== null ||
     weatherPickerOpen ||
@@ -946,13 +959,16 @@ export default function HomeScreen() {
         onContinue={() => void handleBreakContinue()}
         onExtend={(m) => void handleBreakExtend(m)}
       />
-      {/* レベルアップ・完成の演出（要件6.1）。成長の事実 → NPCの言葉、の順に見せる。
-          演出を閉じたら、保持しておいた感情でNPCの言葉を出す */}
-      <GrowthCard
-        level={growthCard?.level ?? null}
-        completed={growthCard?.completed ?? false}
-        onClose={() => {
-          setGrowthCard(null);
+      {/* レベルアップ・完成の演出（要件6.1）。暗転 → 灯りのひとこと → 明転で新しい背景、
+          の順に自動で見せる。成長の事実 → NPCの言葉、の順は変えない。
+          暗転しきったところで背景を新レベルへ差し替え、演出が終わったら
+          保持しておいた感情でNPCの言葉を出す */}
+      <LevelUpOverlay
+        level={levelUp?.level ?? null}
+        completed={levelUp?.completed ?? false}
+        onBlackout={() => setBgLevelHold(null)}
+        onDone={() => {
+          setLevelUp(null);
           void showNpcMessage(pendingNpcEmotion.current);
         }}
       />
