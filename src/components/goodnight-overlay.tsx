@@ -1,6 +1,7 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { Modal, Pressable, StyleSheet, Text } from "react-native";
 import Animated, {
+  runOnJS,
   useAnimatedStyle,
   useSharedValue,
   withTiming,
@@ -13,21 +14,37 @@ import { Spacing } from "@/constants/theme";
 // シンプルな暗転のみ（街の灯りが消える差分演出は行わない）。NPCのおやすみメッセージを
 // 一言そえ、画面をタップするとホームへ復帰する。音の停止・再開は AudioContext 側で行い、
 // ここは「静かに暗くして、ひとことを見せる」表示だけを担う。
+//
+// 暗転しきった時点は onBlackout で呼び出し側へ渡す（見えていないうちに背景の
+// ループ動画を止め、暗転中に裏で再生し続けないようにするため。要件2.2 / 13）。
+
+/** 暗転しきるまで（急に暗くしない） */
+const FADE_MS = 900;
 
 export function GoodnightOverlay({
   message,
   onWake,
+  onBlackout,
 }: {
   /** 表示するNPCのおやすみメッセージ。null なら閉じている */
   message: string | null;
   /** 画面タップでホームへ復帰する */
   onWake: () => void;
+  /** 暗転しきった時点（背景の動きを止める） */
+  onBlackout: () => void;
 }) {
   const opacity = useSharedValue(0);
 
+  // 暗転中にコールバックが張り替わっても演出をやり直さないよう、参照はrefで見る
+  const onBlackoutRef = useRef(onBlackout);
+  onBlackoutRef.current = onBlackout;
+
   useEffect(() => {
-    // ゆっくり暗転する（急に暗くしない）
-    opacity.value = withTiming(message !== null ? 1 : 0, { duration: 900 });
+    const toDark = message !== null;
+    opacity.value = withTiming(toDark ? 1 : 0, { duration: FADE_MS }, (finished) => {
+      // 中断された場合は先へ進めない（明るいまま背景を止めないため）
+      if (finished && toDark) runOnJS(onBlackoutRef.current)();
+    });
   }, [message, opacity]);
 
   const style = useAnimatedStyle(() => ({ opacity: opacity.value }));

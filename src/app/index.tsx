@@ -162,6 +162,8 @@ export default function HomeScreen() {
   const [breakTotal, setBreakTotal] = useState<number | null>(null);
   // おやすみ（要件13）。暗転画面に出すNPCの一言。null なら暗転していない
   const [goodnightMessage, setGoodnightMessage] = useState<string | null>(null);
+  // おやすみの暗転がしきったか。暗転中に背景のループ動画を裏で回し続けないために使う
+  const [goodnightDarkened, setGoodnightDarkened] = useState(false);
   // 初めておやすみを押したときに出す説明（閉じたら実際に眠る）
   const [goodnightIntro, setGoodnightIntro] = useState(false);
   // 開発用: 習慣型のレベルアップ閾値（1レベルあたりの必要経験値）。本番=5 / テスト=1
@@ -526,22 +528,34 @@ export default function HomeScreen() {
     }
   }, [audio, user?.selected_npc_id]);
 
-  const handleGoodnight = useCallback(async () => {
+  // 眠るかどうかの確認（キャンセルなら何もしない）。UC 13.1 のステップ2
+  const confirmGoodnight = useCallback(() => {
+    Alert.alert("眠りにつきますか", "音を止めて、静かに画面を閉じます。", [
+      { text: "まだ起きている", style: "cancel" },
+      { text: "おやすみ", onPress: () => void runGoodnight() },
+    ]);
+  }, [runGoodnight]);
+
+  const handleGoodnight = useCallback(() => {
     // 鑑賞モード中でも押せるよう、UIは戻しておく
     setImmersive(false);
-    // 初めておやすみを押したときは、先に短い説明を出してから眠る（要件1.3・機能ごとの初回説明）
+    // 初めておやすみを押したときは、確認より先に短い説明を出す（要件1.3・機能ごとの初回説明）。
+    // 「何が起きるのか」を読んでから眠るかどうかを決められるようにするため、
+    // 説明は確認の後ではなくボタンを押した時点で出す
     const seen = (user?.tutorial_seen_features ?? "").split(",").filter(Boolean);
     if (user && !seen.includes("goodnight")) {
       setGoodnightIntro(true);
       return;
     }
-    await runGoodnight();
-  }, [user, runGoodnight]);
+    confirmGoodnight();
+  }, [user, confirmGoodnight]);
 
 
   // 暗転画面をタップしてホームへ戻る（音はフェードインで再開。要件13）
   const handleWake = useCallback(() => {
     setGoodnightMessage(null);
+    // 明転は暗い側から始まるので、背景の動きは戻す時点から再開させる
+    setGoodnightDarkened(false);
     audio.setGoodnight(false);
   }, [audio]);
 
@@ -785,7 +799,8 @@ export default function HomeScreen() {
         townCode={selected?.town.code}
         level={level}
         session={timer.session}
-        motionEnabled={user?.background_motion_enabled === 1}
+        // おやすみの暗転しきった後は、見えていない背景を回し続けない（要件13）
+        motionEnabled={user?.background_motion_enabled === 1 && !goodnightDarkened}
         onRestoreFromImmersive={() => {
           // 背景タップ: アイドル最小表示を解除（＝通常表示へ戻す）し、鑑賞モードも解除する
           markActive();
@@ -830,7 +845,7 @@ export default function HomeScreen() {
           ) : null}
           <SideIcons
             running={timer.status !== "idle"}
-            onGoodnight={() => void handleGoodnight()}
+            onGoodnight={handleGoodnight}
           />
           <ImmersiveButton onPress={() => setImmersive(true)} />
           <View style={[styles.absolute, styles.miniPlayer]}>
@@ -840,7 +855,7 @@ export default function HomeScreen() {
           <FirstRunTutorial />
           {/* 初回ホーム表示で一度だけ案内する（要件6.2） */}
           <GrowthHintCard />
-          {/* 初めておやすみを押したときの説明。閉じたら既読にして実際に眠る */}
+          {/* 初めておやすみを押したときの説明。閉じたら既読にして、眠るかどうかの確認へ進む */}
           <TutorialOverlay
             visible={goodnightIntro}
             pages={GOODNIGHT_INTRO_PAGES}
@@ -853,7 +868,7 @@ export default function HomeScreen() {
                 } catch (e) {
                   console.error("おやすみ説明の既読記録に失敗しました", e);
                 }
-                await runGoodnight();
+                confirmGoodnight();
               })();
             }}
           />
@@ -976,7 +991,11 @@ export default function HomeScreen() {
       <NpcMessageCard message={npcMessage} onClose={() => setNpcMessage(null)} />
 
       {/* おやすみの暗転画面（要件13）。タップでホームへ復帰する */}
-      <GoodnightOverlay message={goodnightMessage} onWake={handleWake} />
+      <GoodnightOverlay
+        message={goodnightMessage}
+        onWake={handleWake}
+        onBlackout={() => setGoodnightDarkened(true)}
+      />
 
       {/* 中断からの復元（要件3.2 / UC 1.1） */}
       <RestoreSessionCard
@@ -1046,7 +1065,7 @@ function SideIcons({
 }: {
   /** タイマー稼働中（一時停止中を含む）。おやすみは不可（要件13） */
   running: boolean;
-  /** おやすみを確定したとき（確認後）に呼ぶ */
+  /** おやすみボタンが押されたとき（稼働中でないとき）に呼ぶ */
   onGoodnight: () => void;
 }) {
   const insets = useSafeAreaInsets();
@@ -1054,7 +1073,7 @@ function SideIcons({
 
   // おやすみボタン（要件13 / UC 13.1）。
   // 稼働中は「学習中はおやすみできません」と控えめに伝えるだけ（グレーアウト表示）。
-  // それ以外は確認してから実行する（キャンセルなら何もしない）
+  // それ以外は呼び出し側へ渡す（初回の説明・確認の順序は呼び出し側が決める）
   function handleGoodnight() {
     if (running) {
       Alert.alert(
@@ -1063,10 +1082,7 @@ function SideIcons({
       );
       return;
     }
-    Alert.alert("眠りにつきますか", "音を止めて、静かに画面を閉じます。", [
-      { text: "まだ起きている", style: "cancel" },
-      { text: "おやすみ", onPress: onGoodnight },
-    ]);
+    onGoodnight();
   }
 
   return (
