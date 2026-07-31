@@ -23,6 +23,7 @@
 | SQLスキーマ（DDL・トリガー・CHECK制約） | `db/chill_night_town_スキーマ_v2.sql` |
 | シードデータ（マスタ投入・NPCメッセージ30本） | `db/chill_night_town_シードデータ.sql` |
 | E-R図 | `docs/chill_night_town_E-R図_v2.drawio` |
+| セキュリティ方針（脅威モデル・対策・対象外の理由） | `docs/セキュリティ方針.md` |
 
 ※パスはリポジトリの実配置に合わせて更新すること。
 
