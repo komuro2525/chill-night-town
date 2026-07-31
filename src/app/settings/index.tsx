@@ -387,6 +387,19 @@ export default function SettingsScreen() {
           />
         </SettingSection>
 
+        {/* お問い合わせ（メールでの連絡先を表示。メアドが決まったら value を差し替える） */}
+        <SettingSection
+          title="お問い合わせ"
+          footer="表示のアドレス宛に、直接メールでお送りください。"
+        >
+          <SettingRow
+            first
+            label="メールでのお問い合わせ"
+            value="準備中"
+            note="お問い合わせ先のメールアドレスは準備中です。"
+          />
+        </SettingSection>
+
         {/* データ */}
         <SettingSection title="データ">
           <SettingRow
