@@ -17,12 +17,7 @@ import {
   useWindowDimensions,
   View,
 } from "react-native";
-import { Gesture, GestureDetector } from "react-native-gesture-handler";
-import Animated, {
-  FadeIn,
-  useAnimatedStyle,
-  useSharedValue,
-} from "react-native-reanimated";
+import Animated, { FadeIn } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { AutoFinishWatcher } from "@/components/auto-finish-watcher";
@@ -42,6 +37,8 @@ import { LevelBadge } from "@/components/level-badge";
 import { MeasuringIndicator } from "@/components/measuring-indicator";
 import { MinimalHomeUI } from "@/components/minimal-home";
 import { NpcMessageCard } from "@/components/npc-message-card";
+import { PannableBackdrop } from "@/components/pannable-backdrop";
+import { TownVideoBackdrop } from "@/components/town-video";
 import { PomodoroPhaseWatcher } from "@/components/pomodoro-phase-watcher";
 import { RecordModal, type RecordValues } from "@/components/record-modal";
 import { RestoreSessionCard } from "@/components/restore-session-card";
@@ -55,6 +52,7 @@ import { ThemedText } from "@/components/themed-text";
 import { MIN_SAVE_MINUTES, STUDY_DAY } from "@/constants/domain";
 import { Spacing } from "@/constants/theme";
 import { getTownArt } from "@/constants/townArt";
+import { getTownVideo, type TownVideo } from "@/constants/townVideo";
 import { useAudio } from "@/contexts/AudioContext";
 import { useSettings } from "@/contexts/SettingsContext";
 import { useTimer } from "@/contexts/TimerContext";
@@ -787,6 +785,7 @@ export default function HomeScreen() {
         townCode={selected?.town.code}
         level={level}
         session={timer.session}
+        motionEnabled={user?.background_motion_enabled === 1}
         onRestoreFromImmersive={() => {
           // 背景タップ: アイドル最小表示を解除（＝通常表示へ戻す）し、鑑賞モードも解除する
           markActive();
@@ -1118,10 +1117,6 @@ const DEV_PANEL_BOTTOM = 176;
 // 開発用: 時刻を進める幅（分）。5:00自動終了やポモドーロの進行の確認に使う
 const DEV_ADVANCE_MINUTES = 30;
 
-// タップとして成立させる指の移動量の上限（ポイント）。
-// これを超えて動いたらスワイプ（街探索）とみなし、鑑賞モードから復帰させない（要件2.4）
-const TAP_MAX_DISTANCE = 10;
-
 // 開発用の時刻上書き。夜間帯判定（要件2.3）の両側を実機で確認するために使う。
 // null = 実時間 / 21 = 夜間帯内（開始できる） / 12 = 夜間帯外（開始できない）
 // 上書きの実体は src/lib/clock.ts にあり、計測・5:00判定にも同じ時刻が効く。
@@ -1264,6 +1259,7 @@ function HomeBackground({
   townCode,
   level,
   session,
+  motionEnabled,
   onRestoreFromImmersive,
 }: {
   landscapeMode: boolean;
@@ -1271,105 +1267,67 @@ function HomeBackground({
   townCode: string | undefined;
   level: number;
   session: ActiveSession | null;
+  /** 設定「背景を動かす」（要件10.11）。OFFなら動画素材があっても静止画 */
+  motionEnabled: boolean;
   /** 鑑賞モード中に背景をタップしたときの復帰 */
   onRestoreFromImmersive: () => void;
 }) {
   const now = useAppNow(60000);
-  const art = townCode
-    ? getTownArt(townCode, level, getTimeOfDay(now))
-    : undefined;
+  const timeOfDay = getTimeOfDay(now);
+  const art = townCode ? getTownArt(townCode, level, timeOfDay) : undefined;
+  // 動画は登録がある組み合わせだけ。無ければ静止画のまま（時間帯のフォールバックはしない）
+  const video =
+    motionEnabled && townCode
+      ? getTownVideo(townCode, level, timeOfDay)
+      : undefined;
 
   if (landscapeMode) {
     // 横向き（要件2.4）: 街の全景だけを表示する閲覧専用ビュー
-    return <LandscapeHome art={art} session={session} />;
+    return <LandscapeHome art={art} video={video} session={session} />;
   }
   if (art) {
-    return <TownBackground art={art} onTap={onRestoreFromImmersive} />;
+    return (
+      <TownBackground
+        art={art}
+        video={video}
+        onTap={onRestoreFromImmersive}
+      />
+    );
   }
   return <View style={styles.fallback} />;
 }
 
 // 選択中の街の背景。画面を覆うサイズ（cover）で表示し、スワイプで街を探索する（要件2.2）。
-// 初期設定の拡大表示と同じ、境界クランプ付きのなめらかなパンで動かす。
+// 初期設定の拡大表示と同じ、境界クランプ付きのなめらかなパンで動かす（PannableBackdrop）。
+// 動画素材があり「背景を動かす」がONのときはループ動画、それ以外は静止画を敷く。
 function TownBackground({
   art,
+  video,
   onTap,
 }: {
   art: ImageSourcePropType;
+  /** ループ動画（無ければ静止画のみ） */
+  video: TownVideo | undefined;
   /** 背景のタップ（鑑賞モードからの復帰に使う） */
   onTap?: () => void;
 }) {
-  const { width: winW, height: winH } = useWindowDimensions();
+  // 動画は実寸を取得できないため登録値を使う。静止画は素材から実寸を取る
   const resolved = RNImage.resolveAssetSource(art);
-
-  // 画面を必ず覆う倍率（縦横比の大きい方に合わせる）
-  const coverScale = Math.max(winW / resolved.width, winH / resolved.height);
-  const dispW = resolved.width * coverScale;
-  const dispH = resolved.height * coverScale;
-  // 端で止まるための可動域（横長パノラマなら主に横方向に動く）
-  const maxX = Math.max(0, (dispW - winW) / 2);
-  const maxY = Math.max(0, (dispH - winH) / 2);
-
-  const translateX = useSharedValue(0);
-  const translateY = useSharedValue(0);
-  const savedX = useSharedValue(0);
-  const savedY = useSharedValue(0);
-
-  const pan = Gesture.Pan()
-    .onUpdate((e) => {
-      translateX.value = Math.min(
-        Math.max(savedX.value + e.translationX, -maxX),
-        maxX,
-      );
-      translateY.value = Math.min(
-        Math.max(savedY.value + e.translationY, -maxY),
-        maxY,
-      );
-    })
-    .onEnd(() => {
-      savedX.value = translateX.value;
-      savedY.value = translateY.value;
-    });
-
-  // タップ（鑑賞モードからの復帰）。要件2.4では復帰の操作は「画面をタップ」のみで、
-  // スワイプによる街探索では復帰させない。そのため次の2点が要る:
-  //   ・指が少しでも動いたらタップとして成立させない（既定の許容量は緩く、
-  //     スワイプしただけでも成立してしまう）
-  //   ・onEnd は成立しなかったときにも呼ばれるため、success を必ず見る
-  // コールバックはJSスレッドで実行する（worklet から直接JS関数を呼ばないため）
-  const tap = Gesture.Tap()
-    .maxDistance(TAP_MAX_DISTANCE)
-    .runOnJS(true)
-    .onEnd((_event, success) => {
-      if (success) onTap?.();
-    });
-
-  const gesture = Gesture.Simultaneous(pan, tap);
-
-  const animatedStyle = useAnimatedStyle(() => ({
-    transform: [
-      { translateX: translateX.value },
-      { translateY: translateY.value },
-    ],
-  }));
+  const intrinsicWidth = video?.width ?? resolved.width;
+  const intrinsicHeight = video?.height ?? resolved.height;
 
   return (
-    <GestureDetector gesture={gesture}>
-      <Animated.View
-        style={[
-          {
-            position: "absolute",
-            width: dispW,
-            height: dispH,
-            left: (winW - dispW) / 2,
-            top: (winH - dispH) / 2,
-          },
-          animatedStyle,
-        ]}
-      >
+    <PannableBackdrop
+      intrinsicWidth={intrinsicWidth}
+      intrinsicHeight={intrinsicHeight}
+      onTap={onTap}
+    >
+      {video ? (
+        <TownVideoBackdrop video={video} poster={art} />
+      ) : (
         <Image source={art} style={StyleSheet.absoluteFill} contentFit="cover" />
-      </Animated.View>
-    </GestureDetector>
+      )}
+    </PannableBackdrop>
   );
 }
 

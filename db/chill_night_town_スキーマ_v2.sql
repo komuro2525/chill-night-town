@@ -46,6 +46,8 @@ CREATE TABLE user (
     tutorial_completed          INTEGER NOT NULL DEFAULT 0  CHECK (tutorial_completed IN (0, 1)),
     -- 機能ごとの初回説明を見たか（カンマ区切りのキー集合）。初めてその画面/操作に触れたとき一度だけ出す
     tutorial_seen_features      TEXT    NOT NULL DEFAULT '',
+    -- 背景のループ動画（要件2.2）を再生するか。1=動かす（既定）/ 0=静止画。設定10.11
+    background_motion_enabled   INTEGER NOT NULL DEFAULT 1  CHECK (background_motion_enabled IN (0, 1)),
     created_at                  TEXT    NOT NULL DEFAULT (datetime('now')),
     updated_at                  TEXT    NOT NULL DEFAULT (datetime('now'))
 );

@@ -4,6 +4,8 @@ import { type ImageSourcePropType, Pressable, StyleSheet, View } from "react-nat
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { MinimalHomeUI } from "@/components/minimal-home";
+import { TownVideoBackdrop } from "@/components/town-video";
+import type { TownVideo } from "@/constants/townVideo";
 import type { ActiveSession } from "@/db/types";
 
 // 横画面表示（要件2.4「横画面表示（ホーム画面限定）」）。
@@ -21,10 +23,13 @@ const CONTENT_FIT: "cover" | "contain" = "cover";
 
 export function LandscapeHome({
   art,
+  video,
   session,
 }: {
   /** 選択中の街の全景（未登録なら暗い背景のみ） */
   art: ImageSourcePropType | undefined;
+  /** 全景のループ動画（素材が無い・設定OFFなら undefined＝静止画） */
+  video: TownVideo | undefined;
   /** 計測中セッション（非計測時は null）。稼働中のみ時計＋作業中を出す */
   session: ActiveSession | null;
 }) {
@@ -38,7 +43,9 @@ export function LandscapeHome({
       onPress={() => setInfoVisible((v) => !v)}
       accessibilityLabel="タップで情報表示を切り替え"
     >
-      {art ? (
+      {video ? (
+        <TownVideoBackdrop video={video} poster={art} contentFit={CONTENT_FIT} />
+      ) : art ? (
         <Image source={art} style={StyleSheet.absoluteFill} contentFit={CONTENT_FIT} />
       ) : (
         <View style={[StyleSheet.absoluteFill, styles.fallback]} />

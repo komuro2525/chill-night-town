@@ -304,6 +304,27 @@ export default function SettingsScreen() {
           <SettingRow label="マイタグの管理" onPress={() => router.push("/settings/tags")} />
         </SettingSection>
 
+        {/* 表示（要件10.11）。記録・判定に影響しないため稼働中も変更可 */}
+        <SettingSection
+          title="表示"
+          footer="動く背景がまだ用意されていない街や時間帯では、静止画のままです。"
+        >
+          <SettingRow
+            first
+            label="背景を動かす"
+            note="街の灯りや波が、ゆっくり動きます。オフにすると電池の消費を抑えられます"
+            right={
+              <Switch
+                value={user.background_motion_enabled === 1}
+                onValueChange={async (v) => {
+                  await userRepo.updateBackgroundMotionEnabled(v);
+                  await reload();
+                }}
+              />
+            }
+          />
+        </SettingSection>
+
         {/* 音（要件9 / 10.4）。音量0の音は再生処理自体を行わない */}
         <SettingSection
           title="音"

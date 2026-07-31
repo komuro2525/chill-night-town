@@ -152,6 +152,20 @@ export async function updateEmotionRecordEnabled(enabled: boolean): Promise<void
   );
 }
 
+/**
+ * 背景のループ動画のON/OFF（要件10.11）。稼働中も可（記録・判定に影響しないため）。
+ * OFFのときは動画素材があっても静止画を表示する。
+ */
+export async function updateBackgroundMotionEnabled(
+  enabled: boolean,
+): Promise<void> {
+  const db = await getDatabase();
+  await db.runAsync(
+    "UPDATE user SET background_motion_enabled = ?, updated_at = datetime('now')",
+    enabled ? 1 : 0,
+  );
+}
+
 /** 頑張りすぎ防止（休憩提案）のON/OFF（要件10.8）。稼働中も可 */
 export async function updateOverworkPreventionEnabled(
   enabled: boolean,

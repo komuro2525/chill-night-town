@@ -47,6 +47,8 @@ export type User = {
   tutorial_completed: Bool;
   /** 機能ごとの初回説明を見たか（カンマ区切りのキー集合）。空文字＝未読 */
   tutorial_seen_features: string;
+  /** 背景のループ動画を再生するか（1=動かす・既定 / 0=静止画）。要件10.11 */
+  background_motion_enabled: Bool;
   created_at: string;
   updated_at: string;
 };

@@ -35,7 +35,7 @@ type Migration = {
 
 // 現在のスキーマバージョン（db/*.sql が表す「最新」の版）。
 // スキーマを変更したら、スキーマSQLを更新しつつ本値を+1し、DELTA_MIGRATIONS に差分を追加する。
-const SCHEMA_VERSION = 22;
+const SCHEMA_VERSION = 23;
 
 // 既存DB（過去バージョン）向けの差分マイグレーション（version >= 2）。
 // 新規インストールはスキーマSQL（=最新）を適用して一気に SCHEMA_VERSION まで上がるため、
@@ -550,6 +550,16 @@ const DELTA_MIGRATIONS: Migration[] = [
       // 初回チュートリアルを軽くするため、天気/カレンダー/夜の住人/おやすみは各機能の初回へ移した。
       await db.execAsync(
         "ALTER TABLE user ADD COLUMN tutorial_seen_features TEXT NOT NULL DEFAULT ''",
+      );
+    },
+  },
+  {
+    version: 23,
+    up: async (db) => {
+      // 背景のループ動画（要件2.2）を再生するかの設定（要件10.11）。既定1＝動かす。
+      // 動画素材のある街・時間帯・レベルだけが対象で、無い背景は本設定に関わらず静止画。
+      await db.execAsync(
+        "ALTER TABLE user ADD COLUMN background_motion_enabled INTEGER NOT NULL DEFAULT 1 CHECK (background_motion_enabled IN (0, 1))",
       );
     },
   },
