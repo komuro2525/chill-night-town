@@ -310,7 +310,7 @@ const DELTA_MIGRATIONS: Migration[] = [
   {
     version: 10,
     up: async (db) => {
-      // 街をフォルダ名ベースの4街へ更新する（背景画像フォルダ assets/images/home/<code>/ に合わせる）。
+      // 街をフォルダ名ベースの4街へ更新する（背景素材フォルダ assets/home/<code>/ に合わせる）。
       // 既存の town_01 / town_02 を nightTown / castleTown へ改称し、snowTown / starHill を追加する。
       // town_progress は town_id（=id）で紐づくため、改称しても既存の育成進捗は保持される。
       // 追加した街の育成進捗行は、既存ユーザーぶんをここで作る（新規ユーザーは setup で作成）。

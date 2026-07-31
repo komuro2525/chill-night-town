@@ -8,7 +8,8 @@ import type { TimeOfDay } from "@/lib/background-schedule";
 // townArt.ts と違い、時間帯のフォールバックはしない（night の動画を昼へ流用しない）。
 // 空の色と時刻が食い違うと世界観が壊れるため。静止画側のフォールバックは従来どおり。
 //
-// 動画は assets/videos/home/<town>/<timeOfDay>/<town>_<timeOfDay>_lv<N>.mp4 に置く。
+// 動画は時間帯フォルダの mp4/ 配下に置く（静止画は同じ階層の png/。townArt.ts を参照）:
+// assets/home/<town>/<timeOfDay>/mp4/<town>_<timeOfDay>_lv<N>.mp4
 // 素材の規格（無音・尺・ループの継ぎ目など）は docs/必要素材一覧.md「動画素材の規格」を参照。
 export type TownVideo = {
   /** require() した MP4（RN の require は静的パスのみ解決できる） */
@@ -31,7 +32,7 @@ const TOWN_VIDEO: Record<string, TownVideoSet> = {
       // 動作確認用の暫定素材。静止画（1672×941）と同じ16:9のため可動域は一致する。
       // 本素材ができたら同じパスへ差し替え、解像度が変わればここも直す
       5: {
-        source: require("@/assets/videos/home/nightTown/night/nightTown_night_lv5.mp4"),
+        source: require("@/assets/home/nightTown/night/mp4/nightTown_night_lv5.mp4"),
         width: 1280,
         height: 720,
       },
