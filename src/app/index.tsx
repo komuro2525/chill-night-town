@@ -107,7 +107,7 @@ const GOODNIGHT_INTRO_PAGES = (() => {
 })();
 
 export default function HomeScreen() {
-  const { user, reload: reloadSettings, selectedTown } = useSettings();
+  const { user, reload: reloadSettings, selectedTown, townNpc } = useSettings();
   const timer = useTimer();
   const audio = useAudio();
   // 横画面表示（要件2.4）: ホームだけ横向きを許可し、閲覧専用ビューへ切り替える
@@ -319,8 +319,10 @@ export default function HomeScreen() {
             summary?.totalMinutes ?? 0,
             plannedMinutes,
           ),
-          // 開始時のNPCを固定（この夜の終了/達成メッセージはこの住人で出す・要件7.1）
-          npcId: user.selected_npc_id,
+          // 開始時の住人を固定（この夜の終了/達成メッセージはこの住人で出す・要件7.1）。
+          // 住人は街ごとに1人で、計測中は街を切り替えられないため実際には入れ替わらないが、
+          // 記録との整合のためセッション側にも控えておく
+          npcId: townNpc?.id ?? masterRepo.DEFAULT_NPC_ID,
         });
         setWeather(v.weather);
         // 前回の演出が途中で失われていた場合の保険（旧レベルの背景を残さない）
@@ -332,7 +334,7 @@ export default function HomeScreen() {
         console.error("学習の開始に失敗しました", e);
       }
     },
-    [user, selected, timer, reloadSettings, summary?.totalMinutes],
+    [user, selected, timer, reloadSettings, summary?.totalMinutes, townNpc?.id],
   );
 
   // 街の成長処理（要件6.1 / UC 6.1）。学習記録の保存を契機に一度だけ実行する。
@@ -515,18 +517,18 @@ export default function HomeScreen() {
   // 実際に夜を閉じる（音のフェードアウト → 暗転＋NPCのおやすみメッセージ）
   const runGoodnight = useCallback(async () => {
     try {
-      // おやすみはセッションに紐づかないため、現在選択中のNPCで出す（要件7.1・13）
+      // おやすみはセッションに紐づかないため、いま選択中の街の住人で出す（要件7.1・13）
       const message = await masterRepo.pickNpcMessage(
         "goodnight",
         null,
-        user?.selected_npc_id ?? masterRepo.DEFAULT_NPC_ID,
+        townNpc?.id ?? masterRepo.DEFAULT_NPC_ID,
       );
       audio.setGoodnight(true);
       setGoodnightMessage(message ?? "おやすみなさい。またこの街で。");
     } catch (e) {
       console.error("おやすみの準備に失敗しました", e);
     }
-  }, [audio, user?.selected_npc_id]);
+  }, [audio, townNpc?.id]);
 
   // 眠るかどうかの確認（キャンセルなら何もしない）。UC 13.1 のステップ2
   const confirmGoodnight = useCallback(() => {

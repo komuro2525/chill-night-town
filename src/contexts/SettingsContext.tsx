@@ -8,9 +8,14 @@ import {
 } from "react";
 
 import { getDatabase } from "@/db/database";
-import { settingsRepo, townProgressRepo, userRepo } from "@/db/repositories";
+import {
+  masterRepo,
+  settingsRepo,
+  townProgressRepo,
+  userRepo,
+} from "@/db/repositories";
 import type { SelectedTown } from "@/db/repositories/townProgressRepo";
-import type { AudioSetting, NotificationSetting, User } from "@/db/types";
+import type { AudioSetting, Npc, NotificationSetting, User } from "@/db/types";
 
 // Phase 0: DBからユーザー・設定を読み込んで配布する骨組み。
 // 各設定の変更メソッド（10章）は該当Phaseで追加する。
@@ -23,6 +28,8 @@ type SettingsState = {
   notificationSetting: NotificationSetting | null;
   /** 選択中の街と育成進捗。街選択画面（S9）での変更もここを通して各画面へ配る */
   selectedTown: SelectedTown | null;
+  /** 選択中の街に住んでいる住人（要件7.1）。街を切り替えると入れ替わる。未登録の街は null */
+  townNpc: Npc | null;
 };
 
 type SettingsContextValue = SettingsState & {
@@ -39,6 +46,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     audioSetting: null,
     notificationSetting: null,
     selectedTown: null,
+    townNpc: null,
   });
 
   const reload = useMemo(
@@ -51,12 +59,17 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
           settingsRepo.getNotificationSetting(),
           townProgressRepo.getSelectedTown(),
         ]);
+      // 住人は街に紐づくため、街が決まってから引く（要件7.1）
+      const townNpc = selectedTown
+        ? await masterRepo.getNpcByTown(selectedTown.town.id)
+        : null;
       setState({
         ready: true,
         user,
         audioSetting,
         notificationSetting,
         selectedTown,
+        townNpc,
       });
     },
     [],

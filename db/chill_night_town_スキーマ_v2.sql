@@ -40,8 +40,6 @@ CREATE TABLE user (
     pomodoro_loop_count         INTEGER NOT NULL DEFAULT 1  CHECK (pomodoro_loop_count BETWEEN 1 AND 10),
     -- 初回ホームの「街の育て方」お知らせ（成長方式の案内）を表示済みか。1=表示済み（以後出さない）
     growth_hint_dismissed       INTEGER NOT NULL DEFAULT 0  CHECK (growth_hint_dismissed IN (0, 1)),
-    -- 選択中のNPC（夜の街の住人）。メッセージの声色を決める（要件7.1）。既定は最初の住人=1
-    selected_npc_id             INTEGER NOT NULL DEFAULT 1  REFERENCES npc(id) ON DELETE RESTRICT,
     -- 初回チュートリアル（使い方カルーセル・最小限）を見終えたか。1=表示済み（初期設定完了後に一度だけ出す）
     tutorial_completed          INTEGER NOT NULL DEFAULT 0  CHECK (tutorial_completed IN (0, 1)),
     -- 機能ごとの初回説明を見たか（カンマ区切りのキー集合）。初めてその画面/操作に触れたとき一度だけ出す
@@ -99,11 +97,17 @@ CREATE TABLE emotion (
 );
 
 -- =====================================================================
--- 5. npc : NPCマスタ（MVPは1体のみ投入。将来の複数NPC追加に対応）
+-- 5. npc : NPCマスタ（街ごとに1人の住人。要件7.1）
+--    ・town_id で「どの街に住んでいるか」を持つ。選択中の街の住人がメッセージを出す
+--    ・街が住人を持つ（town.npc_id）のではなく住人が街を持つ形にしてあるのは、
+--      将来ひとつの街に2〜3人の住人を置き、その中から選べるようにするため
+--    ・同じ街に複数行あるときは id の小さい行をその街の既定の住人とする
 -- =====================================================================
 CREATE TABLE npc (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     name            TEXT    NOT NULL,
+    -- 住んでいる街。NULL = どの街にも属さない全街共通の受け皿（当面は未使用）
+    town_id         INTEGER REFERENCES town(id) ON DELETE RESTRICT,
     description     TEXT,
     image_path      TEXT,
     is_active       INTEGER NOT NULL DEFAULT 1 CHECK (is_active IN (0, 1)),

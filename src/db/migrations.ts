@@ -11,10 +11,11 @@ import { loadSqlAsset } from "./sql-loader";
 const SCHEMA_SQL_MODULE = require("../../db/chill_night_town_スキーマ_v2.sql") as number;
 // eslint-disable-next-line @typescript-eslint/no-require-imports -- 同上
 const SEED_SQL_MODULE = require("../../db/chill_night_town_シードデータ.sql") as number;
-// 追加NPC（2・3人目）のマスタ＋メッセージ＋紹介文。新規初期化と v19 デルタの
-// 両方から exec して、100本超のメッセージを単一の出所にする（二重管理を避ける）。
+// 住人（NPC）の街・名前・紹介文・メッセージ。新規初期化と既存DBのデルタの両方から
+// exec して、100本超のメッセージを単一の出所にする（二重管理を避ける）。
+// 生成物であり、文面の正は docs/NPCセリフ集.md（npm run npc:seed で再生成する）。
 // eslint-disable-next-line @typescript-eslint/no-require-imports -- 同上
-const SEED_NPC_V19_MODULE = require("../../db/seed_npc_v19.sql") as number;
+const SEED_NPC_MODULE = require("../../db/seed_npc.sql") as number;
 
 /**
  * シードSQLはファイル自身が `BEGIN TRANSACTION; ... COMMIT;` で囲まれている。
@@ -35,7 +36,7 @@ type Migration = {
 
 // 現在のスキーマバージョン（db/*.sql が表す「最新」の版）。
 // スキーマを変更したら、スキーマSQLを更新しつつ本値を+1し、DELTA_MIGRATIONS に差分を追加する。
-const SCHEMA_VERSION = 23;
+const SCHEMA_VERSION = 24;
 
 // 既存DB（過去バージョン）向けの差分マイグレーション（version >= 2）。
 // 新規インストールはスキーマSQL（=最新）を適用して一気に SCHEMA_VERSION まで上がるため、
@@ -517,20 +518,16 @@ const DELTA_MIGRATIONS: Migration[] = [
         ALTER TABLE user ADD COLUMN selected_npc_id INTEGER NOT NULL DEFAULT 1;
         ALTER TABLE active_session ADD COLUMN npc_id INTEGER;
       `);
-      // 追加NPC（2・3人目）のマスタ＋メッセージ＋紹介文を投入（新規初期化と同じSQL）。
-      // emotion / npc(1) は既存DBに既にあるため、そのまま流せる。
-      const npcSql = await loadSqlAsset(SEED_NPC_V19_MODULE);
-      await db.execAsync(stripOuterTransaction(npcSql));
+      // 住人のマスタ・メッセージの投入は、ここでは行わない。
+      // 現在の db/seed_npc.sql は npc.town_id（v24で追加）を前提としており、
+      // この時点の形状では流せないため。住人データは後段の v24 がまとめて入れる。
     },
   },
   {
     version: 20,
-    up: async (db) => {
-      // NPCメッセージ・紹介文の刷新（声色を強化して3人を判別しやすく／紹介文に改行）。
-      // seed_npc_v19.sql は冒頭で npc_message を全消しして入れ直す冪等スクリプトのため、
-      // v19 で一度流した端末にも、もう一度流せば最新の文面へ更新される。
-      const npcSql = await loadSqlAsset(SEED_NPC_V19_MODULE);
-      await db.execAsync(stripOuterTransaction(npcSql));
+    up: async () => {
+      // 元は「NPCメッセージ・紹介文の刷新」。文面は v24 の住人データ投入で最新化されるため、
+      // ここでは何もしない（同じシードを二度流すことになるうえ、v19 と同じ理由で流せない）。
     },
   },
   {
@@ -563,6 +560,30 @@ const DELTA_MIGRATIONS: Migration[] = [
       );
     },
   },
+  {
+    version: 24,
+    up: async (db) => {
+      // 住人（NPC）を街ごとに1人配置する方式へ変更する（要件7.1）。
+      // 住人を選ぶ操作はやめ、街の選択（10.5）が住人の選択を兼ねるようにした。
+      //
+      // ・npc.town_id … どの街に住んでいるか。選択中の街の住人がメッセージを出す。
+      //   ALTER ADD COLUMN に REFERENCES を付けないのは v19 と同じ理由（FK有効時の制約）。
+      //   FK は新規インストールのスキーマSQL側にのみ持たせる。
+      // ・user.selected_npc_id … 選択の保存先が不要になったため削除する。
+      //   将来ひとつの街に複数の住人を置く拡張をしても、選択は街ごと（town_progress）に
+      //   なるためこの列は使えない。列に REFERENCES があっても DROP COLUMN は通る
+      //   （SQLiteの制限は「他テーブルから参照されている」「索引・CHECK に使われている」場合）。
+      // ・住人の街・名前・紹介文・メッセージの投入と、セリフ集から消えた住人の退去
+      //   （旧2人目=喫茶店のマスター）は db/seed_npc.sql が行う。
+      //
+      // **順序が重要**: 退去させる住人を user.selected_npc_id が指していると、
+      // FK（ON DELETE RESTRICT）で削除できない。列を先に落としてからシードを流す。
+      await db.execAsync("ALTER TABLE npc ADD COLUMN town_id INTEGER");
+      await db.execAsync("ALTER TABLE user DROP COLUMN selected_npc_id");
+      const npcSql = await loadSqlAsset(SEED_NPC_MODULE);
+      await db.execAsync(stripOuterTransaction(npcSql));
+    },
+  },
 ];
 
 /** 現在の DB バージョンを取得する（未設定なら0） */
@@ -578,13 +599,13 @@ async function initializeFreshDatabase(db: SQLiteDatabase): Promise<void> {
   const [schemaSql, seedSql, npcSql] = await Promise.all([
     loadSqlAsset(SCHEMA_SQL_MODULE),
     loadSqlAsset(SEED_SQL_MODULE),
-    loadSqlAsset(SEED_NPC_V19_MODULE),
+    loadSqlAsset(SEED_NPC_MODULE),
   ]);
   await db.withTransactionAsync(async () => {
-    // スキーマ（DDL・トリガー）→ シード（マスタ投入）→ 追加NPC の順に適用する
+    // スキーマ（DDL・トリガー）→ シード（マスタ投入）→ 住人 の順に適用する
     await db.execAsync(schemaSql);
     await db.execAsync(stripOuterTransaction(seedSql));
-    // 追加NPC（2・3人目）。本体シードで emotion / npc(1) が入った後に流す
+    // 住人（NPC）の街・紹介文・メッセージ。本体シードで town / emotion / npc(1) が入った後に流す
     await db.execAsync(stripOuterTransaction(npcSql));
     // PRAGMA はプレースホルダを使えないため整数リテラルを埋め込む（内部定義値で安全）
     await db.execAsync(`PRAGMA user_version = ${SCHEMA_VERSION}`);

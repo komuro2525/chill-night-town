@@ -1,5 +1,5 @@
 import { useRouter } from "expo-router";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Switch, View } from "react-native";
 
 import {
@@ -16,7 +16,7 @@ import { Spacing } from "@/constants/theme";
 import { useAudio, type SoundCategory } from "@/contexts/AudioContext";
 import { useSettings } from "@/contexts/SettingsContext";
 import { useTimer } from "@/contexts/TimerContext";
-import { growthRepo, maintenanceRepo, masterRepo, settingsRepo, townProgressRepo, userRepo } from "@/db/repositories";
+import { growthRepo, maintenanceRepo, settingsRepo, townProgressRepo, userRepo } from "@/db/repositories";
 import type { GrowthMethod } from "@/db/types";
 import { useTheme } from "@/hooks/use-theme";
 import { ensureNotificationPermission } from "@/lib/notifications";
@@ -39,7 +39,8 @@ const DEFAULT_NOTIFICATION_TIME = "21:00";
 
 export default function SettingsScreen() {
   const router = useRouter();
-  const { user, ready, reload, selectedTown, notificationSetting } = useSettings();
+  const { user, ready, reload, selectedTown, townNpc, notificationSetting } =
+    useSettings();
   const { status } = useTimer();
   const audio = useAudio();
   const running = status !== "idle";
@@ -53,22 +54,6 @@ export default function SettingsScreen() {
   const [editing, setEditing] = useState<"nickname" | "goal" | null>(null);
   const [projectPrompt, setProjectPrompt] = useState(false);
   const [timeEditOpen, setTimeEditOpen] = useState(false);
-
-  // 選択中のNPC名（設定行の表示用）。選択が変わるたびに引き直す
-  const [npcName, setNpcName] = useState<string | null>(null);
-  useEffect(() => {
-    let alive = true;
-    masterRepo
-      .getNpcs()
-      .then((list) => {
-        if (!alive) return;
-        setNpcName(list.find((n) => n.id === user?.selected_npc_id)?.name ?? null);
-      })
-      .catch((e) => console.error("NPCの読み込みに失敗しました", e));
-    return () => {
-      alive = false;
-    };
-  }, [user?.selected_npc_id]);
 
   const notifyEnabled = notificationSetting?.is_enabled === 1;
   const notifyTime = notificationSetting?.scheduled_time ?? null;
@@ -259,15 +244,15 @@ export default function SettingsScreen() {
           />
         </SettingSection>
 
-        {/* 夜の住人（NPC）。声色だけが変わり記録・判定には影響しないため稼働中も変更可 */}
+        {/* 夜の住人（NPC）。住人は街ごとに決まっており、ここでは紹介を見るだけ（要件7.1・10.12） */}
         <SettingSection
           title="夜の住人"
-          footer="選んだ住人の声で、夜のメッセージが届きます。学習中でも選べます（今夜のぶんは、始めたときの住人のままです）。"
+          footer="住人は街ごとにいます。いまの街の住人の声で、夜のメッセージが届きます。"
         >
           <SettingRow
             first
-            label="NPC"
-            value={npcName ?? undefined}
+            label="いまの街の住人"
+            value={townNpc?.name ?? undefined}
             onPress={() => router.push("/settings/npc")}
           />
         </SettingSection>

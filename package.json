@@ -53,7 +53,8 @@
     "web": "expo start --web",
     "lint": "expo lint",
     "test": "jest",
-    "test:doc": "node scripts/generate-test-doc.js"
+    "test:doc": "node scripts/generate-test-doc.js",
+    "npc:seed": "node scripts/generate-npc-seed.js"
   },
   "private": true
 }

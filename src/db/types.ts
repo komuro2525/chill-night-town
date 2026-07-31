@@ -41,8 +41,6 @@ export type User = {
   pomodoro_loop_count: number;
   /** 初回ホームの成長方式お知らせを表示済みか（1=表示済み） */
   growth_hint_dismissed: Bool;
-  /** 選択中のNPC（夜の街の住人）。メッセージの声色を決める（要件7.1）。既定=1 */
-  selected_npc_id: number;
   /** 初回チュートリアル（使い方・最小限）を見終えたか（1=表示済み） */
   tutorial_completed: Bool;
   /** 機能ごとの初回説明を見たか（カンマ区切りのキー集合）。空文字＝未読 */
@@ -99,6 +97,8 @@ export type StudyTag = {
 export type Npc = {
   id: number;
   name: string;
+  /** 住んでいる街（要件7.1）。この街を選んでいる間、この住人が話す。null = 全街共通の受け皿 */
+  town_id: number | null;
   description: string | null;
   image_path: string | null;
   is_active: Bool;

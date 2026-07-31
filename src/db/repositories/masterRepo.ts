@@ -14,14 +14,21 @@ import type {
   Town,
 } from "../types";
 
-/** 既定のNPC（最初の住人）。選択中NPCに候補が無いときのフォールバック先（要件7.1） */
+/** 既定のNPC（最初の住人＝書店の店主）。文面が未整備の街のフォールバック先（要件7.1） */
 export const DEFAULT_NPC_ID = 1;
 
-/** 有効なNPC（夜の街の住人）の一覧。設定のNPC選択で使う（id順＝登場順） */
-export async function getNpcs(): Promise<Npc[]> {
+/**
+ * その街に住んでいる住人（要件7.1）。街を選ぶことが住人を選ぶことになる。
+ *
+ * 将来ひとつの街に住人を2〜3人置く拡張を想定しているため、複数いる場合は
+ * id の小さい行をその街の既定の住人として返す（選択機能はその拡張時に足す）。
+ * 住人が未登録の街では null を返し、呼び出し側は既定NPCへ委ねる。
+ */
+export async function getNpcByTown(townId: number): Promise<Npc | null> {
   const db = await getDatabase();
-  return db.getAllAsync<Npc>(
-    "SELECT * FROM npc WHERE is_active = 1 ORDER BY id",
+  return db.getFirstAsync<Npc>(
+    "SELECT * FROM npc WHERE town_id = ? AND is_active = 1 ORDER BY id LIMIT 1",
+    townId,
   );
 }
 
@@ -81,7 +88,7 @@ export async function getNpcMessages(
  * 条件は「NPC＋タイミング＋感情」の一致のみ（7.1の単純な条件マッチ方式）。
  * 感情ごとの候補は複数行を持てるため、行を追加するだけで文面を増やせる。
  *
- * @param npcId 出させたいNPC（学習セッションは開始時のスナップショット、おやすみは現在の選択）
+ * @param npcId 出させたい住人（学習セッションは開始時のスナップショット、おやすみは今いる街の住人）
  */
 export async function pickNpcMessage(
   triggerType: NpcTriggerType,

@@ -100,15 +100,15 @@ INSERT INTO ambient_sound (code, sound_type, name, artist, file_path) VALUES
 --     ('amb_forest', 'ambient', '森の音', NULL, 'assets/audio/ambient/forest.mp3');
 
 -- =====================================================================
--- npc : NPCマスタ（MVPは1体。名前・画像は素材制作時に確定）
+-- npc : NPCマスタ（街ごとに1人の住人。画像は素材制作時に確定）
 --   人格: 夜の街に住む、知的で落ち着いた大人。です・ます基調で、
 --         責めない・急かさない・声を張らない
 -- =====================================================================
--- NPC(1)＝書店の店主（既定の住人）。ここでは user.selected_npc_id の既定=1 が
--- 参照できるよう、マスタ行だけ先に用意する。名前・紹介文・メッセージの最終形（全NPCぶん）は
--- db/seed_npc_v19.sql が投入する（新規/既存の両方へ流す単一の出所。声色を1ファイルで見比べ・
--- 調整でき、既存DBへも同じ文面を届けられるよう集約した）。
-INSERT INTO npc (name, description) VALUES
-    ('書店の店主', '（紹介文は db/seed_npc_v19.sql で設定）');
+-- NPC(1)＝書店の店主（既定の住人・夜の街）。ここではフォールバック先となる
+-- マスタ行だけ先に用意する。全住人の街・名前・紹介文・メッセージの最終形は
+-- db/seed_npc.sql が投入する（新規/既存の両方へ流す単一の出所。docs/NPCセリフ集.md から
+-- npm run npc:seed で生成される）。
+INSERT INTO npc (name, town_id, description) VALUES
+    ('書店の店主', (SELECT id FROM town WHERE code = 'nightTown'), '（紹介文は db/seed_npc.sql で設定）');
 
 COMMIT;

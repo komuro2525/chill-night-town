@@ -108,19 +108,6 @@ export async function updateNickname(nickname: string): Promise<void> {
   );
 }
 
-/**
- * 選択中のNPC（夜の街の住人）を変更する（要件7.1）。稼働中も可。
- * 記録・判定には影響せず、メッセージの声色だけが変わる。稼働中のセッションは
- * 開始時のNPC（active_session.npc_id）で語るため、変更は次のセッションから効く。
- */
-export async function updateSelectedNpc(npcId: number): Promise<void> {
-  const db = await getDatabase();
-  await db.runAsync(
-    "UPDATE user SET selected_npc_id = ?, updated_at = datetime('now')",
-    npcId,
-  );
-}
-
 /** 一日の学習目標時間を変更する（要件10.2）。稼働中不可はUI側で制御 */
 export async function updateDailyGoalMinutes(minutes: number): Promise<void> {
   const db = await getDatabase();

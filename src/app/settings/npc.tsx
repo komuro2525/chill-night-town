@@ -1,52 +1,21 @@
-import { useCallback, useEffect, useState } from "react";
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, View } from "react-native";
+import { ActivityIndicator, ScrollView, StyleSheet, View } from "react-native";
 
 import { FeatureTutorial } from "@/components/feature-tutorial";
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
 import { LightColor, Spacing } from "@/constants/theme";
 import { useSettings } from "@/contexts/SettingsContext";
-import { masterRepo, userRepo } from "@/db/repositories";
-import type { Npc } from "@/db/types";
 
-// 設定: 夜の住人（NPC）の選択（要件7.1）。
-// 選んだ住人の声色でアプリのメッセージが出る。立ち絵はまだ無いため、紹介文で見せる。
-// NPCは記録・判定に影響しないため、稼働中でも変更できる（今夜のメッセージは開始時の住人で出る）。
+// 設定: 夜の住人（要件7.1 / 10.12）。
+// 住人は街ごとに1人いて、その街を選んでいる間その人の声でメッセージが出る。
+// ここは閲覧専用——住人を選ぶ操作は無く、街の切り替え（10.5）が住人の切り替えを兼ねる。
+// 他の街の住人は見せない。行ってから出会うほうが、街を移る楽しみが残るため。
+// 立ち絵はまだ無いため、紹介文で人物を見せる。
 
 export default function NpcScreen() {
-  const { user, ready, reload: reloadSettings } = useSettings();
-  const [npcs, setNpcs] = useState<Npc[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { ready, selectedTown, townNpc } = useSettings();
 
-  const reload = useCallback(async () => {
-    try {
-      const [list] = await Promise.all([masterRepo.getNpcs(), reloadSettings()]);
-      setNpcs(list);
-    } catch (e) {
-      console.error("NPCの読み込みに失敗しました", e);
-    } finally {
-      setLoading(false);
-    }
-  }, [reloadSettings]);
-
-  useEffect(() => {
-    void reload();
-  }, [reload]);
-
-  const select = useCallback(
-    async (id: number) => {
-      if (id === user?.selected_npc_id) return;
-      try {
-        await userRepo.updateSelectedNpc(id);
-        await reload();
-      } catch (e) {
-        console.error("NPCの変更に失敗しました", e);
-      }
-    },
-    [user?.selected_npc_id, reload],
-  );
-
-  if (!ready || loading) {
+  if (!ready) {
     return (
       <ThemedView style={styles.center}>
         <ActivityIndicator />
@@ -60,42 +29,35 @@ export default function NpcScreen() {
       <FeatureTutorial featureKey="npc" />
       <ScrollView contentContainerStyle={styles.content}>
         <ThemedText type="small" themeColor="textSecondary" style={styles.intro}>
-          この街には、夜ごとに言葉を添えてくれる住人がいます。誰の声で過ごすか、いつでも選べます。
+          街にはそれぞれ、夜ごとに言葉を添えてくれる住人がいます。ほかの街の住人には、その街を訪れたときに会えます。
         </ThemedText>
 
-        {npcs.map((npc) => {
-          const selected = npc.id === user?.selected_npc_id;
-          return (
-            <Pressable
-              key={npc.id}
-              onPress={() => void select(npc.id)}
-              disabled={selected}
-              style={({ pressed }) => [
-                styles.card,
-                selected && styles.cardSelected,
-                pressed && !selected && styles.pressed,
-              ]}
-            >
-              <View style={styles.cardHead}>
-                <ThemedText style={styles.name}>{npc.name}</ThemedText>
-                {selected ? (
-                  <View style={styles.pill}>
-                    <ThemedText style={styles.pillText}>選択中</ThemedText>
-                  </View>
-                ) : (
-                  <ThemedText type="small" themeColor="textSecondary">
-                    タップして選ぶ
+        {townNpc ? (
+          <View style={styles.card}>
+            <View style={styles.cardHead}>
+              <ThemedText style={styles.name}>{townNpc.name}</ThemedText>
+              {selectedTown ? (
+                <View style={styles.pill}>
+                  <ThemedText style={styles.pillText}>
+                    {selectedTown.town.name}
                   </ThemedText>
-                )}
-              </View>
-              {npc.description ? (
-                <ThemedText type="small" themeColor="textSecondary" style={styles.desc}>
-                  {npc.description}
-                </ThemedText>
+                </View>
               ) : null}
-            </Pressable>
-          );
-        })}
+            </View>
+            {townNpc.description ? (
+              <ThemedText type="small" themeColor="textSecondary" style={styles.desc}>
+                {townNpc.description}
+              </ThemedText>
+            ) : null}
+          </View>
+        ) : (
+          // 住人が未登録の街。メッセージは既定の住人が代わりに届ける（要件7.1）
+          <View style={styles.card}>
+            <ThemedText type="small" themeColor="textSecondary" style={styles.desc}>
+              この街の住人は、まだ姿を見せていません。夜のメッセージは、ほかの街の住人がそっと届けています。
+            </ThemedText>
+          </View>
+        )}
       </ScrollView>
     </ThemedView>
   );
@@ -114,8 +76,6 @@ const styles = StyleSheet.create({
     padding: Spacing.four,
     gap: Spacing.two,
   },
-  cardSelected: { borderColor: LightColor },
-  pressed: { opacity: 0.85 },
   cardHead: {
     flexDirection: "row",
     alignItems: "center",
