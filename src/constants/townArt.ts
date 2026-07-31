@@ -70,11 +70,14 @@ const TOWN_ART: Record<string, TownArt> = {
  * 指定した街コード・レベル・時間帯の背景画像を返す（未登録なら undefined）。
  * 指定した時間帯の画像が無ければ night へフォールバックする
  * （時間帯差分の素材が用意されるまでは、全時間帯で night 画像になる）。
+ *
+ * timeOfDay に既定値は持たせない。省略できると「渡し忘れ＝常に night」が
+ * 静かに起きるため、呼び出し側に必ず現在の時間帯を渡させる。
  */
 export function getTownArt(
   code: string,
   level: number,
-  timeOfDay: TimeOfDay = "night",
+  timeOfDay: TimeOfDay,
 ): ImageSourcePropType | undefined {
   const town = TOWN_ART[code];
   if (!town) return undefined;

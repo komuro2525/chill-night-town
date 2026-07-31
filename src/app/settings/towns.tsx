@@ -13,6 +13,8 @@ import { useSettings } from "@/contexts/SettingsContext";
 import { useTimer } from "@/contexts/TimerContext";
 import { growthRepo, townProgressRepo } from "@/db/repositories";
 import type { TownWithProgress } from "@/db/repositories/townProgressRepo";
+import { getTimeOfDay } from "@/lib/background-schedule";
+import { useAppNow } from "@/lib/clock";
 import { formatMinutes } from "@/lib/study-day";
 import { validateProjectTargetHours } from "@/lib/validation";
 
@@ -31,6 +33,9 @@ export default function TownsScreen() {
   const { user, ready, reload: reloadSettings } = useSettings();
   const { status } = useTimer();
   const running = status !== "idle";
+  // 一覧のサムネイルも今の時間帯の景色で見せる（ホームの背景と食い違わせない）
+  const now = useAppNow(60000);
+  const timeOfDay = getTimeOfDay(now);
 
   const [towns, setTowns] = useState<TownWithProgress[]>([]);
   const [loading, setLoading] = useState(true);
@@ -96,7 +101,7 @@ export default function TownsScreen() {
         ) : null}
 
         {towns.map(({ town, progress }) => {
-          const art = getTownArt(town.code, progress.current_level);
+          const art = getTownArt(town.code, progress.current_level, timeOfDay);
           const hasArt = hasTownArt(town.code); // 素材のある街だけ選択できる
           const selected = progress.is_selected === 1;
           const selectable = hasArt && !selected;

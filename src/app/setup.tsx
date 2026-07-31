@@ -41,6 +41,8 @@ import { useSettings } from "@/contexts/SettingsContext";
 import { masterRepo, setupRepo } from "@/db/repositories";
 import type { Town } from "@/db/types";
 import { useTheme } from "@/hooks/use-theme";
+import { getTimeOfDay } from "@/lib/background-schedule";
+import { useAppNow } from "@/lib/clock";
 import { ensureNotificationPermission } from "@/lib/notifications";
 import { refreshNotifications } from "@/lib/notification-sync";
 import {
@@ -313,7 +315,9 @@ function TownCard({
   onExpand: () => void;
   theme: ReturnType<typeof useTheme>;
 }) {
-  const art = getTownArt(town.code, 1);
+  // 街のカードも今の時間帯の景色で見せる（初期設定は夜以外にも開くため）
+  const now = useAppNow(60000);
+  const art = getTownArt(town.code, 1, getTimeOfDay(now));
 
   return (
     <View
@@ -444,7 +448,8 @@ function TownPreviewModal({
   town: Town | null;
   onClose: () => void;
 }) {
-  const art = town ? getTownArt(town.code, 1) : undefined;
+  const now = useAppNow(60000);
+  const art = town ? getTownArt(town.code, 1, getTimeOfDay(now)) : undefined;
   const visible = town != null && art != null;
 
   // 画面サイズと画像の実寸から、contain 表示時の画像サイズを求める。
