@@ -36,7 +36,7 @@ type Migration = {
 
 // 現在のスキーマバージョン（db/*.sql が表す「最新」の版）。
 // スキーマを変更したら、スキーマSQLを更新しつつ本値を+1し、DELTA_MIGRATIONS に差分を追加する。
-const SCHEMA_VERSION = 24;
+const SCHEMA_VERSION = 25;
 
 // 既存DB（過去バージョン）向けの差分マイグレーション（version >= 2）。
 // 新規インストールはスキーマSQL（=最新）を適用して一気に SCHEMA_VERSION まで上がるため、
@@ -580,6 +580,17 @@ const DELTA_MIGRATIONS: Migration[] = [
       // FK（ON DELETE RESTRICT）で削除できない。列を先に落としてからシードを流す。
       await db.execAsync("ALTER TABLE npc ADD COLUMN town_id INTEGER");
       await db.execAsync("ALTER TABLE user DROP COLUMN selected_npc_id");
+      const npcSql = await loadSqlAsset(SEED_NPC_MODULE);
+      await db.execAsync(stripOuterTransaction(npcSql));
+    },
+  },
+  {
+    version: 25,
+    up: async (db) => {
+      // 住人の文面の追加（夜桜の城下町=茶屋の女将 / 雪国=ストーブ番の若者の各52本）。
+      // v24 を通過済みの端末には新しい文面が届いていないため、シードを流し直す。
+      // seed_npc.sql は冒頭で npc_message を全消しして入れ直す冪等スクリプトなので、
+      // 文面を書き足したときは、この形で1バージョン足せば全端末へ行き渡る。
       const npcSql = await loadSqlAsset(SEED_NPC_MODULE);
       await db.execAsync(stripOuterTransaction(npcSql));
     },

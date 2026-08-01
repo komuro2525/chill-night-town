@@ -120,11 +120,9 @@ const ownerOf = (db, message) =>
   // 文面の本数（セリフ集の内訳: 感情なし＋感情ごと）
   const countOf = (id) =>
     db.prepare("SELECT count(*) c FROM npc_message WHERE npc_id=?").get(id).c;
-  check("書店の店主は52本", countOf(1) === 52);
-  check("天文台の管理人は52本", countOf(3) === 52);
   check(
-    "文面が未整備の住人は0本（茶屋の女将・ストーブ番の若者）",
-    countOf(4) === 0 && countOf(5) === 0,
+    "住人は全員52本ずつ持っている",
+    [1, 3, 4, 5].every((id) => countOf(id) === 52),
   );
   check(
     "紹介文は全員に入っている（改行入りで設定画面に出せる）",
@@ -150,11 +148,17 @@ const ownerOf = (db, message) =>
   );
   const mHillStart = pick(db, observatory.id, "study_start", null);
   check("感情なしのタイミングも街の住人から出る", ownerOf(db, mHillStart) === 3);
-  // 文面が未整備の街は、既定の住人が代わりに話す（無言にはしない）
   const mCastle = pick(db, teahouse.id, "goodnight", null);
-  check("文面が未整備の城下町は既定NPC(1)へフォールバックする", ownerOf(db, mCastle) === 1);
+  check("城下町では茶屋の女将の声で出る", ownerOf(db, mCastle) === 4);
   const mSnow = pick(db, stove.id, "goal_achieved", tired);
-  check("文面が未整備の雪国も既定NPC(1)へフォールバックする", ownerOf(db, mSnow) === 1);
+  check("雪国ではストーブ番の若者の声で出る", ownerOf(db, mSnow) === 5);
+  check(
+    "4人とも別々の文面を話す（街ごとに声色が分かれている）",
+    new Set([mNight, mHill, mCastle, mSnow]).size === 4,
+  );
+  // 文面が未整備の住人（街を足したがセリフ集がまだ、という状態）でも無言にはしない
+  const mUnwritten = pick(db, 99, "goodnight", null);
+  check("文面が無い住人は既定NPC(1)へフォールバックする", ownerOf(db, mUnwritten) === 1);
 
   db.close();
 }
