@@ -121,8 +121,17 @@ const ownerOf = (db, message) =>
   const countOf = (id) =>
     db.prepare("SELECT count(*) c FROM npc_message WHERE npc_id=?").get(id).c;
   check(
-    "住人は全員52本ずつ持っている",
-    [1, 3, 4, 5].every((id) => countOf(id) === 52),
+    "住人は全員55本ずつ持っている",
+    [1, 3, 4, 5].every((id) => countOf(id) === 55),
+  );
+  // 街の完成（Lv5到達の夜）は一度きりなので感情別は持たない（要件7.1）
+  const completedRows = db
+    .prepare("SELECT npc_id, emotion_id FROM npc_message WHERE trigger_type='town_completed'")
+    .all();
+  check("街の完成メッセージが4人×3本ある", completedRows.length === 12);
+  check(
+    "街の完成メッセージは感情で出し分けない（emotion_id は全てNULL）",
+    completedRows.every((r) => r.emotion_id === null),
   );
   check(
     "紹介文は全員に入っている（改行入りで設定画面に出せる）",
@@ -134,7 +143,7 @@ const ownerOf = (db, message) =>
 
   // --- 4. 冪等性 ---
   db.exec(npcSeed);
-  check("再シードしても本数は変わらない（冪等）", countOf(1) === 52 && countOf(3) === 52);
+  check("再シードしても本数は変わらない（冪等）", countOf(1) === 55 && countOf(3) === 55);
   check("再シードしても住人は増えない", db.prepare("SELECT count(*) c FROM npc").get().c === 4);
 
   // --- 2 & 3. メッセージの選択 ---
@@ -155,6 +164,17 @@ const ownerOf = (db, message) =>
   check(
     "4人とも別々の文面を話す（街ごとに声色が分かれている）",
     new Set([mNight, mHill, mCastle, mSnow]).size === 4,
+  );
+  // 完成の夜は、その街の住人が完成専用の言葉で語る（要件6.1）
+  const mCompleted = pick(db, stove.id, "town_completed", tired);
+  check("街の完成はその街の住人の完成専用メッセージから出る", ownerOf(db, mCompleted) === 5);
+  const stoveCompleted = db
+    .prepare("SELECT message FROM npc_message WHERE npc_id=? AND trigger_type='town_completed'")
+    .all(stove.id)
+    .map((r) => r.message);
+  check(
+    "完成メッセージは感情を渡しても感情なしの候補から出る",
+    stoveCompleted.includes(mCompleted),
   );
   // 文面が未整備の住人（街を足したがセリフ集がまだ、という状態）でも無言にはしない
   const mUnwritten = pick(db, 99, "goodnight", null);

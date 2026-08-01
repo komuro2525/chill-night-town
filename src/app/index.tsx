@@ -562,19 +562,27 @@ export default function HomeScreen() {
   }, [audio]);
 
   // 感情に応じたNPCの一言を出す（要件7.1 / 3.4 のステップ8）。
-  // 学習終了と目標達成が同時に成立した場合は「目標達成」を優先する（要件7.1）
+  // 同時に成立したときの優先順位は 街の完成 ＞ 目標達成 ＞ 学習終了。
+  // 完成（Lv5到達）はその街で一度きりの夜なので、いちばん強い言葉を出す（要件6.1）
   const showNpcMessage = useCallback(
     async (emotionId: number | null) => {
+      const trigger = growth?.completed
+        ? "town_completed"
+        : growth?.goalAchieved
+          ? "goal_achieved"
+          : "study_end";
       setNpcMessage(
         await masterRepo.pickNpcMessage(
-          growth?.goalAchieved ? "goal_achieved" : "study_end",
-          emotionId,
-          // 開始時のNPC（スナップショット）で語る。途中で選択を変えても今夜は変わらない
+          trigger,
+          // 完成の言葉は感情で出し分けない。その夜の手応えより「ここまで来たこと」を
+          // 受け止める言葉にしたいため（要件7.1: 感情ごとの候補は任意）
+          trigger === "town_completed" ? null : emotionId,
+          // 開始時のNPC（スナップショット）で語る。途中で街を変えても今夜は変わらない
           pendingNpcId.current ?? masterRepo.DEFAULT_NPC_ID,
         ),
       );
     },
-    [growth?.goalAchieved],
+    [growth?.completed, growth?.goalAchieved],
   );
 
   // 記録画面を閉じた後の流れ（要件6.1 / 7.1）。

@@ -21,6 +21,8 @@ export type NpcTriggerType =
   | "study_start"
   | "study_end"
   | "goal_achieved"
+  /** 街がLv5に到達した夜（要件6.1の完成演出のあとに一度だけ出す） */
+  | "town_completed"
   | "goodnight";
 
 // =====================================================================

@@ -177,7 +177,7 @@
 | ------------ | ------------ | :-: | ------ | :--: | --------------- | --------------------------------------------------------------------------------------------------- |
 | id           | INTEGER      | ○  |        | 不可 | 自動採番        | メッセージID（主キー）                                                                              |
 | npc_id       | INTEGER      |     | npc.id | 不可 | なし            | 発言するNPC（ON DELETE CASCADE）                                                                    |
-| trigger_type | TEXT         |     |        | 不可 | なし            | 表示タイミング（`study_start`/`study_end`/`goal_achieved`/`goodnight`）。将来拡張のためTEXT型で管理 |
+| trigger_type | TEXT         |     |        | 不可 | なし            | 表示タイミング（`study_start`/`study_end`/`goal_achieved`/`town_completed`/`goodnight`）。将来拡張のためTEXT型で管理 |
 | emotion_id   | INTEGER      |     | emotion.id | 可 | なし          | この感情のときに表示する（要件7.1）。**NULL＝感情を問わない**（感情未選択・感情記録OFFのときの受け皿。ON DELETE RESTRICT） |
 | message      | TEXT         |     |        | 不可 | なし            | メッセージ本文                                                                                      |
 | is_active    | INTEGER(0/1) |     |        | 不可 | 1               | 有効/無効フラグ                                                                                     |
@@ -185,9 +185,9 @@
 
 **補足**:
 
-- 学習終了と目標達成が同時に成立した場合は`goal_achieved`を優先表示する（UC 7.1）。`goodnight`（おやすみ機能・要件13章）のメッセージは暗転画面に表示する。街完成演出（Lv.5到達時）のメッセージを持たせる場合は`trigger_type`に`town_completed`等を追加すればよい（構造変更不要）。
+- 同時に成立した場合の優先順位は`town_completed` ＞ `goal_achieved` ＞ `study_end`（UC 7.1）。`goodnight`（おやすみ機能・要件13章）のメッセージは暗転画面に表示する。
 - **選択ルール**: `trigger_type`が一致し、かつ`emotion_id`が選択された感情と一致する行を候補とし、ランダムに1件選ぶ。該当が無い場合・感情が未選択の場合・感情記録がOFFの場合は、`emotion_id IS NULL`の行から選ぶ。感情ごとの候補は**複数行を持てる**（行を追加するだけで増やせる）。
-- `study_start`・`goodnight`は感情を伴わないタイミングのため、`emotion_id`は常にNULLとする。
+- `study_start`・`town_completed`・`goodnight`は感情を伴わない（または感情で出し分けない）タイミングのため、`emotion_id`は常にNULLとする。
 
 ## 8. ambient_sound（BGM・環境音マスタ）
 

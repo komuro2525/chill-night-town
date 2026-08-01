@@ -12,10 +12,10 @@
 --
 -- 住人は街ごとに1人。全員「責めない・急かさない・声を張らない」基調は共通で、
 -- 違うのは声色と比喩の引き出しだけ。
---   1: 書店の店主（nightTown）… 52本
---   3: 天文台の管理人（starHill）… 52本
---   4: 茶屋の女将（castleTown）… 52本
---   5: ストーブ番の若者（snowTown）… 52本
+--   1: 書店の店主（nightTown）… 55本
+--   3: 天文台の管理人（starHill）… 55本
+--   4: 茶屋の女将（castleTown）… 55本
+--   5: ストーブ番の若者（snowTown）… 55本
 -- =====================================================================
 
 -- 既存のメッセージを一旦すべて消してから入れ直す（冪等・文面の刷新用）
@@ -136,6 +136,12 @@ INSERT INTO npc_message (npc_id, trigger_type, emotion_id, message) VALUES
     (1, 'goal_achieved', (SELECT id FROM emotion WHERE code = 'anxious'), '不安を抱えたまま、結末まで読み通しましたね。それは、立派なことです。'),
     (1, 'goal_achieved', (SELECT id FROM emotion WHERE code = 'stuck'), '手応えがなくとも、頁の厚みは確かに増しました。ちゃんと、届いていますよ。');
 
+-- town_completed（感情を問わない候補）
+INSERT INTO npc_message (npc_id, trigger_type, message) VALUES
+    (1, 'town_completed', '街に、すべての灯りがともりました。長い一冊を、あなたは読み終えたのです。'),
+    (1, 'town_completed', 'ここまで来ましたか。最後の頁まで、よく綴じられました。'),
+    (1, 'town_completed', '完成、おめでとうございます。読み終えた本は、消えたりしませんよ。');
+
 -- goodnight（感情を問わない候補）
 INSERT INTO npc_message (npc_id, trigger_type, message) VALUES
     (1, 'goodnight', 'おやすみなさい。どうか、良い夢という物語を。'),
@@ -209,6 +215,12 @@ INSERT INTO npc_message (npc_id, trigger_type, emotion_id, message) VALUES
     (3, 'goal_achieved', (SELECT id FROM emotion WHERE code = 'down'), '気は晴れずとも、光は最後まで進んだ。それは事実だ。'),
     (3, 'goal_achieved', (SELECT id FROM emotion WHERE code = 'anxious'), '不安を抱えたまま、目標へ。立派な光だ。'),
     (3, 'goal_achieved', (SELECT id FROM emotion WHERE code = 'stuck'), '手応えはなくとも、光は積もった。ちゃんと、届いている。');
+
+-- town_completed（感情を問わない候補）
+INSERT INTO npc_message (npc_id, trigger_type, message) VALUES
+    (3, 'town_completed', '空が、満ちた。ここまで通った夜が、そのまま光になっている。'),
+    (3, 'town_completed', '見上げてみろ。あなたが積み上げた夜だ。'),
+    (3, 'town_completed', '完成だ。だが、星は明日も巡る。また見に来ればいい。');
 
 -- goodnight（感情を問わない候補）
 INSERT INTO npc_message (npc_id, trigger_type, message) VALUES
@@ -284,6 +296,12 @@ INSERT INTO npc_message (npc_id, trigger_type, emotion_id, message) VALUES
     (4, 'goal_achieved', (SELECT id FROM emotion WHERE code = 'anxious'), '不安なまま、目標まで来られましたね。立派ですよ。'),
     (4, 'goal_achieved', (SELECT id FROM emotion WHERE code = 'stuck'), '手応えがなくても、時間はちゃんと積もっています。届いていますよ。');
 
+-- town_completed（感情を問わない候補）
+INSERT INTO npc_message (npc_id, trigger_type, message) VALUES
+    (4, 'town_completed', '通りじゅうに灯りがともりましたね。あなたが一夜ずつ、ともしたものですよ。'),
+    (4, 'town_completed', '桜も満開です。ここまでよく通ってくださいました。'),
+    (4, 'town_completed', '完成ですね。のれんは、これからも出しておきますから。');
+
 -- goodnight（感情を問わない候補）
 INSERT INTO npc_message (npc_id, trigger_type, message) VALUES
     (4, 'goodnight', 'おやすみなさい。良い夢を。'),
@@ -357,6 +375,12 @@ INSERT INTO npc_message (npc_id, trigger_type, emotion_id, message) VALUES
     (5, 'goal_achieved', (SELECT id FROM emotion WHERE code = 'down'), '気持ちは晴れなくても、やったことは残る。それは本当だよ。'),
     (5, 'goal_achieved', (SELECT id FROM emotion WHERE code = 'anxious'), '不安なまま、目標まで来たんだ。うん、立派だよ。'),
     (5, 'goal_achieved', (SELECT id FROM emotion WHERE code = 'stuck'), '手応えなくても、時間はちゃんと積もってる。届いてるよ。');
+
+-- town_completed（感情を問わない候補）
+INSERT INTO npc_message (npc_id, trigger_type, message) VALUES
+    (5, 'town_completed', '見て、窓の外。あんなに明るくなった。全部きみが灯したんだよ。'),
+    (5, 'town_completed', '空にオーロラが出てる。ここまで来た夜へのごほうびだって。'),
+    (5, 'town_completed', '完成だね。でも火は消さないよ。また来ればいいから。');
 
 -- goodnight（感情を問わない候補）
 INSERT INTO npc_message (npc_id, trigger_type, message) VALUES

@@ -36,7 +36,7 @@ type Migration = {
 
 // 現在のスキーマバージョン（db/*.sql が表す「最新」の版）。
 // スキーマを変更したら、スキーマSQLを更新しつつ本値を+1し、DELTA_MIGRATIONS に差分を追加する。
-const SCHEMA_VERSION = 25;
+const SCHEMA_VERSION = 26;
 
 // 既存DB（過去バージョン）向けの差分マイグレーション（version >= 2）。
 // 新規インストールはスキーマSQL（=最新）を適用して一気に SCHEMA_VERSION まで上がるため、
@@ -591,6 +591,16 @@ const DELTA_MIGRATIONS: Migration[] = [
       // v24 を通過済みの端末には新しい文面が届いていないため、シードを流し直す。
       // seed_npc.sql は冒頭で npc_message を全消しして入れ直す冪等スクリプトなので、
       // 文面を書き足したときは、この形で1バージョン足せば全端末へ行き渡る。
+      const npcSql = await loadSqlAsset(SEED_NPC_MODULE);
+      await db.execAsync(stripOuterTransaction(npcSql));
+    },
+  },
+  {
+    version: 26,
+    up: async (db) => {
+      // 街の完成メッセージ（trigger_type='town_completed'）の追加（要件6.1 / 7.1）。
+      // Lv5へ初めて到達した夜、完成演出のあとに住人が言祝ぐ。各住人3本。
+      // 文面の追加なので、v25 と同じくシードを流し直すだけでよい。
       const npcSql = await loadSqlAsset(SEED_NPC_MODULE);
       await db.execAsync(stripOuterTransaction(npcSql));
     },
