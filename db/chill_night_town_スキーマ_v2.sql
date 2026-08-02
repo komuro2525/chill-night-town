@@ -46,6 +46,10 @@ CREATE TABLE user (
     tutorial_seen_features      TEXT    NOT NULL DEFAULT '',
     -- 背景のループ動画（要件2.2）を再生するか。1=動かす（既定）/ 0=静止画。設定10.11
     background_motion_enabled   INTEGER NOT NULL DEFAULT 1  CHECK (background_motion_enabled IN (0, 1)),
+    -- その夜の写真（要件2.6）を撮る機能のON/OFF。1=使う（既定）/ 0=使わない。設定10.14
+    -- 0のときは撮影の入口を出さず、カメラ権限を一度も要求しない。
+    -- 0にしても撮影済みの写真は削除しない（カレンダーから閲覧・削除できる）
+    night_photo_enabled         INTEGER NOT NULL DEFAULT 1  CHECK (night_photo_enabled IN (0, 1)),
     created_at                  TEXT    NOT NULL DEFAULT (datetime('now')),
     updated_at                  TEXT    NOT NULL DEFAULT (datetime('now'))
 );
@@ -476,10 +480,10 @@ CREATE TABLE daily_goal_achievement (
 );
 
 -- =====================================================================
--- 18. daily_night_weather : 学習日ごとに選択された夜の天気
+-- 18. daily_night_weather : 学習日ごとに選択された夜の天気とその夜の写真
 --     ・ホーム画面の背景演出・環境音の参照先（要件8章）。
---       行が無い学習日は「天気未選択」＝ニュートラルな夜空とする
---       （前日以前の天気は引き継がない）
+--       行が無い学習日、または night_weather_id が NULL の行は「天気未選択」＝
+--       ニュートラルな夜空とする（前日以前の天気は引き継がない）
 --     ・本テーブルが「その夜の天気」の唯一の正。演出も記録の表示も
 --       すべてここを参照する（study_session / active_session は天気を持たない）
 --     ・複合主キーにより1学習日1行（＝1晩＝1天気）。選び直した場合は上書きし、
@@ -492,13 +496,29 @@ CREATE TABLE daily_goal_achievement (
 --     ・夜の天気アルバム・月次サマリー（要件4.2）は本テーブルを集計するが、
 --       対象は学習記録が存在する学習日のみ（天気だけ選んで学習しなかった夜は
 --       含めない）。これにより「最も多かった夜の天気」は夜の数で数えられる
+--     ・その夜の写真（要件2.6）も本テーブルが持つ。1学習日1枚で天気と同じ粒度の
+--       ため、別テーブルを設けず同じ行に置く。撮り直しは上書き（履歴は持たない）
+--     ・night_weather_id は NULL 許容。撮影と天気の選択は「写真 → 天気」の順で
+--       行うため、天気が決まる前に写真だけが存在し得る（写真だけ残した夜）。
+--       したがって「天気未選択」は行の有無ではなく本カラムのNULLで判定する
+--     ・photo_file_name はファイル名のみを保持する。ドキュメントディレクトリの
+--       絶対パスはOS・アプリ更新で変わり得るため、参照時に連結して組み立てる
+--     ・帰属する学習日は「撮り始めた時刻」が属する学習日（保存完了時刻ではない）。
+--       photo_taken_at には実際の撮影時刻を持ち、表示にはこちらを使う。
+--       両者は意図的に食い違い得る（例: 学習日 2026-01-10 の写真を 1/11 1:30 に撮影）
+--     ・画像ファイルの実体はDBの外にあり ON DELETE CASCADE では消えない。
+--       データ初期化（要件10.10）では保存ディレクトリを明示的に削除すること
 -- =====================================================================
 CREATE TABLE daily_night_weather (
     user_id             INTEGER NOT NULL REFERENCES user(id)          ON DELETE CASCADE,
     study_date          TEXT    NOT NULL,  -- 'YYYY-MM-DD'（学習日）
-    night_weather_id    INTEGER NOT NULL REFERENCES night_weather(id) ON DELETE RESTRICT,
+    night_weather_id    INTEGER          REFERENCES night_weather(id) ON DELETE RESTRICT,  -- NULL＝天気未選択
+    photo_file_name     TEXT,              -- 例 '2026-01-10.jpg'。NULL＝写真なし
+    photo_taken_at      TEXT,              -- ISO8601（撮り始めた時刻）。写真が無ければNULL
     updated_at          TEXT    NOT NULL DEFAULT (datetime('now')),
-    PRIMARY KEY (user_id, study_date)
+    PRIMARY KEY (user_id, study_date),
+    -- 写真のファイル名と撮影時刻は必ず対で存在する（片方だけの状態を作らない）
+    CHECK ((photo_file_name IS NULL) = (photo_taken_at IS NULL))
 );
 
 CREATE INDEX idx_daily_night_weather_weather ON daily_night_weather(night_weather_id);
@@ -512,6 +532,9 @@ CREATE INDEX idx_daily_night_weather_weather ON daily_night_weather(night_weathe
 --   npc_message / ambient_sound / growth_level_threshold）は削除されず、
 --   初回起動時と同じ状態に戻る。削除完了後はアプリ側で初期設定画面へ
 --   即時遷移する（要件10.10）。
+--   ただし、その夜の写真（daily_night_weather.photo_file_name）が指す画像の実体は
+--   DBの外にあるため CASCADE では消えない。初期化ではアプリ側で保存ディレクトリを
+--   明示的に削除すること（要件2.6 / 10.10）。
 -- ・夜の天気アルバムは専用テーブルを持たず、daily_night_weather と
 --   night_weather を集計して動的に算出する（アプリ側ロジック）。
 --   対象は study_session が存在する学習日のみ（天気だけ選んで学習しなかった
