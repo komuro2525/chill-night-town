@@ -153,6 +153,21 @@ export async function updateBackgroundMotionEnabled(
   );
 }
 
+/**
+ * その夜の写真のON/OFF（要件10.14）。稼働中も可（記録・判定に影響しないため）。
+ *
+ * OFFのときは撮影の入口を出さず、カメラ権限を一度も要求しない。
+ * OFFは「隠す」であって「消す」ではないため、撮影済みの写真は削除しない
+ * （カレンダーから閲覧・削除できる）。
+ */
+export async function updateNightPhotoEnabled(enabled: boolean): Promise<void> {
+  const db = await getDatabase();
+  await db.runAsync(
+    "UPDATE user SET night_photo_enabled = ?, updated_at = datetime('now')",
+    enabled ? 1 : 0,
+  );
+}
+
 /** 頑張りすぎ防止（休憩提案）のON/OFF（要件10.8）。稼働中も可 */
 export async function updateOverworkPreventionEnabled(
   enabled: boolean,

@@ -49,6 +49,8 @@ export type User = {
   tutorial_seen_features: string;
   /** 背景のループ動画を再生するか（1=動かす・既定 / 0=静止画）。要件10.11 */
   background_motion_enabled: Bool;
+  /** その夜の写真を撮る機能を使うか（1=使う・既定 / 0=使わない）。0のときはカメラ権限を要求しない。要件10.14 */
+  night_photo_enabled: Bool;
   created_at: string;
   updated_at: string;
 };
@@ -222,7 +224,12 @@ export type DailyGoalAchievement = {
 export type DailyNightWeather = {
   user_id: number;
   study_date: string;
-  night_weather_id: number;
+  /** 選択された夜の天気。null＝天気未選択（写真だけを残した夜。要件2.6） */
+  night_weather_id: number | null;
+  /** その夜の写真のファイル名（絶対パスは持たない）。null＝写真なし。要件2.6 */
+  photo_file_name: string | null;
+  /** 写真を撮り始めた日時（ISO8601）。表示用。写真が無ければ null */
+  photo_taken_at: string | null;
   updated_at: string;
 };
 

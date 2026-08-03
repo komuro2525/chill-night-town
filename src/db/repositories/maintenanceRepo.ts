@@ -7,10 +7,19 @@
 // 注: 正式な初期化フロー（確認ダイアログ・タイマー稼働中の禁止・初期設定画面への遷移）は
 //     Phase 6（設定画面 10.10）で実装する。本関数はその削除処理を先出しで用意したもの。
 
+import { deleteAllPhotos } from "@/lib/night-photo-storage";
 import { getDatabase } from "../database";
 
 /** 全ユーザーデータを削除し、初回起動時の状態へ戻す */
 export async function resetUserData(): Promise<void> {
   const db = await getDatabase();
   await db.runAsync("DELETE FROM user");
+  // その夜の写真（要件2.6）の実体はDBの外にあり、CASCADE では消えない。
+  // 初期化で消し残すと「消したはずの写真が端末に残る」ため、ここで明示的に削除する
+  // （セキュリティ方針 S10 / 要件10.10）
+  try {
+    deleteAllPhotos();
+  } catch (e) {
+    console.error("夜の写真の削除に失敗しました", e);
+  }
 }

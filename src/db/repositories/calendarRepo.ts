@@ -37,6 +37,8 @@ export type DaySessionRecord = {
 export type DayDetail = {
   studyDate: string;
   weather: NightWeather | null;
+  /** その夜の写真（要件2.6）。撮っていなければ null */
+  photo: { fileName: string; takenAt: string } | null;
   totalMinutes: number;
   achieved: boolean;
   sessions: DaySessionRecord[];
@@ -87,7 +89,7 @@ export async function getMonthMarks(
   }));
 }
 
-/** 指定学習日の詳細（全セッション＋天気）。記録が無ければ sessions 空（要件4.1） */
+/** 指定学習日の詳細（全セッション＋天気＋写真）。記録が無ければ sessions 空（要件4.1） */
 export async function getDayDetail(studyDate: string): Promise<DayDetail> {
   const db = await getDatabase();
 
@@ -97,6 +99,21 @@ export async function getDayDetail(studyDate: string): Promise<DayDetail> {
       WHERE d.study_date = ?`,
     studyDate,
   );
+
+  // 写真は天気と同じ行にあるが、天気未選択（night_weather_id が NULL）の夜にも
+  // 存在し得るため、上の JOIN とは別に引く（要件2.6）
+  const photoRow = await db.getFirstAsync<{
+    photo_file_name: string | null;
+    photo_taken_at: string | null;
+  }>(
+    `SELECT photo_file_name, photo_taken_at
+       FROM daily_night_weather WHERE study_date = ?`,
+    studyDate,
+  );
+  const photo =
+    photoRow?.photo_file_name && photoRow.photo_taken_at
+      ? { fileName: photoRow.photo_file_name, takenAt: photoRow.photo_taken_at }
+      : null;
 
   const sessionRows = await db.getAllAsync<{
     id: number;
@@ -162,6 +179,7 @@ export async function getDayDetail(studyDate: string): Promise<DayDetail> {
   return {
     studyDate,
     weather: weather ?? null,
+    photo,
     totalMinutes,
     achieved: (achievedRow?.count ?? 0) > 0,
     sessions,

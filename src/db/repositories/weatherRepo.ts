@@ -11,6 +11,49 @@
 import { getDatabase } from "../database";
 import type { DailyNightWeather, NightWeather } from "../types";
 
+/**
+ * その学習日の写真を記録する（1学習日1枚のため上書き。要件2.6）。
+ *
+ * 天気より先に写真を撮る順番のため、天気が未選択でも行を作れる必要がある
+ * （night_weather_id は NULL 許容）。呼び出し側は**画像ファイルの保存が
+ * 成功してから**本関数を呼ぶこと。
+ */
+export async function setPhoto(
+  userId: number,
+  studyDate: string,
+  fileName: string,
+  takenAtIso: string,
+): Promise<void> {
+  const db = await getDatabase();
+  await db.runAsync(
+    `INSERT INTO daily_night_weather
+       (user_id, study_date, night_weather_id, photo_file_name, photo_taken_at, updated_at)
+     VALUES (?, ?, NULL, ?, ?, datetime('now'))
+     ON CONFLICT (user_id, study_date)
+     DO UPDATE SET photo_file_name = excluded.photo_file_name,
+                   photo_taken_at  = excluded.photo_taken_at,
+                   updated_at      = excluded.updated_at`,
+    userId,
+    studyDate,
+    fileName,
+    takenAtIso,
+  );
+}
+
+/**
+ * その学習日の写真の記録を消す（過去の夜も可。要件4.1）。
+ * 画像ファイルの実体は呼び出し側が別途削除する（DBの外にあるため）。
+ */
+export async function clearPhoto(studyDate: string): Promise<void> {
+  const db = await getDatabase();
+  await db.runAsync(
+    `UPDATE daily_night_weather
+        SET photo_file_name = NULL, photo_taken_at = NULL, updated_at = datetime('now')
+      WHERE study_date = ?`,
+    studyDate,
+  );
+}
+
 /** 指定学習日に選択されている天気（未選択なら null） */
 export async function getWeatherByStudyDate(
   studyDate: string,

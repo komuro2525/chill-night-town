@@ -36,7 +36,7 @@ type Migration = {
 
 // 現在のスキーマバージョン（db/*.sql が表す「最新」の版）。
 // スキーマを変更したら、スキーマSQLを更新しつつ本値を+1し、DELTA_MIGRATIONS に差分を追加する。
-const SCHEMA_VERSION = 27;
+const SCHEMA_VERSION = 28;
 
 // 既存DB（過去バージョン）向けの差分マイグレーション（version >= 2）。
 // 新規インストールはスキーマSQL（=最新）を適用して一気に SCHEMA_VERSION まで上がるため、
@@ -613,6 +613,41 @@ const DELTA_MIGRATIONS: Migration[] = [
       // 予約する境界の時刻は active_session から都度算出するため、保存する列はこの1つだけでよい。
       await db.execAsync(
         "ALTER TABLE notification_setting ADD COLUMN pomodoro_phase_notice_enabled INTEGER NOT NULL DEFAULT 0 CHECK (pomodoro_phase_notice_enabled IN (0, 1))",
+      );
+    },
+  },
+  {
+    version: 28,
+    up: async (db) => {
+      // その夜の写真（要件2.6）。天気と同じ粒度（1学習日1枚）のため daily_night_weather が持つ。
+      //
+      // night_weather_id の NOT NULL を外すのが本体。撮影と天気の選択は「写真 → 天気」の
+      // 順で行うため、天気が決まる前に写真だけが存在し得る（写真だけ残して閉じた夜）。
+      // SQLite は NOT NULL を後から外せないため、v5 の study_session と同じくテーブルを
+      // 作り直して入れ替える。定義はスキーマSQL側と一致させること。
+      await db.execAsync(`
+        CREATE TABLE daily_night_weather_new (
+            user_id             INTEGER NOT NULL REFERENCES user(id)          ON DELETE CASCADE,
+            study_date          TEXT    NOT NULL,
+            night_weather_id    INTEGER          REFERENCES night_weather(id) ON DELETE RESTRICT,
+            photo_file_name     TEXT,
+            photo_taken_at      TEXT,
+            updated_at          TEXT    NOT NULL DEFAULT (datetime('now')),
+            PRIMARY KEY (user_id, study_date),
+            CHECK ((photo_file_name IS NULL) = (photo_taken_at IS NULL))
+        );
+        INSERT INTO daily_night_weather_new
+            (user_id, study_date, night_weather_id, updated_at)
+        SELECT user_id, study_date, night_weather_id, updated_at
+          FROM daily_night_weather;
+        DROP TABLE daily_night_weather;
+        ALTER TABLE daily_night_weather_new RENAME TO daily_night_weather;
+        CREATE INDEX idx_daily_night_weather_weather ON daily_night_weather(night_weather_id);
+      `);
+      // 写真機能そのもののON/OFF（要件10.14）。既定1＝使う。
+      // 0のときは撮影の入口を出さず、カメラ権限を一度も要求しない
+      await db.execAsync(
+        "ALTER TABLE user ADD COLUMN night_photo_enabled INTEGER NOT NULL DEFAULT 1 CHECK (night_photo_enabled IN (0, 1))",
       );
     },
   },
