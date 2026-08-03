@@ -38,7 +38,15 @@
       "expo-sqlite",
       "expo-audio",
       "expo-notifications",
-      "expo-video"
+      "expo-video",
+      [
+        "expo-image-picker",
+        {
+          "cameraPermission": "今夜の空を1枚だけ記録するために、カメラを使います。撮った写真は端末の中だけに保存され、外部へ送られることはありません。",
+          "photosPermission": false,
+          "microphonePermission": false
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,
