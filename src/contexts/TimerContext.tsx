@@ -13,6 +13,7 @@ import { activeSessionRepo, sessionRepo } from "@/db/repositories";
 import type { ActiveSession } from "@/db/types";
 import { MIN_SAVE_MINUTES } from "@/constants/domain";
 import { nowMs } from "@/lib/clock";
+import { refreshNotifications } from "@/lib/notification-sync";
 import { getStudyDate } from "@/lib/study-day";
 import {
   getActualStudyMinutes,
@@ -102,6 +103,8 @@ export function TimerProvider({ children }: { children: ReactNode }) {
     return enqueue(async () => {
       try {
         await activeSessionRepo.pause(iso);
+        // 停止中はフェーズが進まないため、予約済みの切り替わり通知を落とす（UC 12.2）
+        void refreshNotifications();
       } catch (e) {
         console.error("一時停止の保存に失敗しました", e);
         await reload(); // DBと表示がずれた可能性があるため正へ戻す
@@ -115,6 +118,8 @@ export function TimerProvider({ children }: { children: ReactNode }) {
     return enqueue(async () => {
       try {
         await activeSessionRepo.resume(iso);
+        // 残り時間がずれたので、その時点の境界で予約し直す（UC 12.2）
+        void refreshNotifications();
       } catch (e) {
         console.error("再開の保存に失敗しました", e);
         await reload();
@@ -136,11 +141,14 @@ export function TimerProvider({ children }: { children: ReactNode }) {
     if (minutes < MIN_SAVE_MINUTES) {
       await activeSessionRepo.remove();
       await reload();
+      // 計測が終わったので、残っている切り替わり通知の予約を落とす（UC 12.2）
+      void refreshNotifications();
       return { kind: "discarded" };
     }
 
     const sessionId = await sessionRepo.createFromActive(current, at);
     await reload();
+    void refreshNotifications();
     return {
       kind: "saved",
       sessionId,

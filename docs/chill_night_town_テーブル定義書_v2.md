@@ -388,9 +388,12 @@ StudySessionとStudyTagの多対多関係を管理する中間テーブル。1�
 | is_enabled            | INTEGER(0/1) |     |         | 不可 | 0               | 学習開始リマインドのON/OFF        |
 | scheduled_time        | TEXT         |     |         | 可   | なし            | 通知時刻（`HH:MM`形式）           |
 | event_notice_enabled  | INTEGER(0/1) |     |         | 不可 | 0               | 予定のお知らせ（4章）の全体ON/OFF |
+| pomodoro_phase_notice_enabled | INTEGER(0/1) |  |      | 不可 | 0               | ポモドーロの切り替わり通知（要件12章）のON/OFF |
 | updated_at            | TEXT         |     |         | 不可 | datetime('now') | 更新日時                          |
 
 **補足**: OSへのローカル通知のスケジュール登録・解除は設定保存時にアプリ側で行う（UC 10.3）。通知許可が拒否された場合は`is_enabled=0`へ戻す。送信履歴は保存しない【将来拡張】。`event_notice_enabled` がONのとき、各予定（calendar_event）の1週間前・前日の12:00にローカル通知を登録する。
+
+`pomodoro_phase_notice_enabled` がONのとき、ポモドーロで計測中のフェーズ境界（作業→休憩・休憩→作業）の時刻にローカル通知を登録する（UC 12.2 / 10.10）。**予約の内容は `active_session` から毎回算出するため、境界の時刻や予約済みかどうかを保存する列は持たない**（計測状態が正であり、二重に持つと一時停止・再開でずれるため）。一時停止中は予約を持たない。
 
 ## 16b. calendar_event（カレンダーの予定・メモ）
 

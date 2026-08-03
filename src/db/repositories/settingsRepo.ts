@@ -135,3 +135,17 @@ export async function updateEventNoticeEnabled(enabled: boolean): Promise<void> 
     enabled ? 1 : 0,
   );
 }
+
+/**
+ * ポモドーロの切り替わり通知（要件12章 / UC 10.10）のON/OFFを保存する。
+ * OSへの予約・解除は呼び出し側（refreshNotifications）で行う。
+ */
+export async function updatePomodoroPhaseNoticeEnabled(
+  enabled: boolean,
+): Promise<void> {
+  const db = await getDatabase();
+  await db.runAsync(
+    "UPDATE notification_setting SET pomodoro_phase_notice_enabled = ?, updated_at = datetime('now')",
+    enabled ? 1 : 0,
+  );
+}

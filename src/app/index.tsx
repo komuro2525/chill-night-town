@@ -84,8 +84,15 @@ import {
   useAppNow,
 } from "@/lib/clock";
 import { getTimeOfDay } from "@/lib/background-schedule";
+import { refreshNotifications } from "@/lib/notification-sync";
+import { scheduleTestNotification } from "@/lib/notifications";
 import { getPseudoOnlineCount } from "@/lib/pseudo-online";
-import { formatStudyDateLabel, getStudyDate, isNightTime } from "@/lib/study-day";
+import {
+  formatDateTimeLabel,
+  formatStudyDateLabel,
+  getStudyDate,
+  isNightTime,
+} from "@/lib/study-day";
 import { getActualStudyMinutes, getPlannedEndMs } from "@/lib/timer";
 import {
   getContinueThreshold,
@@ -328,6 +335,8 @@ export default function HomeScreen() {
         // 前回の演出が途中で失われていた場合の保険（旧レベルの背景を残さない）
         setBgLevelHold(null);
         await timer.reload();
+        // ポモドーロの切り替わり通知を予約する（UC 12.2。設定OFF・黙々モードなら何も起きない）
+        void refreshNotifications();
         setSetupOpen(false);
         setTimerOpen(true);
       } catch (e) {
@@ -1019,7 +1028,6 @@ export default function HomeScreen() {
         <TimerDisplay
           session={timer.session}
           weather={weather}
-          dateTimeLabel={formatDateTimeLabel(appNow())}
           onPause={() => void timer.pause()}
           onResume={() => void timer.resume()}
           onFinish={handleFinish}
@@ -1046,7 +1054,6 @@ export default function HomeScreen() {
       {setupOpen && user ? (
         <TimerSetupModal
           studyDate={getStudyDate()}
-          dateTimeLabel={formatDateTimeLabel(appNow())}
           initialMode={user.timer_mode}
           initialPlanned={user.planned_minutes}
           initialWork={user.pomodoro_work_minutes}
@@ -1142,6 +1149,8 @@ const CLOCK_SIZE = 155;
 const DEV_PANEL_BOTTOM = 176;
 // 開発用: 時刻を進める幅（分）。5:00自動終了やポモドーロの進行の確認に使う
 const DEV_ADVANCE_MINUTES = 30;
+// 開発用: テスト通知が鳴るまでの秒数。押してからアプリを閉じ、画面を消すのに足りる長さ
+const DEV_TEST_NOTICE_SECONDS = 10;
 
 // 開発用の時刻上書き。夜間帯判定（要件2.3）の両側を実機で確認するために使う。
 // null = 実時間 / 21 = 夜間帯内（開始できる） / 12 = 夜間帯外（開始できない）
@@ -1150,20 +1159,6 @@ const DEV_CLOCK_HOURS: (number | null)[] = [null, 21, 12];
 
 function devHourLabel(hour: number | null): string {
   return hour === null ? "実時間" : `${hour}:00`;
-}
-const WEEKDAYS = ["日", "月", "火", "水", "木", "金", "土"];
-
-// 例: 2026/08/01(月) 21:00 PM
-function formatDateTimeLabel(d: Date): string {
-  const yyyy = d.getFullYear();
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
-  const dd = String(d.getDate()).padStart(2, "0");
-  const weekday = WEEKDAYS[d.getDay()];
-  const h24 = d.getHours();
-  const hh = String(h24).padStart(2, "0");
-  const mi = String(d.getMinutes()).padStart(2, "0");
-  const ampm = h24 < 12 ? "AM" : "PM";
-  return `${yyyy}/${mm}/${dd}(${weekday}) ${hh}:${mi} ${ampm}`;
 }
 
 // アイドル最小表示（無操作が続いたとき）。操作系UIを隠し、最小UI（時刻・日付・再生中と、
@@ -1433,6 +1428,16 @@ function DevPanel({
       >
         <ThemedText type="small" style={styles.devButtonText}>
           時刻を+{DEV_ADVANCE_MINUTES}分進める
+        </ThemedText>
+      </Pressable>
+      {/* 10秒後に鳴るテスト通知。押したらアプリを閉じる・画面を消して届くか見る。
+          届かなければOS側（許可・集中モード・通知の要約）の問題と切り分けられる */}
+      <Pressable
+        onPress={() => void scheduleTestNotification(DEV_TEST_NOTICE_SECONDS)}
+        style={styles.devButton}
+      >
+        <ThemedText type="small" style={styles.devButtonText}>
+          テスト通知（{DEV_TEST_NOTICE_SECONDS}秒後）
         </ThemedText>
       </Pressable>
       {/* 全ユーザーデータを削除して初期設定へ（正式版は Phase 6 の設定画面） */}

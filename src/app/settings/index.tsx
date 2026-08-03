@@ -1,6 +1,6 @@
 import { useRouter } from "expo-router";
 import { useState } from "react";
-import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Switch, View } from "react-native";
+import { ActivityIndicator, Alert, Linking, Pressable, ScrollView, StyleSheet, Switch, View } from "react-native";
 
 import {
   EditFieldModal,
@@ -37,6 +37,18 @@ const RUNNING_NOTE = "学習中は変更できません";
 // 通知を初めてONにするときの既定時刻（夜間帯のうち一般的な時刻）
 const DEFAULT_NOTIFICATION_TIME = "21:00";
 
+/**
+ * 通知許可が得られなかったときの案内（要件12章: OSの設定画面から変更できる旨を表示する）。
+ * 一度拒否された後はアプリから許可を要求できないため、OSの設定を開く導線を添える。
+ * @param what 許可されると何ができるかの説明（通知の種類ごとに変わる）
+ */
+function alertNotificationDenied(what: string) {
+  Alert.alert("通知が許可されていません", `端末の設定から Chill Night Town の通知を許可すると、${what}。`, [
+    { text: "閉じる", style: "cancel" },
+    { text: "設定を開く", onPress: () => void Linking.openSettings() },
+  ]);
+}
+
 export default function SettingsScreen() {
   const router = useRouter();
   const { user, ready, reload, selectedTown, townNpc, notificationSetting } =
@@ -58,6 +70,8 @@ export default function SettingsScreen() {
   const notifyEnabled = notificationSetting?.is_enabled === 1;
   const notifyTime = notificationSetting?.scheduled_time ?? null;
   const eventNoticeEnabled = notificationSetting?.event_notice_enabled === 1;
+  const phaseNoticeEnabled =
+    notificationSetting?.pomodoro_phase_notice_enabled === 1;
 
   // 通知のON/OFF（要件10.3 / 12章）。ONにするときはOSの許可を確保し、
   // 拒否されたらOFFへ戻してOSの設定から変更できる旨を伝える（要件12章）。
@@ -67,10 +81,7 @@ export default function SettingsScreen() {
       if (next) {
         const granted = await ensureNotificationPermission();
         if (!granted) {
-          Alert.alert(
-            "通知が許可されていません",
-            "端末の設定から Chill Night Town の通知を許可すると、学習開始の時刻をお知らせできます。",
-          );
+          alertNotificationDenied("学習開始の時刻をお知らせできます");
           return; // OFFのまま（Switchは notifyEnabled を見るので戻る）
         }
         const time = notifyTime ?? DEFAULT_NOTIFICATION_TIME;
@@ -103,10 +114,7 @@ export default function SettingsScreen() {
       if (next) {
         const granted = await ensureNotificationPermission();
         if (!granted) {
-          Alert.alert(
-            "通知が許可されていません",
-            "端末の設定から Chill Night Town の通知を許可すると、予定のお知らせを受け取れます。",
-          );
+          alertNotificationDenied("予定のお知らせを受け取れます");
           return;
         }
       }
@@ -115,6 +123,25 @@ export default function SettingsScreen() {
       await reload();
     } catch (e) {
       console.error("予定通知設定の更新に失敗しました", e);
+    }
+  }
+
+  // ポモドーロの切り替わり通知（UC 10.10 / 12.2）のON/OFF。
+  // ONにした時点で計測中なら、張り直しの中でその場でフェーズ境界が予約される
+  async function handleTogglePhaseNotice(next: boolean) {
+    try {
+      if (next) {
+        const granted = await ensureNotificationPermission();
+        if (!granted) {
+          alertNotificationDenied("休憩の始まりと終わりをお知らせできます");
+          return;
+        }
+      }
+      await settingsRepo.updatePomodoroPhaseNoticeEnabled(next);
+      await refreshNotifications();
+      await reload();
+    } catch (e) {
+      console.error("切り替わり通知設定の更新に失敗しました", e);
     }
   }
 
@@ -373,6 +400,16 @@ export default function SettingsScreen() {
               <Switch
                 value={eventNoticeEnabled}
                 onValueChange={(v) => void handleToggleEventNotice(v)}
+              />
+            }
+          />
+          <SettingRow
+            label="ポモドーロの切り替わり"
+            note="アプリを離れているあいだ、休憩の始まりと終わりをお知らせします。"
+            right={
+              <Switch
+                value={phaseNoticeEnabled}
+                onValueChange={(v) => void handleTogglePhaseNotice(v)}
               />
             }
           />

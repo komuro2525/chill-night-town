@@ -14,7 +14,8 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { POMODORO, SIMPLE_PLANNED_MINUTES, STUDY_DAY } from "@/constants/domain";
 import { LightColor, Spacing } from "@/constants/theme";
 import type { NightWeather, TimerMode } from "@/db/types";
-import { formatStudyDateLabel } from "@/lib/study-day";
+import { useAppNow } from "@/lib/clock";
+import { formatDateTimeLabel, formatStudyDateLabel } from "@/lib/study-day";
 import {
   validatePlannedMinutes,
   validatePomodoroBreakMinutes,
@@ -52,7 +53,6 @@ export type TimerSetupValues = {
 
 export function TimerSetupModal({
   studyDate,
-  dateTimeLabel,
   initialMode,
   initialPlanned,
   initialWork,
@@ -64,8 +64,6 @@ export function TimerSetupModal({
   onClose,
 }: {
   studyDate: string;
-  /** ホームと同じ日時表記（例: 2026/01/10(土) 21:00 PM） */
-  dateTimeLabel: string;
   /** 前回の設定（要件3.1: 記憶して次回は前回値を入れた状態で表示する） */
   initialMode: TimerMode;
   initialPlanned: number;
@@ -88,6 +86,9 @@ export function TimerSetupModal({
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const circle = Math.min(CIRCLE_MAX, width - Spacing.four * 2);
+  // 日時はこの中で刻む（親から文字列で受け取ると、開いているあいだ時刻が止まって見える）。
+  // 分までの表示なので10秒ごとで足りる
+  const dateTimeLabel = formatDateTimeLabel(useAppNow(10000));
 
   const [mode, setMode] = useState<TimerMode>(initialMode);
   const [planned, setPlanned] = useState(String(initialPlanned));

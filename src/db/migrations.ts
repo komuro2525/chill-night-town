@@ -605,6 +605,17 @@ const DELTA_MIGRATIONS: Migration[] = [
       await db.execAsync(stripOuterTransaction(npcSql));
     },
   },
+  {
+    version: 27,
+    up: async (db) => {
+      // ポモドーロの切り替わり通知（要件12章 / UC 12.2）のON/OFF。既定0＝OFF。
+      // 通知そのものを望まないユーザーへ黙って割り込まないため、既存の通知設定と同じく既定OFF。
+      // 予約する境界の時刻は active_session から都度算出するため、保存する列はこの1つだけでよい。
+      await db.execAsync(
+        "ALTER TABLE notification_setting ADD COLUMN pomodoro_phase_notice_enabled INTEGER NOT NULL DEFAULT 0 CHECK (pomodoro_phase_notice_enabled IN (0, 1))",
+      );
+    },
+  },
 ];
 
 /** 現在の DB バージョンを取得する（未設定なら0） */

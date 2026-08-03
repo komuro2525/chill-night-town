@@ -45,12 +45,16 @@ export function MeasuringIndicator({
         : "休憩中"
       : "学習中";
 
+  // 休憩中は実績学習時間が進まないため、タイマー表示と同じく休憩の残り時間を出す
+  const seconds =
+    !isPaused && phase?.kind === "break" ? phase.remainingSeconds : actual;
+
   return (
     <Text
       style={[styles.text, { width }, isPaused && styles.paused]}
       numberOfLines={1}
     >
-      {formatDuration(actual)} {label}
+      {formatDuration(seconds)} {label}
     </Text>
   );
 }

@@ -1,15 +1,23 @@
-// 通知の内容をDBから組み立てて、OSへ登録し直す調整層（要件12章・4.3）。
+// 通知の内容をDBから組み立てて、OSへ登録し直す調整層（要件12章・4.3 / UC 12.2）。
 //
 // 通知は「全消し→全再登録」で管理するため（notifications.ts）、変更のたびに
-// 現在の設定と予定を読み直して丸ごと登録し直す。学習開始リマインドと予定通知の
-// 両方を1つの窓口（refreshNotifications）に集約し、片方の変更で他方が消える事故を避ける。
+// 現在の設定・予定・計測状態を読み直して丸ごと登録し直す。学習開始リマインド・予定通知・
+// ポモドーロの切り替わりを1つの窓口（refreshNotifications）に集約し、
+// ひとつの変更で他が消える事故を避ける。
 //
-// 呼び出す場面: 通知設定の変更・予定の追加/変更/削除・アプリ起動時（再起動後の張り直し）。
+// 呼び出す場面: 通知設定の変更・予定の追加/変更/削除・アプリ起動時（再起動後の張り直し）・
+// タイマーの開始/一時停止/再開/終了（フェーズ境界の予約を取り直すため）。
 
-import { eventRepo, settingsRepo, userRepo } from "@/db/repositories";
-import { now } from "./clock";
+import {
+  activeSessionRepo,
+  eventRepo,
+  settingsRepo,
+  userRepo,
+} from "@/db/repositories";
+import { now, nowMs } from "./clock";
 import { buildEventNotices } from "./event-notice";
 import { applyNotificationSchedule } from "./notifications";
+import { buildPomodoroPhaseNotices } from "./pomodoro-notice";
 
 /**
  * 一度に登録する予定通知の上限。OS（特にiOS）の保留ローカル通知の上限（64件程度）を
@@ -49,7 +57,15 @@ async function doRefresh(): Promise<void> {
       }
     }
 
-    await applyNotificationSchedule({ reminderTime, eventNotices });
+    // ポモドーロの切り替わり（UC 12.2）。計測中でなければ active_session が無く、
+    // 一時停止中・黙々モードなら純関数側が空を返すため、ここでは分岐を持たない
+    let phaseNotices: ReturnType<typeof buildPomodoroPhaseNotices> = [];
+    if (setting?.pomodoro_phase_notice_enabled === 1) {
+      const active = await activeSessionRepo.getActiveSession();
+      if (active) phaseNotices = buildPomodoroPhaseNotices(active, nowMs());
+    }
+
+    await applyNotificationSchedule({ reminderTime, eventNotices, phaseNotices });
   } catch (e) {
     console.error("通知の再登録に失敗しました", e);
   }

@@ -11,6 +11,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Spacing } from "@/constants/theme";
 import type { ActiveSession, NightWeather } from "@/db/types";
 import { useTimerNow } from "@/hooks/use-timer-now";
+import { formatDateTimeLabel } from "@/lib/study-day";
 import {
   getActualStudySeconds,
   getElapsedSeconds,
@@ -46,7 +47,6 @@ export function formatDuration(totalSeconds: number): string {
 export function TimerDisplay({
   session,
   weather,
-  dateTimeLabel,
   onPause,
   onResume,
   onFinish,
@@ -54,7 +54,6 @@ export function TimerDisplay({
 }: {
   session: ActiveSession;
   weather: NightWeather | null;
-  dateTimeLabel: string;
   onPause: () => void;
   onResume: () => void;
   onFinish: () => void;
@@ -64,7 +63,10 @@ export function TimerDisplay({
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const circle = Math.min(CIRCLE_MAX, width - Spacing.four * 2);
+  // 経過の秒境界に合わせて更新される現在時刻。日時表示もこれを使う
+  // （親から文字列で受け取ると、親が再描画されるまで時刻が止まって見える）
   const now = useTimerNow(session);
+  const dateTimeLabel = formatDateTimeLabel(new Date(now));
 
   const isPaused = session.pause_started_at !== null;
   const elapsed = getElapsedSeconds(session, now);
@@ -133,7 +135,21 @@ export function TimerDisplay({
               <Text style={styles.phase}>{isPaused ? "一時停止中" : "学習中"}</Text>
             )}
 
-            <Text style={styles.time}>{formatDuration(actual)}</Text>
+            {/* 休憩中は実績学習時間が増えない（要件0章）ため、数字が止まって見える。
+                休憩のあいだは「あとどれだけ休めるか」を出す（急かす表示ではなく、
+                まだ休んでいてよいことを伝えるためのもの） */}
+            {phase?.kind === "break" ? (
+              <>
+                <Text style={styles.time}>
+                  {formatDuration(phase.remainingSeconds)}
+                </Text>
+                <Text style={styles.phaseNote}>
+                  休憩のあいだ、学習時間は進みません
+                </Text>
+              </>
+            ) : (
+              <Text style={styles.time}>{formatDuration(actual)}</Text>
+            )}
 
             <Text style={styles.plannedEnd}>
               {formatClockTime(plannedEnd)} ごろに終わる予定
@@ -278,6 +294,10 @@ const styles = StyleSheet.create({
     color: "rgba(255,255,255,0.5)",
     fontSize: 12,
     marginTop: Spacing.one,
+  },
+  phaseNote: {
+    color: "rgba(255,255,255,0.55)",
+    fontSize: 12,
   },
   pausedNote: {
     color: "rgba(255,255,255,0.55)",

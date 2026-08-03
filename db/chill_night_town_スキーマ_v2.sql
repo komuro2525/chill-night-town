@@ -314,12 +314,16 @@ CREATE INDEX idx_npc_message_trigger ON npc_message(npc_id, trigger_type, emotio
 --     ・MVPでは送信履歴を保存しない方針のため NotificationLog は作成しない
 --     ・is_enabled は学習開始リマインド、event_notice_enabled は予定のお知らせ（4章）の
 --       全体ON/OFF。予定通知は各予定の1週間前・前日の12:00に鳴らす
+--     ・pomodoro_phase_notice_enabled はポモドーロの切り替わり通知（要件12章 / UC 12.2）。
+--       境界の時刻は active_session から都度算出するため、予約状態を持つ列は設けない
 -- =====================================================================
 CREATE TABLE notification_setting (
     user_id               INTEGER PRIMARY KEY REFERENCES user(id) ON DELETE CASCADE,
     is_enabled            INTEGER NOT NULL DEFAULT 0 CHECK (is_enabled IN (0, 1)),
     scheduled_time        TEXT,   -- 'HH:MM' 形式
     event_notice_enabled  INTEGER NOT NULL DEFAULT 0 CHECK (event_notice_enabled IN (0, 1)),
+    pomodoro_phase_notice_enabled INTEGER NOT NULL DEFAULT 0
+        CHECK (pomodoro_phase_notice_enabled IN (0, 1)),
     updated_at            TEXT    NOT NULL DEFAULT (datetime('now'))
 );
 
