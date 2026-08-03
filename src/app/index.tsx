@@ -1296,10 +1296,11 @@ function HomeBackground({
   const now = useAppNow(60000);
   const timeOfDay = getTimeOfDay(now);
   const art = townCode ? getTownArt(townCode, level, timeOfDay) : undefined;
-  // 動画は登録がある組み合わせだけ。無ければ静止画のまま（時間帯のフォールバックはしない）
+  // 動画は登録がある組み合わせだけ。無ければ静止画のまま（時間帯のフォールバックはしない）。
+  // パターンが複数ある枠は学習日ごとに1つ選ぶ（同じ夜のあいだは切り替わらない）
   const video =
     motionEnabled && townCode
-      ? getTownVideo(townCode, level, timeOfDay)
+      ? getTownVideo(townCode, level, timeOfDay, getStudyDate(now))
       : undefined;
 
   if (landscapeMode) {
