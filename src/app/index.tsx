@@ -89,7 +89,6 @@ import { scheduleTestNotification } from "@/lib/notifications";
 import { getPseudoOnlineCount } from "@/lib/pseudo-online";
 import {
   formatDateTimeLabel,
-  formatStudyDateLabel,
   getStudyDate,
   isNightTime,
 } from "@/lib/study-day";
@@ -912,7 +911,7 @@ export default function HomeScreen() {
           <WeatherPicker
             visible={weatherPickerOpen}
             selectedId={weather?.id ?? null}
-            studyDateLabel={formatStudyDateLabel(getStudyDate())}
+            studyDate={getStudyDate()}
             onSelect={handleSelectWeather}
             onClose={() => setWeatherPickerOpen(false)}
           />

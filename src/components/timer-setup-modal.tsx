@@ -15,7 +15,7 @@ import { POMODORO, SIMPLE_PLANNED_MINUTES, STUDY_DAY } from "@/constants/domain"
 import { LightColor, Spacing } from "@/constants/theme";
 import type { NightWeather, TimerMode } from "@/db/types";
 import { useAppNow } from "@/lib/clock";
-import { formatDateTimeLabel, formatStudyDateLabel } from "@/lib/study-day";
+import { formatDateTimeLabel } from "@/lib/study-day";
 import {
   validatePlannedMinutes,
   validatePomodoroBreakMinutes,
@@ -329,7 +329,7 @@ export function TimerSetupModal({
       <WeatherPicker
         visible={pickerOpen}
         selectedId={weather?.id ?? null}
-        studyDateLabel={formatStudyDateLabel(studyDate)}
+        studyDate={studyDate}
         onSelect={(w) => {
           setWeather(w);
           setPickerOpen(false);

@@ -313,6 +313,20 @@ export default function SettingsScreen() {
               />
             }
           />
+          {/* 夜の写真（要件10.14）。オフのあいだはカメラ権限を一度も要求しない */}
+          <SettingRow
+            label="夜の写真"
+            note="今夜の空を1枚だけ残せます。写真は端末の中だけに保存されます。オフにしても、これまでに撮った写真は残ります（消すときはカレンダーから）"
+            right={
+              <Switch
+                value={user.night_photo_enabled === 1}
+                onValueChange={async (v) => {
+                  await userRepo.updateNightPhotoEnabled(v);
+                  await reload();
+                }}
+              />
+            }
+          />
           <SettingRow label="マイタグの管理" onPress={() => router.push("/settings/tags")} />
         </SettingSection>
 

@@ -23,13 +23,21 @@ import Animated, {
   withTiming,
 } from "react-native-reanimated";
 
+import { Image } from "expo-image";
+
 import { EditFieldModal } from "@/components/settings-ui";
-import { LIMITS } from "@/constants/domain";
+import { LIMITS, STUDY_DAY } from "@/constants/domain";
 import { LightColor, Spacing } from "@/constants/theme";
 import type { DayDetail, DaySessionRecord } from "@/db/repositories/calendarRepo";
-import { eventRepo } from "@/db/repositories";
+import { eventRepo, weatherRepo } from "@/db/repositories";
 import type { CalendarEvent } from "@/db/types";
+import { useAudio } from "@/contexts/AudioContext";
+import { useSettings } from "@/contexts/SettingsContext";
+import { canAttachPhoto, formatTakenAtLabel } from "@/lib/night-photo";
+import { captureNightPhoto } from "@/lib/night-photo-capture";
+import { deletePhotoFile, photoUri } from "@/lib/night-photo-storage";
 import { formatMinutes, formatStudyDateLabel } from "@/lib/study-day";
+import { NightPhotoViewer } from "./night-photo-viewer";
 import { validateEventTitle } from "@/lib/validation";
 import { SessionEditModal } from "./session-edit-modal";
 
@@ -96,6 +104,80 @@ export function CalendarDayDetail({
   useEffect(() => {
     void reloadEvents();
   }, [reloadEvents]);
+
+  // その夜の写真（要件2.6）。拡大表示中の写真（null なら閉じている）
+  const [viewingPhoto, setViewingPhoto] = useState<string | null>(null);
+
+  // 写真は過去の夜でも常に消せる（室内や人物が写り得るため。要件4.1）。
+  // 追加・撮り直しだけが5:00までの制限を受ける
+  const removePhoto = useCallback(() => {
+    if (!detail?.photo) return;
+    const { fileName } = detail.photo;
+    const studyDate = detail.studyDate;
+    Alert.alert("この夜の写真を消しますか", "元に戻すことはできません。", [
+      { text: "やめる", style: "cancel" },
+      {
+        text: "消す",
+        style: "destructive",
+        onPress: () => {
+          void (async () => {
+            try {
+              await weatherRepo.clearPhoto(studyDate);
+              deletePhotoFile(fileName);
+              setViewingPhoto(null);
+              onReload(studyDate);
+            } catch (e) {
+              console.error("その夜の写真の削除に失敗しました", e);
+            }
+          })();
+        },
+      },
+    ]);
+  }, [detail, onReload]);
+
+  // 撮る・撮り直せるのは、その学習日がまだ終わっていない（5:00前の）ときだけ。
+  // 判定はホームの選択欄と同じ canAttachPhoto を通す（場所で挙動がずれないように）
+  const { user } = useSettings();
+  const { runAndRestoreAudio } = useAudio();
+  const [capturing, setCapturing] = useState(false);
+  const canTakePhoto =
+    user?.night_photo_enabled === 1 &&
+    detail !== null &&
+    canAttachPhoto(detail.studyDate);
+
+  const takePhoto = useCallback(async () => {
+    if (!detail || !userId || capturing) return;
+    const studyDate = detail.studyDate;
+    const previous = detail.photo?.fileName;
+    setCapturing(true);
+    try {
+      const result = await captureNightPhoto(studyDate, runAndRestoreAudio);
+      if (result.status === "denied") {
+        Alert.alert(
+          "カメラを使えません",
+          "写真は今夜の空を残すときだけ使います。端末の設定からカメラを許可すると撮れるようになります。",
+        );
+        return;
+      }
+      if (result.status === "failed") {
+        Alert.alert("写真を残せませんでした", "少し時間をおいて試してください。");
+        return;
+      }
+      if (result.status === "cancelled") return;
+
+      // ファイルの保存が成功してからDBを更新する（逆順だと実体のない参照が残る）
+      await weatherRepo.setPhoto(
+        userId,
+        studyDate,
+        result.fileName,
+        result.takenAt.toISOString(),
+      );
+      if (previous && previous !== result.fileName) deletePhotoFile(previous);
+      onReload(studyDate);
+    } finally {
+      setCapturing(false);
+    }
+  }, [detail, userId, capturing, runAndRestoreAudio, onReload]);
 
   async function submitEvent(title: string): Promise<string | void> {
     const err = validateEventTitle(title);
@@ -265,9 +347,17 @@ export function CalendarDayDetail({
                 <View style={styles.handle} />
               </View>
               <View style={styles.header}>
-                <Text style={styles.date}>
-                  {detail ? formatStudyDateLabel(detail.studyDate) : ""}
-                </Text>
+                <View>
+                  <Text style={styles.date}>
+                    {detail ? formatStudyDateLabel(detail.studyDate) : ""}
+                  </Text>
+                  {/* 学習日は暦日と一致しないため、その夜がどこからどこまでかを明示する */}
+                  {detail ? (
+                    <Text style={styles.dateRange}>
+                      {STUDY_DAY.START_HOUR}:00 〜 翌{STUDY_DAY.END_HOUR}:00
+                    </Text>
+                  ) : null}
+                </View>
                 <Pressable onPress={close} hitSlop={10} accessibilityLabel="閉じる">
                   <Text style={styles.close}>閉じる</Text>
                 </Pressable>
@@ -322,6 +412,53 @@ export function CalendarDayDetail({
                   </Text>
                 )}
               </View>
+
+              {/* その夜の写真（要件2.6）。学習記録が無い夜でも、撮っていれば見せる。
+                  撮り直しはその夜のあいだだけ（過ぎた夜は閲覧と削除のみ） */}
+              {detail?.photo ? (
+                <View style={styles.photoSection}>
+                  <Pressable
+                    onPress={() => setViewingPhoto(detail.photo!.fileName)}
+                    accessibilityLabel="写真を拡大する"
+                    style={({ pressed }) => [pressed && styles.sessionPressed]}
+                  >
+                    <Image
+                      source={{ uri: photoUri(detail.photo.fileName) }}
+                      style={styles.photoThumb}
+                      contentFit="cover"
+                      transition={200}
+                    />
+                  </Pressable>
+                  <View style={styles.photoMeta}>
+                    <Text style={styles.photoTakenAt}>
+                      {formatTakenAtLabel(detail.photo.takenAt)}
+                    </Text>
+                    {canTakePhoto ? (
+                      <Pressable
+                        onPress={() => void takePhoto()}
+                        disabled={capturing}
+                        hitSlop={8}
+                        accessibilityLabel="撮り直す"
+                        style={({ pressed }) => [pressed && styles.sessionPressed]}
+                      >
+                        <Text style={styles.photoAction}>撮り直す</Text>
+                      </Pressable>
+                    ) : null}
+                  </View>
+                </View>
+              ) : canTakePhoto ? (
+                <Pressable
+                  onPress={() => void takePhoto()}
+                  disabled={capturing}
+                  accessibilityLabel="今夜の空を撮る"
+                  style={({ pressed }) => [
+                    styles.photoEmpty,
+                    pressed && styles.sessionPressed,
+                  ]}
+                >
+                  <Text style={styles.photoEmptyText}>📷 今夜の空を撮る</Text>
+                </Pressable>
+              ) : null}
 
               {hasRecord ? (
               <>
@@ -410,6 +547,13 @@ export function CalendarDayDetail({
           onCancel={() => setEventEditing(null)}
           onSubmit={submitEvent}
         />
+
+        {/* その夜の写真の拡大表示（要件4.1）。ここから消すこともできる */}
+        <NightPhotoViewer
+          fileName={viewingPhoto}
+          onClose={() => setViewingPhoto(null)}
+          onDelete={removePhoto}
+        />
       </GestureHandlerRootView>
     </Modal>
   );
@@ -451,8 +595,49 @@ const styles = StyleSheet.create({
     fontSize: 17,
     fontWeight: "600",
   },
+  dateRange: {
+    color: "rgba(255,255,255,0.4)",
+    fontSize: 11,
+    marginTop: 2,
+  },
   close: {
     color: "rgba(255,255,255,0.6)",
+    fontSize: 14,
+  },
+  // --- その夜の写真（要件2.6 / 4.1） ---
+  photoSection: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Spacing.three,
+    marginBottom: Spacing.three,
+  },
+  photoThumb: {
+    width: 72,
+    height: 72,
+    borderRadius: 10,
+    backgroundColor: "rgba(255,255,255,0.08)",
+  },
+  photoMeta: {
+    gap: 6,
+  },
+  photoTakenAt: {
+    color: "rgba(255,255,255,0.5)",
+    fontSize: 12,
+  },
+  photoAction: {
+    color: LightColor,
+    fontSize: 13,
+  },
+  photoEmpty: {
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.24)",
+    paddingVertical: Spacing.three,
+    alignItems: "center",
+    marginBottom: Spacing.three,
+  },
+  photoEmptyText: {
+    color: "rgba(255,255,255,0.75)",
     fontSize: 14,
   },
   scroll: { paddingBottom: Spacing.four },

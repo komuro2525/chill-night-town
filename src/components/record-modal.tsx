@@ -1,5 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
-import { useEffect, useState } from "react";
+import { Image } from "expo-image";
+import { useCallback, useEffect, useState } from "react";
 import {
   KeyboardAvoidingView,
   Platform,
@@ -12,9 +13,12 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { LightColor, Spacing } from "@/constants/theme";
-import { masterRepo, tagRepo } from "@/db/repositories";
+import { masterRepo, tagRepo, weatherRepo } from "@/db/repositories";
 import type { Emotion, NightWeather, StudyTag } from "@/db/types";
+import { formatTakenAtLabel } from "@/lib/night-photo";
+import { photoUri } from "@/lib/night-photo-storage";
 import { formatMinutes, formatStudyDateLabel } from "@/lib/study-day";
+import { NightPhotoViewer } from "./night-photo-viewer";
 import { Chip, MemoSection, Section, TagSection } from "./record-fields";
 import { WeatherPicker } from "./weather-picker";
 import { WeatherRow } from "./weather-row";
@@ -71,6 +75,31 @@ export function RecordModal({
   const [tagIds, setTagIds] = useState<number[]>([]);
   const [memo, setMemo] = useState("");
   const [pickerOpen, setPickerOpen] = useState(false);
+
+  // 今夜の写真（要件2.6）。撮っていればここでも見られるようにする。
+  // 選択欄を閉じたときに読み直すのは、そこで撮る・撮り直す・消すができるため
+  const [photo, setPhoto] = useState<{
+    fileName: string;
+    takenAt: string;
+  } | null>(null);
+  const [viewingPhoto, setViewingPhoto] = useState<string | null>(null);
+
+  const reloadPhoto = useCallback(async () => {
+    try {
+      const row = await weatherRepo.getDailyWeather(studyDate);
+      setPhoto(
+        row?.photo_file_name && row.photo_taken_at
+          ? { fileName: row.photo_file_name, takenAt: row.photo_taken_at }
+          : null,
+      );
+    } catch (e) {
+      console.error("その夜の写真の読み込みに失敗しました", e);
+    }
+  }, [studyDate]);
+
+  useEffect(() => {
+    void reloadPhoto();
+  }, [reloadPhoto]);
 
   useEffect(() => {
     let mounted = true;
@@ -139,6 +168,31 @@ export function RecordModal({
               <WeatherRow weather={weather} onPress={() => setPickerOpen(true)} />
             </Section>
 
+            {/* 今夜の写真（要件2.6）。撮っていれば見せる。撮り直し・削除は
+                天気の欄から開く選択欄で行う（削除の入口を増やさない） */}
+            {photo ? (
+              <Section title="今夜の写真">
+                <Pressable
+                  onPress={() => setViewingPhoto(photo.fileName)}
+                  accessibilityLabel="写真を拡大する"
+                  style={({ pressed }) => [
+                    styles.photoRow,
+                    pressed && styles.photoRowPressed,
+                  ]}
+                >
+                  <Image
+                    source={{ uri: photoUri(photo.fileName) }}
+                    style={styles.photoThumb}
+                    contentFit="cover"
+                    transition={200}
+                  />
+                  <Text style={styles.photoTakenAt}>
+                    {formatTakenAtLabel(photo.takenAt)}
+                  </Text>
+                </Pressable>
+              </Section>
+            ) : null}
+
             {/* 感情（設定がONのときだけ・任意） */}
             {emotionEnabled ? (
               <Section title="どんな気持ち？" optional>
@@ -203,12 +257,23 @@ export function RecordModal({
       <WeatherPicker
         visible={pickerOpen}
         selectedId={weather?.id ?? null}
-        studyDateLabel={formatStudyDateLabel(studyDate)}
+        studyDate={studyDate}
         onSelect={(w) => {
           onChangeWeather(w);
           setPickerOpen(false);
+          // 選択欄では写真を撮る・撮り直す・消すもできるため、閉じたら読み直す
+          void reloadPhoto();
         }}
-        onClose={() => setPickerOpen(false)}
+        onClose={() => {
+          setPickerOpen(false);
+          void reloadPhoto();
+        }}
+      />
+
+      {/* 今夜の写真の拡大表示。ここでは消せない（撮り直し・削除は選択欄から） */}
+      <NightPhotoViewer
+        fileName={viewingPhoto}
+        onClose={() => setViewingPhoto(null)}
       />
     </View>
   );
@@ -254,6 +319,23 @@ const styles = StyleSheet.create({
   },
   summaryNote: {
     color: "rgba(255,255,255,0.6)",
+    fontSize: 12,
+  },
+  // 今夜の写真（要件2.6）。タップで拡大する
+  photoRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Spacing.three,
+  },
+  photoRowPressed: { opacity: 0.6 },
+  photoThumb: {
+    width: 64,
+    height: 64,
+    borderRadius: 10,
+    backgroundColor: "rgba(255,255,255,0.08)",
+  },
+  photoTakenAt: {
+    color: "rgba(255,255,255,0.5)",
     fontSize: 12,
   },
   emotionGroup: { marginBottom: Spacing.three },

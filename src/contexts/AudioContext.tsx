@@ -128,6 +128,16 @@ type AudioContextValue = {
    */
   setAmbientForWeather: (weatherCode: string | null) => void;
 
+  // --- 夜の写真（要件2.6 / UC 2.6） ---
+  /**
+   * カメラを開くあいだ音を止め、戻ってきたら鳴らし直す。
+   *
+   * 撮影中に音楽が流れている意味は無い（シャッター音と重なるだけ）。OS任せにすると
+   * iOS（アプリ内に重ねて表示＝鳴り続ける）と Android（別画面＝止まる）で挙動が
+   * 割れるため、自前で止めて自前で戻す。復帰するのは離れる前に鳴っていたものだけ。
+   */
+  runAndRestoreAudio: <T,>(task: () => Promise<T>) => Promise<T>;
+
   // --- おやすみ（要件13 / UC 13.1） ---
   /**
    * おやすみ状態を切り替える。true でBGM・環境音をフェードアウトして停止する。
@@ -138,6 +148,17 @@ type AudioContextValue = {
 };
 
 const AudioContext = createContext<AudioContextValue | null>(null);
+
+/**
+ * 通常時のオーディオ設定。無音モードでも鳴らし、他アプリの音は止めない。
+ * 背景では鳴らさない（学習中に画面を伏せても鳴り続けると電池を使うため）。
+ * カメラで一度離れたときの鳴らし直しは runAndRestoreAudio が受け持つ。
+ */
+const BASE_AUDIO_MODE = {
+  playsInSilentMode: true,
+  shouldPlayInBackground: false,
+  interruptionMode: "mixWithOthers",
+} as const;
 
 /**
  * 再生位置の進捗（要件9）。0.5秒ごとに更新されるため、本体の AudioContext とは分けて
@@ -223,12 +244,46 @@ export function AudioProvider({ children }: { children: ReactNode }) {
 
   // 無音モードでも音が出るようにし、他アプリの音を止めない設定にする
   useEffect(() => {
-    setAudioModeAsync({
-      playsInSilentMode: true,
-      shouldPlayInBackground: false,
-      interruptionMode: "mixWithOthers",
-    }).catch((e) => console.error("オーディオモードの設定に失敗しました", e));
+    setAudioModeAsync(BASE_AUDIO_MODE).catch((e) =>
+      console.error("オーディオモードの設定に失敗しました", e),
+    );
   }, []);
+
+  // カメラ（要件2.6）を開くあいだは音を止め、戻ったら元どおりに鳴らし直す。
+  //
+  // 自前で止めるのは、OS任せだと挙動が割れるため。iOSはカメラをアプリ内に重ねて出す
+  // ので背景に回らず鳴り続け、Androidは別画面のため止まる。撮影中に音楽が流れている
+  // 意味は無く（シャッター音と重なるだけ）、どちらの端末でも同じになるよう明示的に止める。
+  //
+  // 復帰させるのは「離れる前に鳴っていたもの」だけ。自分で止めていたBGMは止めたままにする。
+  const runAndRestoreAudio = useCallback(
+    async <T,>(task: () => Promise<T>): Promise<T> => {
+      const bgmWasPlaying = bgmPlayer.current?.playing === true;
+      const ambientWasPlaying = ambientPlayer.current?.playing === true;
+      try {
+        if (bgmWasPlaying) bgmPlayer.current?.pause();
+        if (ambientWasPlaying) ambientPlayer.current?.pause();
+      } catch (e) {
+        // 止められなくても撮影は続ける（音が重なるだけで、記録は残せる）
+        console.error("撮影中の音の停止に失敗しました", e);
+      }
+      try {
+        return await task();
+      } finally {
+        try {
+          if (bgmWasPlaying && bgmPlayer.current?.playing === false) {
+            bgmPlayer.current.play();
+          }
+          if (ambientWasPlaying && ambientPlayer.current?.playing === false) {
+            ambientPlayer.current.play();
+          }
+        } catch (e) {
+          console.error("音の復帰に失敗しました", e);
+        }
+      }
+    },
+    [],
+  );
 
   useEffect(() => {
     let mounted = true;
@@ -874,6 +929,7 @@ export function AudioProvider({ children }: { children: ReactNode }) {
       setBgmRepeatOne,
       refreshBgm: refreshBgmQueue,
       setAmbientForWeather,
+      runAndRestoreAudio,
       setGoodnight,
     }),
     [
@@ -900,6 +956,7 @@ export function AudioProvider({ children }: { children: ReactNode }) {
       setBgmRepeatOne,
       refreshBgmQueue,
       setAmbientForWeather,
+      runAndRestoreAudio,
       setGoodnight,
     ],
   );
