@@ -1,4 +1,8 @@
-import { buildEventNotices, EVENT_NOTICE_HOUR } from "../event-notice";
+import {
+  buildEventNotices,
+  canAddEventOn,
+  EVENT_NOTICE_HOUR,
+} from "../event-notice";
 
 // 予定通知の組み立て（要件4.3）。1週間前・前日の12:00、過ぎた分は捨てる。
 // 発火時刻・件数を取り違えると誤った時刻に通知が飛ぶため固定する。
@@ -71,5 +75,36 @@ describe("buildEventNotices（予定の通知を組み立てる・要件4.3）",
 
   test("不正な日付は無視する", () => {
     expect(buildEventNotices([{ event_date: "bad", title: "x" }], at(8, 1))).toHaveLength(0);
+  });
+});
+
+describe("canAddEventOn（予定を追加できる日付か・要件4.3）", () => {
+  // 過去日付に登録できると、通知が一切鳴らない予定が黙って作られる
+  // （buildEventNotices は過ぎた発火時刻を捨てるため）。境界を固定する
+  test("未来の日付には追加できる", () => {
+    expect(canAddEventOn("2026-08-11", at(8, 1, 10, 0))).toBe(true);
+  });
+
+  test("当日は追加できる（「今日提出」を朝に書き足せる）", () => {
+    expect(canAddEventOn("2026-08-01", at(8, 1, 10, 0))).toBe(true);
+  });
+
+  test("当日の深夜0時ちょうどでも当日は追加できる", () => {
+    expect(canAddEventOn("2026-08-01", at(8, 1, 0, 0))).toBe(true);
+  });
+
+  test("昨日には追加できない", () => {
+    expect(canAddEventOn("2026-07-31", at(8, 1, 10, 0))).toBe(false);
+  });
+
+  test("学習日ではなく暦日で判定する（深夜1時はもう翌暦日）", () => {
+    // 8/1 1:00 は学習日では 7/31 の夜だが、予定は暦日で持つため 7/31 は過去
+    expect(canAddEventOn("2026-07-31", at(8, 1, 1, 0))).toBe(false);
+    expect(canAddEventOn("2026-08-01", at(8, 1, 1, 0))).toBe(true);
+  });
+
+  test("年をまたいでも比較できる", () => {
+    expect(canAddEventOn("2027-01-01", at(12, 31, 23, 0))).toBe(true);
+    expect(canAddEventOn("2025-12-31", at(1, 1, 0, 0))).toBe(false);
   });
 });

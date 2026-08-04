@@ -30,14 +30,18 @@ import { LIMITS, STUDY_DAY } from "@/constants/domain";
 import { LightColor, Spacing } from "@/constants/theme";
 import type { DayDetail, DaySessionRecord } from "@/db/repositories/calendarRepo";
 import { eventRepo, weatherRepo } from "@/db/repositories";
-import type { CalendarEvent } from "@/db/types";
-import { useAudio } from "@/contexts/AudioContext";
-import { useSettings } from "@/contexts/SettingsContext";
-import { canAttachPhoto, formatTakenAtLabel } from "@/lib/night-photo";
-import { captureNightPhoto } from "@/lib/night-photo-capture";
+import type { CalendarEvent, NightWeather } from "@/db/types";
+import { now } from "@/lib/clock";
+import { canAddEventOn } from "@/lib/event-notice";
+import { formatTakenAtLabel } from "@/lib/night-photo";
 import { deletePhotoFile, photoUri } from "@/lib/night-photo-storage";
-import { formatMinutes, formatStudyDateLabel } from "@/lib/study-day";
+import {
+  formatMinutes,
+  formatStudyDateLabel,
+  isCurrentStudyDay,
+} from "@/lib/study-day";
 import { NightPhotoViewer } from "./night-photo-viewer";
+import { WeatherPicker } from "./weather-picker";
 import { validateEventTitle } from "@/lib/validation";
 import { SessionEditModal } from "./session-edit-modal";
 
@@ -135,49 +139,27 @@ export function CalendarDayDetail({
     ]);
   }, [detail, onReload]);
 
-  // 撮る・撮り直せるのは、その学習日がまだ終わっていない（5:00前の）ときだけ。
-  // 判定はホームの選択欄と同じ canAttachPhoto を通す（場所で挙動がずれないように）
-  const { user } = useSettings();
-  const { runAndRestoreAudio } = useAudio();
-  const [capturing, setCapturing] = useState(false);
-  const canTakePhoto =
-    user?.night_photo_enabled === 1 &&
-    detail !== null &&
-    canAttachPhoto(detail.studyDate);
+  // 予定を追加できるのは今日以降の暦日だけ（要件4.3）。すでにある予定の編集・削除は
+  // 過去でも行える（書き間違いを直せないと困るため）
+  const canAddEvent = dayDate !== null && canAddEventOn(dayDate, now());
 
-  const takePhoto = useCallback(async () => {
-    if (!detail || !userId || capturing) return;
-    const studyDate = detail.studyDate;
-    const previous = detail.photo?.fileName;
-    setCapturing(true);
-    try {
-      const result = await captureNightPhoto(studyDate, runAndRestoreAudio);
-      if (result.status === "denied") {
-        Alert.alert(
-          "カメラを使えません",
-          "写真は今夜の空を残すときだけ使います。端末の設定からカメラを許可すると撮れるようになります。",
-        );
-        return;
-      }
-      if (result.status === "failed") {
-        Alert.alert("写真を残せませんでした", "少し時間をおいて試してください。");
-        return;
-      }
-      if (result.status === "cancelled") return;
+  // 天気を選び直す・写真を撮るのは、その学習日がまだ終わっていない（5:00前の）ときだけ。
+  // 過ぎた夜は閲覧と、写真の削除のみ（要件2.5 / 2.6 / 4.1）
+  const canEditNight = detail !== null && isCurrentStudyDay(detail.studyDate);
+  const [pickerOpen, setPickerOpen] = useState(false);
 
-      // ファイルの保存が成功してからDBを更新する（逆順だと実体のない参照が残る）
-      await weatherRepo.setPhoto(
-        userId,
-        studyDate,
-        result.fileName,
-        result.takenAt.toISOString(),
-      );
-      if (previous && previous !== result.fileName) deletePhotoFile(previous);
-      onReload(studyDate);
-    } finally {
-      setCapturing(false);
-    }
-  }, [detail, userId, capturing, runAndRestoreAudio, onReload]);
+  const changeWeather = useCallback(
+    async (w: NightWeather) => {
+      if (!detail || !userId) return;
+      try {
+        await weatherRepo.setWeather(userId, detail.studyDate, w.id);
+        onReload(detail.studyDate);
+      } catch (e) {
+        console.error("その夜の天気の保存に失敗しました", e);
+      }
+    },
+    [detail, userId, onReload],
+  );
 
   async function submitEvent(title: string): Promise<string | void> {
     const err = validateEventTitle(title);
@@ -234,8 +216,12 @@ export function CalendarDayDetail({
   const scrollGesture = Gesture.Native();
 
   const hasRecord = detail !== null && detail.sessions.length > 0;
-  // 予定または記録があれば上寄せ、どちらも無ければ中央寄せ（静かな空表示）
-  const hasContent = hasRecord || events.length > 0;
+  // 予定・記録・その夜のもの（天気・写真）があれば上寄せ、どれも無ければ中央寄せ（静かな空表示）
+  const hasContent =
+    hasRecord ||
+    events.length > 0 ||
+    detail?.weather != null ||
+    detail?.photo != null;
 
   // スライドインは「新規に開いたとき」だけ行う。
   // 編集の保存後は detail を読み直すが、そのときシートを再アニメーションさせない
@@ -378,6 +364,9 @@ export function CalendarDayDetail({
               <View style={styles.eventsSection}>
                 <View style={styles.eventsHead}>
                   <Text style={styles.eventsTitle}>予定</Text>
+                  {/* 過ぎた日付には追加できない（要件4.3）。通知は過ぎた発火を捨てるため、
+                      登録できても鳴らない予定になる。断るのではなく操作自体を見せない */}
+                  {canAddEvent ? (
                   <Pressable
                     onPress={() => setEventEditing({ mode: "add" })}
                     hitSlop={8}
@@ -385,6 +374,7 @@ export function CalendarDayDetail({
                   >
                     <Text style={styles.eventsAddText}>＋ 追加</Text>
                   </Pressable>
+                  ) : null}
                 </View>
                 {events.length > 0 ? (
                   <>
@@ -408,7 +398,9 @@ export function CalendarDayDetail({
                   </>
                 ) : (
                   <Text style={styles.eventsEmpty}>
-                    予定はありません（＋で追加）
+                    {canAddEvent
+                      ? "予定はありません（＋で追加）"
+                      : "予定はありません"}
                   </Text>
                 )}
               </View>
@@ -429,34 +421,41 @@ export function CalendarDayDetail({
                       transition={200}
                     />
                   </Pressable>
-                  <View style={styles.photoMeta}>
-                    <Text style={styles.photoTakenAt}>
-                      {formatTakenAtLabel(detail.photo.takenAt)}
-                    </Text>
-                    {canTakePhoto ? (
-                      <Pressable
-                        onPress={() => void takePhoto()}
-                        disabled={capturing}
-                        hitSlop={8}
-                        accessibilityLabel="撮り直す"
-                        style={({ pressed }) => [pressed && styles.sessionPressed]}
-                      >
-                        <Text style={styles.photoAction}>撮り直す</Text>
-                      </Pressable>
-                    ) : null}
-                  </View>
+                  <Text style={styles.photoTakenAt}>
+                    {formatTakenAtLabel(detail.photo.takenAt)}
+                  </Text>
                 </View>
-              ) : canTakePhoto ? (
+              ) : null}
+
+              {/* その夜の天気（要件2.5 / 4.1）。学習しなかった夜でも、選んでいれば表示する。
+                  天気の選択は学習から独立した行為で、選んだ時点で背景・環境音に反映され
+                  記録として残っている。ここで空にすると、消えたように見えてしまう。
+                  ※アルバム・月次集計（4.2）と月のマスは従来どおり学習した夜だけを対象とする */}
+              {!hasRecord && detail?.weather ? (
+                <View style={styles.summary}>
+                  <Text style={styles.weather}>
+                    {detail.weather.emoji} {detail.weather.name}
+                  </Text>
+                </View>
+              ) : null}
+
+              {/* まだ終わっていない夜だけ、天気と写真をここから整えられる（要件2.5 / 2.6）。
+                  記録を眺めていて選び直したくなったときにホームへ戻らせないため。
+                  入口は選択欄1つにまとめる（天気と写真で別々のボタンを並べない） */}
+              {canEditNight ? (
                 <Pressable
-                  onPress={() => void takePhoto()}
-                  disabled={capturing}
-                  accessibilityLabel="今夜の空を撮る"
+                  onPress={() => setPickerOpen(true)}
+                  accessibilityLabel="今夜の天気と写真"
                   style={({ pressed }) => [
-                    styles.photoEmpty,
+                    styles.nightEdit,
                     pressed && styles.sessionPressed,
                   ]}
                 >
-                  <Text style={styles.photoEmptyText}>📷 今夜の空を撮る</Text>
+                  <Text style={styles.nightEditText}>
+                    {detail?.weather || detail?.photo
+                      ? "今夜の天気と写真を整える"
+                      : "今夜の天気を選ぶ・写真を残す"}
+                  </Text>
                 </Pressable>
               ) : null}
 
@@ -516,7 +515,12 @@ export function CalendarDayDetail({
               </>
               ) : (
               <View style={styles.empty}>
-                <Text style={styles.emptyText}>この夜の記録はありません</Text>
+                {/* 天気や写真だけ残した夜は「何も無い」ではないため、文言を分ける */}
+                <Text style={styles.emptyText}>
+                  {detail?.weather || detail?.photo
+                    ? "この夜の学習の記録はありません"
+                    : "この夜の記録はありません"}
+                </Text>
               </View>
               )}
             </Animated.ScrollView>
@@ -554,6 +558,24 @@ export function CalendarDayDetail({
           onClose={() => setViewingPhoto(null)}
           onDelete={removePhoto}
         />
+
+        {/* 今夜のこと（天気と写真）。ホーム・タイマー設定・成果記録と同じ選択欄を使う */}
+        {detail ? (
+          <WeatherPicker
+            visible={pickerOpen}
+            selectedId={detail.weather?.id ?? null}
+            studyDate={detail.studyDate}
+            onSelect={(w) => {
+              setPickerOpen(false);
+              void changeWeather(w);
+            }}
+            onClose={() => {
+              setPickerOpen(false);
+              // 選択欄では写真を撮る・撮り直す・消すもできるため、閉じたら読み直す
+              onReload(detail.studyDate);
+            }}
+          />
+        ) : null}
       </GestureHandlerRootView>
     </Modal>
   );
@@ -628,7 +650,8 @@ const styles = StyleSheet.create({
     color: LightColor,
     fontSize: 13,
   },
-  photoEmpty: {
+  // その夜がまだ続いているときだけ出す、天気・写真の入口
+  nightEdit: {
     borderRadius: 12,
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.24)",
@@ -636,7 +659,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginBottom: Spacing.three,
   },
-  photoEmptyText: {
+  nightEditText: {
     color: "rgba(255,255,255,0.75)",
     fontSize: 14,
   },

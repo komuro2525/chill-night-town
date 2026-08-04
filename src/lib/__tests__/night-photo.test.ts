@@ -39,9 +39,15 @@ describe("canAttachPhoto（追加・撮り直しの可否）", () => {
     expect(canAttachPhoto("2026-01-11", at("2026-01-10T21:00:00"))).toBe(false);
   });
 
-  test("5:00を過ぎた昼間は、これから始まる夜が対象になる", () => {
-    // getStudyDate の昼間（5:00〜17:59）の扱いに従う
-    expect(canAttachPhoto("2026-01-11", at("2026-01-11T05:00:00"))).toBe(true);
+  test("昼間は撮れない（これから始まる夜が対象でも、昼の空は今夜ではない）", () => {
+    // 天気（心象）は夜が始まる前に選べるが、写真は実像のため夜間帯に限る
+    expect(canAttachPhoto("2026-01-11", at("2026-01-11T05:00:00"))).toBe(false);
+    expect(canAttachPhoto("2026-01-11", at("2026-01-11T14:00:00"))).toBe(false);
+    expect(canAttachPhoto("2026-01-11", at("2026-01-11T17:59:59"))).toBe(false);
+  });
+
+  test("18:00になれば撮れる（夜間帯の始まり）", () => {
+    expect(canAttachPhoto("2026-01-11", at("2026-01-11T18:00:00"))).toBe(true);
   });
 });
 

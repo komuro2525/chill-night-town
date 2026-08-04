@@ -215,6 +215,14 @@ export default function HomeScreen() {
     };
   }, [reloadSummary, reloadWeather]);
 
+  // 他の画面から戻ってきたら、その夜の天気を読み直す。
+  // ホームは裏で生存し続けるため（マウント処理は再実行されない）、これが無いと
+  // カレンダー（4.1）や成果記録で天気を選び直しても、背景演出（8章）と環境音（9章）が
+  // 前の天気のまま取り残される
+  useEffect(() => {
+    if (isFocused) void reloadWeather();
+  }, [isFocused, reloadWeather]);
+
   // 街の切り替え（S9）は SettingsContext の selectedTown を更新する。
   // ホームは裏で生存し続けるため（画面を戻ってもマウント処理は再実行されない）、
   // 背景・レベルの表示は selectedTown に追従させて最新の街へ切り替える。

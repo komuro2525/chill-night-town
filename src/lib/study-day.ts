@@ -39,6 +39,21 @@ export function getStudyDate(instant: Date = now()): string {
 }
 
 /**
+ * その学習日が「今まさに進行している夜」かどうか。
+ *
+ * その夜のもの（天気・写真）を変えられるのは**その学習日が終わる5:00まで**であり、
+ * 過ぎた夜は変更しない（要件2.5 / 2.6）。この可否をホーム・タイマー設定・成果記録・
+ * カレンダーのどこでも同じ判定にするため、共通関数として置く。
+ * 境界の扱いは getStudyDate に委ねる（5:00の判定を各所で書き直さないため）。
+ */
+export function isCurrentStudyDay(
+  studyDate: string,
+  instant: Date = now(),
+): boolean {
+  return getStudyDate(instant) === studyDate;
+}
+
+/**
  * 指定時刻が夜間帯（18:00〜翌5:00）かどうか。学習開始可否の判定に使う（要件2.3）。
  * 5:00 ちょうどは夜間帯外（自動終了時刻）とする。
  */

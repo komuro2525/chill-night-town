@@ -12,7 +12,7 @@
 // =====================================================================
 
 import { now } from "./clock";
-import { getStudyDate } from "./study-day";
+import { isCurrentStudyDay, isNightTime } from "./study-day";
 
 /** 写真の保存ディレクトリ名（アプリ専有領域の下） */
 export const NIGHT_PHOTO_DIR = "night-photos";
@@ -20,14 +20,18 @@ export const NIGHT_PHOTO_DIR = "night-photos";
 /**
  * その学習日に写真を追加・撮り直しできるか（要件2.6）。
  *
- * 追加・撮り直しができるのは「その学習日が終わる（5:00）まで」であり、
- * 過ぎた夜には足せない。判定は学習日どうしの比較で行い、5:00の境界は
- * getStudyDate に委ねる（境界の判定をここで書き直すと二重管理になるため）。
+ * 条件は2つあり、両方を満たすときだけ撮れる。
+ *   1. その学習日がまだ終わっていない（5:00まで）— 過ぎた夜には足せない
+ *   2. **いまが夜間帯（18:00〜翌5:00）である**
+ *
+ * 2を課すのは、写真が「その夜の外の様子」という実像だからである。天気は心象のため
+ * 夜が始まる前に決めてよいが（要件2.5）、昼間に撮れてしまうと「今夜の空」と称して
+ * 昼の空が記録に入る。学習を開始できるのが夜間帯だけである点（要件2.3）とも揃う。
  *
  * ※削除はこの制限を受けない（過去の夜も常に消せる。要件4.1）。
  */
 export function canAttachPhoto(studyDate: string, instant: Date = now()): boolean {
-  return getStudyDate(instant) === studyDate;
+  return isCurrentStudyDay(studyDate, instant) && isNightTime(instant);
 }
 
 /**

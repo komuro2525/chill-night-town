@@ -8,8 +8,11 @@ import {
   formatDateKey,
   formatMinutes,
   getStudyDate,
+  isCurrentStudyDay,
   isNightTime,
 } from "../study-day";
+
+const at = (iso: string) => new Date(iso);
 
 describe("getStudyDate（学習日の帰属）", () => {
   it("夜に開始した場合はその日に帰属する", () => {
@@ -43,6 +46,34 @@ describe("getStudyDate（学習日の帰属）", () => {
 
   it("昼間は「これから始まる夜」として当日に帰属する（暫定仕様）", () => {
     expect(getStudyDate(new Date("2026-01-11T12:00:00"))).toBe("2026-01-11");
+  });
+});
+
+describe("isCurrentStudyDay（その夜がまだ続いているか・要件2.5 / 2.6）", () => {
+  // 天気の選び直しと写真の撮り直しが「5:00まで」に限られる判定。
+  // 過ぎた夜を書き換えられると記録が事実でなくなるため、境界を固定する
+  test("その夜のあいだは true（21:00）", () => {
+    expect(isCurrentStudyDay("2026-01-10", at("2026-01-10T21:00:00"))).toBe(true);
+  });
+
+  test("日付をまたいでも同じ夜のあいだは true（翌1:30）", () => {
+    expect(isCurrentStudyDay("2026-01-10", at("2026-01-11T01:30:00"))).toBe(true);
+  });
+
+  test("4:59はまだその夜", () => {
+    expect(isCurrentStudyDay("2026-01-10", at("2026-01-11T04:59:59"))).toBe(true);
+  });
+
+  test("5:00ちょうどで夜が終わる", () => {
+    expect(isCurrentStudyDay("2026-01-10", at("2026-01-11T05:00:00"))).toBe(false);
+  });
+
+  test("過ぎた夜は false（過去の記録は変更しない）", () => {
+    expect(isCurrentStudyDay("2026-01-09", at("2026-01-10T21:00:00"))).toBe(false);
+  });
+
+  test("まだ来ていない夜も false", () => {
+    expect(isCurrentStudyDay("2026-01-11", at("2026-01-10T21:00:00"))).toBe(false);
   });
 });
 
