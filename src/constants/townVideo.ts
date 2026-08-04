@@ -37,6 +37,20 @@ const TOWN_VIDEO: Record<string, TownVideoSet> = {
   nightTown: {
     // いずれも 1280×720。静止画（1672×941）と同じ16:9のため可動域は一致する
     night: {
+      1: [
+        {
+          source: require("@/assets/home/nightTown/night/mp4/nightTown_night_lv1.mp4"),
+          width: 1280,
+          height: 720,
+        },
+      ],
+      2: [
+        {
+          source: require("@/assets/home/nightTown/night/mp4/nightTown_night_lv2.mp4"),
+          width: 1280,
+          height: 720,
+        },
+      ],
       // Lv.3 は流れ星の動きだけが違う2パターン。学習日ごとにどちらかを流す
       3: [
         {
