@@ -3,12 +3,12 @@
 // 発火はOSが行い、アプリは時刻を監視しない。登録する通知は3種類:
 //   ・学習開始リマインド（毎日同時刻。要件12章）
 //   ・予定のお知らせ（各予定の1週間前・前日の12:00。要件4.3）
-//   ・ポモドーロの切り替わり（計測中のフェーズ境界。要件12章 / UC 12.2）
+//   ・学習中のお知らせ（切り替わり・全ループ完了・目標到達・5:00自動終了。要件12章 / UC 12.2）
 // どの変更でも「全解除 → 全登録し直し」で足りる（識別子の管理は持たない）。
 // これにより、片方の再登録で他方が消える事故を避ける。
 //
-// 文面の組み立て（学習開始＝18:00前後の出し分け／予定＝1週間前・前日／フェーズ境界）は純関数
-// notification-message.ts・event-notice.ts・pomodoro-notice.ts に委ねる。
+// 文面の組み立て（学習開始＝18:00前後の出し分け／予定＝1週間前・前日／学習中の出来事）は純関数
+// notification-message.ts・event-notice.ts・study-notice.ts に委ねる。
 // ここはOSとのやり取りだけを担う。DBを読んで内容を組み立てる調整は notification-sync.ts が行う。
 
 import * as Notifications from "expo-notifications";
@@ -16,24 +16,24 @@ import { Platform } from "react-native";
 import { getDevOffsetMs } from "./clock";
 import type { EventNotice } from "./event-notice";
 import { buildNotificationContent } from "./notification-message";
-import type { PomodoroPhaseNotice } from "./pomodoro-notice";
+import type { StudyNotice } from "./study-notice";
 
 /**
  * 通知の種別（content.data に載せる）。フォアグラウンド時に出すかどうかの判定に使う。
- * ポモドーロの切り替わりだけは、フォアグラウンドでは切り替わり音（要件3.1）で
- * 既に伝えているため、通知を重ねない
+ * 学習中のお知らせだけは、フォアグラウンドでは切り替わり音（要件3.1）・休憩提案（5.1）・
+ * 終了演出（3.3）で既に伝えているため、通知を重ねない
  */
-const POMODORO_PHASE_KIND = "pomodoro_phase";
+const STUDY_NOTICE_KIND = "study_notice";
 
 /**
- * ポモドーロの切り替わり通知のAndroidチャンネル（UC 12.2）。
+ * 学習中のお知らせのAndroidチャンネル（UC 12.2）。
  * Android 8以降は通知音がチャンネル単位で決まるため、音を鳴らす通知には専用のチャンネルが要る。
  * 学習開始リマインド・予定のお知らせは無音のままにしたいので、チャンネルを分ける。
  *
  * 音はOS標準（sound を渡さない＝システムの既定音）。**チャンネルは一度作ると音を変更できない**ため、
  * 将来アプリ独自の音へ差し替えるときは、このIDを変えて新しいチャンネルを作ること。
  */
-const POMODORO_CHANNEL_ID = "pomodoro-phase-default";
+const STUDY_NOTICE_CHANNEL_ID = "pomodoro-phase-default";
 
 /**
  * アプリ内時刻で算出した発火時刻を、OSに渡す実時間へ直す。
@@ -53,13 +53,13 @@ function toRealTime(fireAt: Date): Date {
 /** チャンネルの作成は冪等だが、毎回の予約で待たせないよう一度だけ行う */
 let channelReady: Promise<void> | null = null;
 
-function ensurePomodoroChannel(): Promise<void> {
+function ensureStudyNoticeChannel(): Promise<void> {
   if (Platform.OS !== "android") return Promise.resolve();
   if (!channelReady) {
     channelReady = Notifications.setNotificationChannelAsync(
-      POMODORO_CHANNEL_ID,
+      STUDY_NOTICE_CHANNEL_ID,
       {
-        name: "ポモドーロの切り替わり",
+        name: "学習中のお知らせ",
         // 休憩の始まり・終わりに気づくための通知のため、音の鳴る重要度にする
         importance: Notifications.AndroidImportance.HIGH,
       },
@@ -69,12 +69,12 @@ function ensurePomodoroChannel(): Promise<void> {
 }
 
 // 通知の表示方法。ハンドラが呼ばれるのはアプリがフォアグラウンドにあるときだけなので、
-// ポモドーロの切り替わりはここで表示を落とせば「バックグラウンド中のみ通知」になる（UC 12.2）。
+// 学習中のお知らせはここで表示を落とせば「バックグラウンド中のみ通知」になる（UC 12.2）。
 // 音は鳴らさない（アプリ内の静けさを保つ）。モジュール読み込み時に一度だけ設定する
 Notifications.setNotificationHandler({
   handleNotification: async (notification) => {
     const show =
-      notification.request.content.data?.kind !== POMODORO_PHASE_KIND;
+      notification.request.content.data?.kind !== STUDY_NOTICE_KIND;
     return {
       shouldShowBanner: show,
       shouldShowList: show,
@@ -119,20 +119,20 @@ export async function ensureNotificationPermission(): Promise<boolean> {
 
 /**
  * 登録済みの通知をすべて解除し、渡された内容で登録し直す（全消し→全再登録。要件12章・4.3）。
- * 学習開始リマインド（毎日同時刻）・予定通知・ポモドーロの切り替わり（いずれも日時指定）を
+ * 学習開始リマインド（毎日同時刻）・予定通知・学習中のお知らせ（いずれも日時指定）を
  * 1つの窓口でまとめて管理する。
  * @param reminderTime 学習開始リマインドの時刻 'HH:MM'。null なら出さない
  * @param eventNotices 予定のお知らせ（それぞれ fireAt に鳴らす）
- * @param phaseNotices ポモドーロのフェーズ境界（空なら予約しない＝一時停止中・設定OFF等）
+ * @param studyNotices 学習中の出来事（空なら予約しない＝一時停止中・設定OFF等）
  */
 export async function applyNotificationSchedule({
   reminderTime,
   eventNotices,
-  phaseNotices = [],
+  studyNotices = [],
 }: {
   reminderTime: string | null;
   eventNotices: EventNotice[];
-  phaseNotices?: PomodoroPhaseNotice[];
+  studyNotices?: StudyNotice[];
 }): Promise<void> {
   await Notifications.cancelAllScheduledNotificationsAsync();
 
@@ -159,8 +159,8 @@ export async function applyNotificationSchedule({
     });
   }
 
-  if (phaseNotices.length > 0) await ensurePomodoroChannel();
-  for (const n of phaseNotices) {
+  if (studyNotices.length > 0) await ensureStudyNoticeChannel();
+  for (const n of studyNotices) {
     await Notifications.scheduleNotificationAsync({
       content: {
         title: n.title,
@@ -169,13 +169,13 @@ export async function applyNotificationSchedule({
         // 他の2種類は無音のまま（夜の静けさを優先する）
         sound: "default",
         // kind はフォアグラウンド時に表示を落とすための目印（上のハンドラを参照）
-        data: { kind: POMODORO_PHASE_KIND },
+        data: { kind: STUDY_NOTICE_KIND },
       },
       trigger: {
         type: Notifications.SchedulableTriggerInputTypes.DATE,
-        // 境界はアプリ内時刻で算出されるため、実時間へ直してからOSへ渡す
+        // 出来事の時刻はアプリ内時刻で算出されるため、実時間へ直してからOSへ渡す
         date: toRealTime(n.fireAt),
-        channelId: POMODORO_CHANNEL_ID, // Android 8以降は音がチャンネル単位のため
+        channelId: STUDY_NOTICE_CHANNEL_ID, // Android 8以降は音がチャンネル単位のため
       },
     });
   }
@@ -187,7 +187,7 @@ export async function applyNotificationSchedule({
  * 開発用: 数秒後に鳴るテスト通知を1件だけ入れる（__DEV__ 限定）。
  *
  * 通知が届かないとき、原因が「アプリの予約の作り方」なのか「OS側の許可・抑制」なのかを
- * 切り分けるために使う。ポモドーロの予約とは独立した最小の1件で、
+ * 切り分けるために使う。本物の予約とは独立した最小の1件で、
  * 本物と同じ経路（scheduleNotificationAsync・同じチャンネル・音あり）を通す。
  *
  * これが鳴らなければOS側（許可・集中モード・通知の要約）の問題、
@@ -201,7 +201,7 @@ export async function scheduleTestNotification(seconds = 10): Promise<void> {
   console.log(`テスト通知: 許可=${granted} / ${seconds}秒後に予約します`);
   if (!granted) return;
 
-  await ensurePomodoroChannel();
+  await ensureStudyNoticeChannel();
   await Notifications.scheduleNotificationAsync({
     content: {
       title: "テスト通知",
@@ -212,7 +212,7 @@ export async function scheduleTestNotification(seconds = 10): Promise<void> {
       type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
       seconds,
       repeats: false,
-      channelId: POMODORO_CHANNEL_ID,
+      channelId: STUDY_NOTICE_CHANNEL_ID,
     },
   });
   await logScheduledNotifications();

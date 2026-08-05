@@ -70,8 +70,7 @@ export default function SettingsScreen() {
   const notifyEnabled = notificationSetting?.is_enabled === 1;
   const notifyTime = notificationSetting?.scheduled_time ?? null;
   const eventNoticeEnabled = notificationSetting?.event_notice_enabled === 1;
-  const phaseNoticeEnabled =
-    notificationSetting?.pomodoro_phase_notice_enabled === 1;
+  const studyNoticeEnabled = notificationSetting?.study_notice_enabled === 1;
 
   // 通知のON/OFF（要件10.3 / 12章）。ONにするときはOSの許可を確保し、
   // 拒否されたらOFFへ戻してOSの設定から変更できる旨を伝える（要件12章）。
@@ -126,22 +125,24 @@ export default function SettingsScreen() {
     }
   }
 
-  // ポモドーロの切り替わり通知（UC 10.10 / 12.2）のON/OFF。
-  // ONにした時点で計測中なら、張り直しの中でその場でフェーズ境界が予約される
-  async function handleTogglePhaseNotice(next: boolean) {
+  // 学習中のお知らせ（UC 10.10 / 12.2）のON/OFF。
+  // ONにした時点で計測中なら、張り直しの中でその場で以後の出来事が予約される
+  async function handleToggleStudyNotice(next: boolean) {
     try {
       if (next) {
         const granted = await ensureNotificationPermission();
         if (!granted) {
-          alertNotificationDenied("休憩の始まりと終わりをお知らせできます");
+          alertNotificationDenied(
+            "休憩や目標到達など、学習中の出来事をお知らせできます",
+          );
           return;
         }
       }
-      await settingsRepo.updatePomodoroPhaseNoticeEnabled(next);
+      await settingsRepo.updateStudyNoticeEnabled(next);
       await refreshNotifications();
       await reload();
     } catch (e) {
-      console.error("切り替わり通知設定の更新に失敗しました", e);
+      console.error("学習中のお知らせ設定の更新に失敗しました", e);
     }
   }
 
@@ -429,12 +430,12 @@ export default function SettingsScreen() {
             }
           />
           <SettingRow
-            label="ポモドーロの切り替わり"
-            note="アプリを離れているあいだ、休憩の始まりと終わりをお知らせします。"
+            label="学習中のお知らせ"
+            note="アプリを離れているあいだ、休憩の始まりと終わり・目標に届いたとき・夜が明けたときをお知らせします。"
             right={
               <Switch
-                value={phaseNoticeEnabled}
-                onValueChange={(v) => void handleTogglePhaseNotice(v)}
+                value={studyNoticeEnabled}
+                onValueChange={(v) => void handleToggleStudyNotice(v)}
               />
             }
           />

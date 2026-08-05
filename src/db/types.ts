@@ -245,8 +245,8 @@ export type NotificationSetting = {
   scheduled_time: string | null;
   /** 予定のお知らせ（4章）の全体ON/OFF */
   event_notice_enabled: Bool;
-  /** ポモドーロの切り替わり通知（要件12章 / UC 12.2）のON/OFF */
-  pomodoro_phase_notice_enabled: Bool;
+  /** 学習中のお知らせ（要件12章 / UC 12.2）のON/OFF */
+  study_notice_enabled: Bool;
   updated_at: string;
 };
 

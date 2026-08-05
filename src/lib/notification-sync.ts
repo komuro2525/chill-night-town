@@ -2,22 +2,24 @@
 //
 // 通知は「全消し→全再登録」で管理するため（notifications.ts）、変更のたびに
 // 現在の設定・予定・計測状態を読み直して丸ごと登録し直す。学習開始リマインド・予定通知・
-// ポモドーロの切り替わりを1つの窓口（refreshNotifications）に集約し、
+// 学習中のお知らせを1つの窓口（refreshNotifications）に集約し、
 // ひとつの変更で他が消える事故を避ける。
 //
 // 呼び出す場面: 通知設定の変更・予定の追加/変更/削除・アプリ起動時（再起動後の張り直し）・
-// タイマーの開始/一時停止/再開/終了（フェーズ境界の予約を取り直すため）。
+// タイマーの開始/一時停止/再開/終了（予約を取り直すため）。
 
 import {
   activeSessionRepo,
   eventRepo,
+  sessionRepo,
   settingsRepo,
   userRepo,
 } from "@/db/repositories";
 import { now, nowMs } from "./clock";
 import { buildEventNotices } from "./event-notice";
 import { applyNotificationSchedule } from "./notifications";
-import { buildPomodoroPhaseNotices } from "./pomodoro-notice";
+import { buildStudyNotices } from "./study-notice";
+import { getStudyDate } from "./study-day";
 
 /**
  * 一度に登録する予定通知の上限。OS（特にiOS）の保留ローカル通知の上限（64件程度）を
@@ -57,15 +59,34 @@ async function doRefresh(): Promise<void> {
       }
     }
 
-    // ポモドーロの切り替わり（UC 12.2）。計測中でなければ active_session が無く、
-    // 一時停止中・黙々モードなら純関数側が空を返すため、ここでは分岐を持たない
-    let phaseNotices: ReturnType<typeof buildPomodoroPhaseNotices> = [];
-    if (setting?.pomodoro_phase_notice_enabled === 1) {
+    // 学習中のお知らせ（UC 12.2）。計測中でなければ active_session が無く、
+    // 一時停止中なら純関数側が空を返すため、ここでは分岐を持たない。
+    //
+    // 目標到達の判定にはその学習日の「保存済み」実績合計が要る。進行中のぶんは
+    // active_session から純関数が算出するため、ここでは保存済みだけを渡す。
+    // 学習日は**セッションの開始時刻**から求める（現在時刻ではない。要件0章。
+    // 深夜0時をまたいで計測している最中に張り直すと、暦日で取れば別の日になってしまう）。
+    let studyNotices: ReturnType<typeof buildStudyNotices> = [];
+    if (setting?.study_notice_enabled === 1) {
       const active = await activeSessionRepo.getActiveSession();
-      if (active) phaseNotices = buildPomodoroPhaseNotices(active, nowMs());
+      if (active) {
+        const user = await userRepo.getUser();
+        const studyDate = getStudyDate(new Date(Date.parse(active.start_time)));
+        const summary = await sessionRepo.getStudyDaySummary(studyDate);
+        studyNotices = buildStudyNotices({
+          session: active,
+          atMs: nowMs(),
+          savedMinutes: summary.totalMinutes,
+          goalMinutes: user?.daily_goal_minutes ?? 0,
+        });
+      }
     }
 
-    await applyNotificationSchedule({ reminderTime, eventNotices, phaseNotices });
+    await applyNotificationSchedule({
+      reminderTime,
+      eventNotices,
+      studyNotices,
+    });
   } catch (e) {
     console.error("通知の再登録に失敗しました", e);
   }

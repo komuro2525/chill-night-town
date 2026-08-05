@@ -662,6 +662,17 @@ const DELTA_MIGRATIONS: Migration[] = [
       );
     },
   },
+  {
+    version: 30,
+    up: async (db) => {
+      // バックグラウンド通知の対象を、ポモドーロの切り替わりだけでなく
+      // 目標到達・5:00自動終了まで広げた（要件12章）。設定は引き続き1つでまとめて扱うため、
+      // 実態に合わせて列名を study_notice_enabled へ改める（値はそのまま引き継ぐ）。
+      await db.execAsync(
+        "ALTER TABLE notification_setting RENAME COLUMN pomodoro_phase_notice_enabled TO study_notice_enabled",
+      );
+    },
+  },
 ];
 
 /** 現在の DB バージョンを取得する（未設定なら0） */
