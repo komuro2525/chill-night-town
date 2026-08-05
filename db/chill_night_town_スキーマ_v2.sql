@@ -50,6 +50,9 @@ CREATE TABLE user (
     -- 0のときは撮影の入口を出さず、カメラ権限を一度も要求しない。
     -- 0にしても撮影済みの写真は削除しない（カレンダーから閲覧・削除できる）
     night_photo_enabled         INTEGER NOT NULL DEFAULT 1  CHECK (night_photo_enabled IN (0, 1)),
+    -- アプリを離れているあいだもBGM・環境音を鳴らし続けるか（要件9章）。1=続ける（既定）。設定10.15
+    -- OFFに戻せるようにするのは、連続再生が電池を使うため
+    background_audio_enabled    INTEGER NOT NULL DEFAULT 1  CHECK (background_audio_enabled IN (0, 1)),
     created_at                  TEXT    NOT NULL DEFAULT (datetime('now')),
     updated_at                  TEXT    NOT NULL DEFAULT (datetime('now'))
 );

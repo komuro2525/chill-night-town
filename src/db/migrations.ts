@@ -651,6 +651,17 @@ const DELTA_MIGRATIONS: Migration[] = [
       );
     },
   },
+  {
+    version: 29,
+    up: async (db) => {
+      // バックグラウンド再生（要件9章）のON/OFF。既定1＝アプリを離れても鳴らし続ける。
+      // 既定をONにするのは、画面を伏せるたびに夜の音が途切れると世界観が保てないため。
+      // 戻せる設定を持つのは、連続再生が電池を使うため（要件10.15）
+      await db.execAsync(
+        "ALTER TABLE user ADD COLUMN background_audio_enabled INTEGER NOT NULL DEFAULT 1 CHECK (background_audio_enabled IN (0, 1))",
+      );
+    },
+  },
 ];
 
 /** 現在の DB バージョンを取得する（未設定なら0） */

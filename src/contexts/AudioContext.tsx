@@ -126,7 +126,17 @@ type AudioContextValue = {
    * 天気コード（未選択は null）を渡すと、対応する環境音をループ再生する。
    * 対応する音が無い・環境音の音量が0のときは停止する（ニュートラルな夜）。
    */
-  setAmbientForWeather: (weatherCode: string | null) => void;
+  setAmbientForWeather: (
+    weatherCode: string | null,
+    /** ロック画面に出す名称（例: 雨音の夜）。BGMを鳴らしていないときに使う */
+    weatherName?: string | null,
+  ) => void;
+
+  // --- バックグラウンド再生（要件9 / UC 10.12） ---
+  /** アプリを離れているあいだも鳴らし続けるか（既定ON） */
+  backgroundPlayback: boolean;
+  /** バックグラウンド再生のON/OFFを保存し、オーディオ設定へ即反映する */
+  setBackgroundPlayback: (enabled: boolean) => Promise<void>;
 
   // --- 夜の写真（要件2.6 / UC 2.6） ---
   /**
@@ -151,14 +161,16 @@ const AudioContext = createContext<AudioContextValue | null>(null);
 
 /**
  * 通常時のオーディオ設定。無音モードでも鳴らし、他アプリの音は止めない。
- * 背景では鳴らさない（学習中に画面を伏せても鳴り続けると電池を使うため）。
+ * 背景で鳴らすかは設定（要件10.15）で変わるため、shouldPlayInBackground はここに含めない。
  * カメラで一度離れたときの鳴らし直しは runAndRestoreAudio が受け持つ。
  */
 const BASE_AUDIO_MODE = {
   playsInSilentMode: true,
-  shouldPlayInBackground: false,
   interruptionMode: "mixWithOthers",
 } as const;
+
+/** ロック画面の再生情報に添える名前（アーティスト欄）。環境音には作者がいないため */
+const APP_NAME = "Chill Night Town";
 
 /**
  * 再生位置の進捗（要件9）。0.5秒ごとに更新されるため、本体の AudioContext とは分けて
@@ -225,6 +237,8 @@ export function AudioProvider({ children }: { children: ReactNode }) {
   const bgmIndexRef = useRef(0);
   // 現在表示/再生中の曲ID。キュー組み直し時に「同じ曲を維持できるか」の判定に使う
   const currentTrackIdRef = useRef<number | null>(null);
+  // ロック画面に出す曲名・アーティスト用（bgmTrack と同じ値を同期的に読むための控え）
+  const currentTrackRef = useRef<AmbientSound | null>(null);
   // コールバックから最新のソース・シャッフルを同期的に参照する
   const bgmSourceRef = useRef<BgmSource>("all");
   bgmSourceRef.current = bgmSource;
@@ -241,12 +255,77 @@ export function AudioProvider({ children }: { children: ReactNode }) {
   // 音量0で止めても desired は保持し、音量が戻ったら同じ環境音を鳴らし直せるようにする
   const desiredAmbientCodeRef = useRef<string | null>(null);
   const playingAmbientCodeRef = useRef<string | null>(null);
+  // ロック画面に出す環境音の名称（例: 雨音の夜）。BGMを鳴らしていないときに使う
+  const ambientLabelRef = useRef<string | null>(null);
 
-  // 無音モードでも音が出るようにし、他アプリの音を止めない設定にする
-  useEffect(() => {
-    setAudioModeAsync(BASE_AUDIO_MODE).catch((e) =>
-      console.error("オーディオモードの設定に失敗しました", e),
-    );
+  // バックグラウンド再生（要件9 / 10.15）。既定ONだが、DBを読むまでは false で始める
+  // （設定OFFの端末で、読み込みまでの一瞬だけ背景再生が有効になるのを避ける）
+  const [backgroundPlayback, setBackgroundPlaybackState] = useState(false);
+  const backgroundPlaybackRef = useRef(false);
+  // ロック画面のAPIが使えないと分かったら立てる（一度きりの警告に留めるため）
+  const lockScreenUnavailableRef = useRef(false);
+
+  /** 現在の設定でオーディオモードを貼り直す */
+  const applyAudioMode = useCallback((background: boolean) => {
+    backgroundPlaybackRef.current = background;
+    setAudioModeAsync({
+      ...BASE_AUDIO_MODE,
+      shouldPlayInBackground: background,
+    })
+      .then(() => {
+        if (__DEV__) console.log(`オーディオモード: 背景再生=${background}`);
+      })
+      .catch((e) => console.error("オーディオモードの設定に失敗しました", e));
+  }, []);
+
+  /**
+   * ロック画面・通知領域の再生情報を、いま鳴っているものに合わせる（要件9 / UC 9.1）。
+   *
+   * OSが扱える再生情報は1つのため、**BGMが鳴っていればBGM、そうでなければ環境音**を出す。
+   * Androidではこの表示が無いとバックグラウンド再生が数分で打ち切られるため、
+   * 環境音だけで使っている場合にも必要になる。
+   * バックグラウンド再生がOFFのときは、ロック画面に出す意味が無いので取り下げる。
+   */
+  const syncLockScreen = useCallback(() => {
+    // 使えない環境（ロック画面の対応が入っていないビルド＝Expo Go など）では、
+    // 呼ぶたびに失敗する。一度失敗したら以後は試さない（毎秒ログが溢れるのを避ける）。
+    // 音そのものは出せなくても鳴り続ける（Androidでは早く打ち切られる可能性がある）
+    if (lockScreenUnavailableRef.current) return;
+
+    const bgm = bgmPlayer.current;
+    const ambient = ambientPlayer.current;
+    const clear = (p: AudioPlayer | null) => p?.clearLockScreenControls?.();
+    try {
+      if (!backgroundPlaybackRef.current) {
+        clear(bgm);
+        clear(ambient);
+        return;
+      }
+      if (bgm?.playing) {
+        clear(ambient);
+        const track = currentTrackRef.current;
+        bgm.setActiveForLockScreen(true, {
+          title: track?.name ?? "BGM",
+          artist: track?.artist ?? APP_NAME,
+        });
+        return;
+      }
+      clear(bgm);
+      if (ambient?.playing) {
+        ambient.setActiveForLockScreen(true, {
+          title: ambientLabelRef.current ?? "夜の音",
+          artist: APP_NAME,
+        });
+        return;
+      }
+      clear(ambient);
+    } catch (e) {
+      lockScreenUnavailableRef.current = true;
+      console.warn(
+        "ロック画面の再生情報を出せないため、以後は試みません（development build が必要な可能性があります）",
+        e,
+      );
+    }
   }, []);
 
   // カメラ（要件2.6）を開くあいだは音を止め、戻ったら元どおりに鳴らし直す。
@@ -301,14 +380,28 @@ export function AudioProvider({ children }: { children: ReactNode }) {
         }
       } catch (e) {
         console.error("音量設定の読み込みに失敗しました", e);
-      } finally {
-        if (mounted) setReady(true);
       }
+
+      // バックグラウンド再生（要件10.15）。初期設定前は user が無いため既定ONとする。
+      // 音量の読み込みとは別の try にする（片方が失敗しても、もう片方は適用したい。
+      // ここを巻き込むと、無音モードの設定ごと当たらないまま既定値で鳴ってしまう）
+      try {
+        const user = await userRepo.getUser();
+        if (!mounted) return;
+        const background = (user?.background_audio_enabled ?? 1) === 1;
+        setBackgroundPlaybackState(background);
+        applyAudioMode(background);
+      } catch (e) {
+        console.error("バックグラウンド再生の設定の読み込みに失敗しました", e);
+        applyAudioMode(true); // 既定はON（要件9章）
+      }
+
+      if (mounted) setReady(true);
     })();
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [applyAudioMode]);
 
   // プレイヤーは画面を離れても使い回すが、アプリ終了時には解放する。
   // bgm/ambient は命令的に生成する音源（Reactが描画するノードではない）で、
@@ -516,6 +609,7 @@ export function AudioProvider({ children }: { children: ReactNode }) {
       player.loop = bgmRepeatOneRef.current;
       setBgmTrack(track);
       currentTrackIdRef.current = track.id;
+      currentTrackRef.current = track;
       setBgmProgress(0);
       setBgmPositionSec(0);
       setBgmDurationSec(0);
@@ -540,15 +634,18 @@ export function AudioProvider({ children }: { children: ReactNode }) {
       player.volume = fade ? 0 : target;
       player.play();
       setBgmPlaying(true);
+      syncLockScreen(); // 再生中の曲をロック画面へ出す（要件9）
       if (fade) fadeTo(player, target, AUDIO.FADE_IN_MS);
     },
-    [fadeTo, loadBgmTrack],
+    [fadeTo, loadBgmTrack, syncLockScreen],
   );
 
   const pauseBgm = useCallback(() => {
     bgmPlayer.current?.pause();
     setBgmPlaying(false);
-  }, []);
+    // BGMを止めたら、鳴っている環境音の方へロック画面を明け渡す
+    syncLockScreen();
+  }, [syncLockScreen]);
 
   // 次の曲へキューを進める（再生はしない）。末尾まで来たら:
   //   ・シャッフルON → 新しく並べ替えて先頭へ（直前の曲がすぐ来ないよう回避）＝一巡非重複
@@ -764,6 +861,7 @@ export function AudioProvider({ children }: { children: ReactNode }) {
     if (!source || isMuted(volume)) {
       if (ambientPlayer.current) ambientPlayer.current.pause();
       playingAmbientCodeRef.current = null;
+      syncLockScreen();
       return;
     }
 
@@ -771,6 +869,7 @@ export function AudioProvider({ children }: { children: ReactNode }) {
     if (playingAmbientCodeRef.current === code && ambientPlayer.current) {
       ambientPlayer.current.volume = toPlayerVolume(volume);
       if (!ambientPlayer.current.playing) ambientPlayer.current.play();
+      syncLockScreen();
       return;
     }
 
@@ -785,14 +884,35 @@ export function AudioProvider({ children }: { children: ReactNode }) {
     player.volume = toPlayerVolume(volume);
     player.play();
     playingAmbientCodeRef.current = code;
-  }, []);
+    syncLockScreen();
+  }, [syncLockScreen]);
 
   const setAmbientForWeather = useCallback(
-    (weatherCode: string | null) => {
+    (weatherCode: string | null, weatherName?: string | null) => {
       desiredAmbientCodeRef.current = selectAmbientCode(weatherCode);
+      ambientLabelRef.current = weatherName ?? null;
       applyAmbient();
     },
     [applyAmbient],
+  );
+
+  /**
+   * バックグラウンド再生のON/OFF（要件10.15 / UC 10.12）。
+   * 保存したうえでオーディオモードを貼り直し、ロック画面の表示も合わせる。
+   * いま鳴っている音は止めない（次にアプリを離れたときから効く）。
+   */
+  const setBackgroundPlayback = useCallback(
+    async (enabled: boolean) => {
+      setBackgroundPlaybackState(enabled);
+      applyAudioMode(enabled);
+      syncLockScreen();
+      try {
+        await userRepo.updateBackgroundAudioEnabled(enabled);
+      } catch (e) {
+        console.error("バックグラウンド再生の設定の保存に失敗しました", e);
+      }
+    },
+    [applyAudioMode, syncLockScreen],
   );
 
   // --- おやすみ（要件13 / UC 13.1） ---
@@ -845,6 +965,8 @@ export function AudioProvider({ children }: { children: ReactNode }) {
             // 解放済みなら何もしない
           }
           setBgmPlaying(false);
+          // おやすみ中は離れても静かなままにする（ロック画面からも取り下げる。要件13）
+          syncLockScreen();
         });
       } else {
         // 復帰時: BGMは鳴らさない（デフォルト停止に合わせ、ユーザーが再生ボタンで始める）。
@@ -860,9 +982,10 @@ export function AudioProvider({ children }: { children: ReactNode }) {
         }
         // BGMは停止のままにしたいので target=0（一時停止中のため無音。次の再生操作で戻る）
         fadeBgmAndAmbient({ bgm: 0, ambient: ambTarget }, AUDIO.FADE_IN_MS);
+        syncLockScreen(); // 戻した環境音をロック画面へ出す
       }
     },
-    [fadeBgmAndAmbient],
+    [fadeBgmAndAmbient, syncLockScreen],
   );
 
   // 起動時にBGMキューを組む（要件9・改訂）。再生ソース・シャッフルはDBから読む。
@@ -929,6 +1052,8 @@ export function AudioProvider({ children }: { children: ReactNode }) {
       setBgmRepeatOne,
       refreshBgm: refreshBgmQueue,
       setAmbientForWeather,
+      backgroundPlayback,
+      setBackgroundPlayback,
       runAndRestoreAudio,
       setGoodnight,
     }),
@@ -956,6 +1081,8 @@ export function AudioProvider({ children }: { children: ReactNode }) {
       setBgmRepeatOne,
       refreshBgmQueue,
       setAmbientForWeather,
+      backgroundPlayback,
+      setBackgroundPlayback,
       runAndRestoreAudio,
       setGoodnight,
     ],

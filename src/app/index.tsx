@@ -241,7 +241,8 @@ export default function HomeScreen() {
   const audioReady = audio.ready;
   useEffect(() => {
     if (!audioReady) return;
-    setAmbientForWeather(weather?.code ?? null);
+    // 天気の名前も渡す。BGMを鳴らしていないとき、ロック画面にはこの名前が出る（要件9）
+    setAmbientForWeather(weather?.code ?? null, weather?.name ?? null);
   }, [weather, audioReady, setAmbientForWeather]);
 
   // その夜の天気を選ぶ（要件2.5: 1晩＝1天気・最後の選択が残る）。

@@ -168,6 +168,20 @@ export async function updateNightPhotoEnabled(enabled: boolean): Promise<void> {
   );
 }
 
+/**
+ * バックグラウンド再生のON/OFF（要件9章 / 10.15）。稼働中も可（記録・判定に影響しないため）。
+ * OFFにすると、アプリを離れた時点でBGM・環境音が止まる。
+ */
+export async function updateBackgroundAudioEnabled(
+  enabled: boolean,
+): Promise<void> {
+  const db = await getDatabase();
+  await db.runAsync(
+    "UPDATE user SET background_audio_enabled = ?, updated_at = datetime('now')",
+    enabled ? 1 : 0,
+  );
+}
+
 /** 頑張りすぎ防止（休憩提案）のON/OFF（要件10.8）。稼働中も可 */
 export async function updateOverworkPreventionEnabled(
   enabled: boolean,

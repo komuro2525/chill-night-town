@@ -83,6 +83,7 @@
 | tutorial_seen_features      | TEXT         |     |     | 不可 | ''              | 機能ごとの初回説明を見たか（カンマ区切りのキー集合。例: `calendar,weather`）。初めてその画面/操作に触れたとき一度だけ出す。要件1.3 |
 | background_motion_enabled   | INTEGER(0/1) |     |     | 不可 | 1               | 背景のループ動画（要件2.2）を再生するか。1=動かす（既定）／0=静止画。動画素材が無い背景は本設定に関わらず静止画。設定10.11。CHECK: 0/1 |
 | night_photo_enabled         | INTEGER(0/1) |     |     | 不可 | 1               | その夜の写真（要件2.6）を撮る機能のON/OFF。1=使う（既定）／0=使わない。**0のときは撮影の入口を表示せず、カメラ権限を一度も要求しない**。0にしても撮影済みの写真は削除しない（カレンダーから閲覧・削除可）。設定10.14。CHECK: 0/1 |
+| background_audio_enabled    | INTEGER(0/1) |     |     | 不可 | 1               | アプリを離れているあいだもBGM・環境音の再生を続けるか（要件9章）。1=続ける（既定）／0=離れた時点で止める。設定10.15。CHECK: 0/1 |
 | created_at                  | TEXT         |     |     | 不可 | datetime('now') | 作成日時                                                                                                                                |
 | updated_at                  | TEXT         |     |     | 不可 | datetime('now') | 更新日時                                                                                                                                |
 

@@ -379,6 +379,17 @@ export default function SettingsScreen() {
             value={audio.volumes.bell}
             onChange={(v) => handleVolumeChange("bell", v)}
           />
+          {/* バックグラウンド再生（要件9 / 10.15）。稼働中も変更可 */}
+          <SettingRow
+            label="アプリを離れても鳴らす"
+            note="画面を消しているあいだも、BGMと環境音を流し続けます。"
+            right={
+              <Switch
+                value={audio.backgroundPlayback}
+                onValueChange={(v) => void audio.setBackgroundPlayback(v)}
+              />
+            }
+          />
           <SettingRow
             label="音楽のクレジット"
             onPress={() => router.push("/settings/credits")}

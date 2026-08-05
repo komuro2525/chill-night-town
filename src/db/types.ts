@@ -51,6 +51,8 @@ export type User = {
   background_motion_enabled: Bool;
   /** その夜の写真を撮る機能を使うか（1=使う・既定 / 0=使わない）。0のときはカメラ権限を要求しない。要件10.14 */
   night_photo_enabled: Bool;
+  /** アプリを離れているあいだもBGM・環境音を鳴らし続けるか（1=続ける・既定）。要件9章 / 10.15 */
+  background_audio_enabled: Bool;
   created_at: string;
   updated_at: string;
 };
