@@ -46,6 +46,7 @@ import { RoundIconButton } from "@/components/round-icon-button";
 import { StudyDayStatus } from "@/components/study-day-status";
 import { TimerDisplay } from "@/components/timer-display";
 import { TimerSetupModal, type TimerSetupValues } from "@/components/timer-setup-modal";
+import { WeatherOverlay } from "@/components/weather-overlay";
 import { WeatherPicker } from "@/components/weather-picker";
 import { WeatherRow } from "@/components/weather-row";
 import { ThemedText } from "@/components/themed-text";
@@ -495,7 +496,7 @@ export default function HomeScreen() {
     if (current !== null && current !== undefined) {
       await activeSessionRepo.updateBreakThreshold(getContinueThreshold(current));
     }
-    await timer.pause();
+    await timer.pause(); // 一時停止側で予約を落とす（UC 12.2）
     setBreakTotal(null);
   }, [timer]);
 
@@ -828,6 +829,7 @@ export default function HomeScreen() {
         session={timer.session}
         // おやすみの暗転しきった後は、見えていない背景を回し続けない（要件13）
         motionEnabled={user?.background_motion_enabled === 1 && !goodnightDarkened}
+        weatherCode={weather?.code ?? null}
         onRestoreFromImmersive={() => {
           // 背景タップ: アイドル最小表示を解除（＝通常表示へ戻す）し、鑑賞モードも解除する
           markActive();
@@ -1289,6 +1291,7 @@ function HomeBackground({
   level,
   session,
   motionEnabled,
+  weatherCode,
   onRestoreFromImmersive,
 }: {
   landscapeMode: boolean;
@@ -1298,6 +1301,8 @@ function HomeBackground({
   session: ActiveSession | null;
   /** 設定「背景を動かす」（要件10.11）。OFFなら動画素材があっても静止画 */
   motionEnabled: boolean;
+  /** その学習日に選択された天気（要件8）。未選択は null＝演出なし */
+  weatherCode: string | null | undefined;
   /** 鑑賞モード中に背景をタップしたときの復帰 */
   onRestoreFromImmersive: () => void;
 }) {
@@ -1312,19 +1317,30 @@ function HomeBackground({
       : undefined;
 
   if (landscapeMode) {
-    // 横向き（要件2.4）: 街の全景だけを表示する閲覧専用ビュー
-    return <LandscapeHome art={art} video={video} session={session} />;
-  }
-  if (art) {
+    // 横向き（要件2.4）: 街の全景だけを表示する閲覧専用ビュー。
+    // 天気の演出は最小情報表示より下に敷きたいため、ビューの内側で重ねる
     return (
-      <TownBackground
+      <LandscapeHome
         art={art}
         video={video}
-        onTap={onRestoreFromImmersive}
+        session={session}
+        weatherCode={weatherCode}
+        effectsEnabled={motionEnabled}
       />
     );
   }
-  return <View style={styles.fallback} />;
+  return (
+    <>
+      {art ? (
+        <TownBackground art={art} video={video} onTap={onRestoreFromImmersive} />
+      ) : (
+        <View style={styles.fallback} />
+      )}
+      {/* 天気の演出（要件8）。街より上・UIより下。スワイプでは動かさない
+          （雨はカメラの手前にあるもので、街と一緒に流れると視点がおかしくなる） */}
+      <WeatherOverlay weatherCode={weatherCode} enabled={motionEnabled} />
+    </>
+  );
 }
 
 // 選択中の街の背景。画面を覆うサイズ（cover）で表示し、スワイプで街を探索する（要件2.2）。

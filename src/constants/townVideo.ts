@@ -80,6 +80,18 @@ const TOWN_VIDEO: Record<string, TownVideoSet> = {
         },
       ],
     },
+    // 深夜は海面の月光が静かに揺れるだけ（流れ星・猫は動かさない）。
+    // 8秒ループでは目を引く動きほど繰り返しに気づかれるため、動きを1つに絞る。
+    // 同じ理由でパターン違いも作らない（差が分からないため）
+    latenight: {
+      1: [
+        {
+          source: require("@/assets/home/nightTown/latenight/mp4/nightTown_latenight_lv1.mp4"),
+          width: 1280,
+          height: 720,
+        },
+      ],
+    },
   },
 };
 

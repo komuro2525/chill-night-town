@@ -5,6 +5,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { MinimalHomeUI } from "@/components/minimal-home";
 import { TownVideoBackdrop } from "@/components/town-video";
+import { WeatherOverlay } from "@/components/weather-overlay";
 import type { TownVideo } from "@/constants/townVideo";
 import type { ActiveSession } from "@/db/types";
 
@@ -25,6 +26,8 @@ export function LandscapeHome({
   art,
   video,
   session,
+  weatherCode,
+  effectsEnabled,
 }: {
   /** 選択中の街の全景（未登録なら暗い背景のみ） */
   art: ImageSourcePropType | undefined;
@@ -32,6 +35,10 @@ export function LandscapeHome({
   video: TownVideo | undefined;
   /** 計測中セッション（非計測時は null）。稼働中のみ時計＋作業中を出す */
   session: ActiveSession | null;
+  /** その学習日に選択された天気（要件8）。未選択は null＝演出なし */
+  weatherCode: string | null | undefined;
+  /** 天気の演出を出すか（「背景を動かす」設定・おやすみの暗転に追従する） */
+  effectsEnabled: boolean;
 }) {
   const insets = useSafeAreaInsets();
   // 情報表示の表示/非表示（タップでトグル）。初期は表示
@@ -50,6 +57,9 @@ export function LandscapeHome({
       ) : (
         <View style={[StyleSheet.absoluteFill, styles.fallback]} />
       )}
+
+      {/* 天気の演出（要件8）。街より上・最小情報表示より下に敷く */}
+      <WeatherOverlay weatherCode={weatherCode} enabled={effectsEnabled} />
 
       {/* アイドル最小表示と同じUI。横画面は閲覧専用のため時計は非操作（onPressClock を渡さない） */}
       {infoVisible ? <MinimalHomeUI session={session} insets={insets} /> : null}
