@@ -91,6 +91,27 @@ const TOWN_VIDEO: Record<string, TownVideoSet> = {
           height: 720,
         },
       ],
+      2: [
+        {
+          source: require("@/assets/home/nightTown/latenight/mp4/nightTown_latenight_lv2.mp4"),
+          width: 1280,
+          height: 720,
+        },
+      ],
+      3: [
+        {
+          source: require("@/assets/home/nightTown/latenight/mp4/nightTown_latenight_lv3.mp4"),
+          width: 1280,
+          height: 720,
+        },
+      ],
+      4: [
+        {
+          source: require("@/assets/home/nightTown/latenight/mp4/nightTown_latenight_lv4_1.mp4"),
+          width: 1280,
+          height: 720,
+        },
+      ],
     },
   },
 };
