@@ -3,6 +3,7 @@ import { StyleSheet, Text, View } from "react-native";
 import {
   BarChart,
   CountList,
+  StarField,
   Stat,
   summaryStyles,
   type BarDatum,
@@ -10,6 +11,7 @@ import {
 import { LightColor, Spacing } from "@/constants/theme";
 import type { OverallSummary } from "@/db/repositories/calendarRepo";
 import type { TownWithProgress } from "@/db/repositories/townProgressRepo";
+import { getAlbumStage } from "@/lib/calendar";
 import { formatMinutes } from "@/lib/study-day";
 
 // 通算のふりかえり（要件4.4）。月をまたいだ全期間・全街合計の集計。
@@ -53,6 +55,11 @@ export function OverallSummaryCard({
 
   return (
     <View style={summaryStyles.card}>
+      {/* 通算で学習した夜の数に応じて灯る星（要件4.4）。
+          カード全面の背面に敷く。通算は減らないため段階も戻らない */}
+      {/* 通算は月に属さないため、種は固定（いつ見ても同じ夜空） */}
+      <StarField stage={getAlbumStage(summary.nightCount, "overall")} seed={0} />
+
       <View style={summaryStyles.statsRow}>
         {/* 「通った夜」ではアプリを開いた回数とも読めるため、学習した夜と明示する */}
         <Stat label="学習した夜" value={`${summary.nightCount}夜`} />

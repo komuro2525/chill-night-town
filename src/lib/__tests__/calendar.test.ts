@@ -4,6 +4,7 @@
 // 最頻の算出は同数時の tie-break で挙動が変わる。境界を固定する。
 
 import {
+  getAlbumStage,
   getMonthGrid,
   getMonthRange,
   isMonthComplete,
@@ -153,6 +154,38 @@ describe("pickMostFrequent（最頻の算出・要件4.2）", () => {
     ]);
     // 同数。id=1 は order=1、id=9 は order 不明（Infinity）→ 1 を選ぶ
     expect(pickMostFrequent(counts, order)).toBe(1);
+  });
+});
+
+describe("getAlbumStage（アルバムの見え方の段階・要件4.2 / 4.4）", () => {
+  it("月次: 5夜で2段階目、15夜で3段階目（境界のちょうどで上がる）", () => {
+    expect(getAlbumStage(4, "monthly")).toBe(1);
+    expect(getAlbumStage(5, "monthly")).toBe(2);
+    expect(getAlbumStage(14, "monthly")).toBe(2);
+    expect(getAlbumStage(15, "monthly")).toBe(3);
+  });
+
+  it("通算: 20夜で2段階目、60夜で3段階目", () => {
+    expect(getAlbumStage(19, "overall")).toBe(1);
+    expect(getAlbumStage(20, "overall")).toBe(2);
+    expect(getAlbumStage(59, "overall")).toBe(2);
+    expect(getAlbumStage(60, "overall")).toBe(3);
+  });
+
+  it("月次と通算でしきい値が異なる（1か月は最大31夜のため）", () => {
+    // 同じ15夜でも、月次は3段階目・通算はまだ1段階目
+    expect(getAlbumStage(15, "monthly")).toBe(3);
+    expect(getAlbumStage(15, "overall")).toBe(1);
+  });
+
+  it("記録が無くても1段階目（欠けた状態にしない）", () => {
+    expect(getAlbumStage(0, "monthly")).toBe(1);
+    expect(getAlbumStage(0, "overall")).toBe(1);
+  });
+
+  it("上限は無く、増え続けても3段階目で止まる", () => {
+    expect(getAlbumStage(1000, "overall")).toBe(3);
+    expect(getAlbumStage(31, "monthly")).toBe(3);
   });
 });
 

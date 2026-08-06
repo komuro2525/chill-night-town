@@ -11,6 +11,7 @@ import { CalendarDayDetail } from "@/components/calendar-day-detail";
 import { FeatureTutorial } from "@/components/feature-tutorial";
 import { MonthSummaryCard } from "@/components/month-summary-card";
 import { OverallSummaryCard } from "@/components/overall-summary-card";
+import { StarField } from "@/components/summary-parts";
 import { LightColor, Spacing } from "@/constants/theme";
 import { useSettings } from "@/contexts/SettingsContext";
 import { calendarRepo, eventRepo, townProgressRepo } from "@/db/repositories";
@@ -22,6 +23,7 @@ import type {
   OverallSummary,
 } from "@/db/repositories/calendarRepo";
 import {
+  getAlbumStage,
   getMonthGrid,
   getMonthRange,
   isMonthComplete,
@@ -116,6 +118,9 @@ export default function CalendarScreen() {
   }
 
   const grid = getMonthGrid(ym.year, ym.month);
+
+  // 夜空の種。月ごとに星の配置を変える（同じ空が並ぶと月を移っても景色が変わらない）
+  const skySeed = ym.year * 100 + ym.month;
 
   // 完了した月に限り、その月の感情傾向＋最多感情に応じたねぎらいの一言（要件4.2拡張）。
   // 進行中の月・記録の無い月には出さない。同じ月は毎回同じ文面（buildReviewMessage が年月固定）。
@@ -212,7 +217,14 @@ export default function CalendarScreen() {
         <GestureDetector gesture={swipeTabs}>
           <View style={styles.swipeArea}>
         {tab === "calendar" ? (
-          <>
+          <View style={styles.sky}>
+            {/* その月に学習した夜の数に応じて灯る星（要件4.2）。
+                月の一覧の全面に、マスの背面として敷く */}
+            <StarField
+              stage={getAlbumStage(summary?.nightCount ?? 0, "monthly")}
+              seed={skySeed}
+            />
+
             {/* 曜日の見出し */}
             <View style={styles.weekRow}>
               {WEEKDAYS.map((w, i) => (
@@ -272,10 +284,14 @@ export default function CalendarScreen() {
                 );
               })}
             </View>
-          </>
+          </View>
         ) : tab === "summary" ? (
           /* 月次サマリー・天気アルバム（要件4.2） */
-          <MonthSummaryCard summary={summary} reviewMessage={reviewMessage} />
+          <MonthSummaryCard
+            summary={summary}
+            reviewMessage={reviewMessage}
+            skySeed={skySeed}
+          />
         ) : (
           /* 通算のふりかえり（要件4.4） */
           <OverallSummaryCard summary={overall} towns={towns} />
@@ -356,6 +372,9 @@ const styles = StyleSheet.create({
     color: LightColor,
     fontWeight: "600",
   },
+  // 月の一覧の夜空。マスの下の余白まで広げ（flex:1）、そこにも星を灯す。
+  // マスぶんの高さしか無いと、画面下half が空いて寂しく見えるため
+  sky: { flex: 1, overflow: "hidden", borderRadius: 12 },
   weekRow: { flexDirection: "row" },
   weekday: {
     flex: 1,

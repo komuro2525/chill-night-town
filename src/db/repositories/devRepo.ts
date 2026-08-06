@@ -314,3 +314,92 @@ export async function seedMonthlyReviewSampleData(): Promise<void> {
     }
   });
 }
+
+/**
+ * アルバムの見え方の段階（要件4.2 / 4.4）を見比べるためのダミー記録を入れる（開発用）。
+ *
+ * 目的: 段階は「学習した夜の数」で決まり（月次5夜・15夜／通算30夜・100夜）、
+ *   実データでは何か月も使わないと3段階目に届かない。段階の違いを並べて確認するため、
+ *   夜数の異なる月をまとめて作る。
+ *
+ *   ・2か月前: 20夜 → 月次3段階目（星が増え、まれに流れ星）
+ *   ・1か月前:  8夜 → 月次2段階目（星のみ）
+ *   ・今月:     3夜 → 月次1段階目（飾りなし。すでに記録があれば足す）
+ *   ・3〜5か月前: 各12夜 → 通算を60夜以上にし、「これまで」を3段階目にする
+ *
+ * 天気は月ごとにずらして選び、アルバムの棒が1種類に偏らないようにする。
+ * 街の成長には反映しない（表示の確認だけが目的）。
+ */
+export async function seedAlbumStageSampleData(): Promise<void> {
+  const db = await getDatabase();
+  const user = await db.getFirstAsync<{ id: number; daily_goal_minutes: number }>(
+    "SELECT id, daily_goal_minutes FROM user LIMIT 1",
+  );
+  const town = await db.getFirstAsync<{ town_id: number }>(
+    "SELECT town_id FROM town_progress WHERE is_selected = 1 LIMIT 1",
+  );
+  if (!user || !town) return;
+
+  // [何か月前, その月に作る夜数]
+  const plan: [number, number][] = [
+    [2, 20],
+    [1, 8],
+    [0, 3],
+    [3, 12],
+    [4, 12],
+    [5, 12],
+  ];
+
+  const base = new Date();
+  await db.withTransactionAsync(async () => {
+    for (const [monthsAgo, nights] of plan) {
+      for (let i = 0; i < nights; i++) {
+        // 月内で日付が重ならないよう2日おきに置く（1日から順に）
+        const day = 1 + i * 2;
+        const start = new Date(
+          base.getFullYear(),
+          base.getMonth() - monthsAgo,
+          day,
+          21,
+          0,
+          0,
+          0,
+        );
+        // 未来の日付は作らない（今月ぶんは今日までに収める）
+        if (start.getTime() > base.getTime()) break;
+
+        const studyDate = formatDateKey(start);
+        // 30〜120分の範囲で散らす。目標達成の日も混ざるようにする
+        const minutes = 30 + ((monthsAgo * 7 + i * 13) % 91);
+        const end = new Date(start.getTime() + minutes * 60 * 1000);
+        // 感情・天気はマスタの1〜11から順にずらして選ぶ
+        const emotionId = ((monthsAgo * 3 + i) % 11) + 1;
+        const weatherId = ((monthsAgo * 5 + i * 2) % 11) + 1;
+
+        await db.runAsync(
+          `INSERT INTO study_session
+             (user_id, town_id, emotion_id, timer_mode, study_date,
+              start_time, end_time, planned_minutes, duration_minutes)
+           VALUES (?, ?, ?, 'simple', ?, ?, ?, ?, ?)`,
+          user.id, town.town_id, emotionId, studyDate,
+          start.toISOString(), end.toISOString(), minutes, minutes,
+        );
+
+        await db.runAsync(
+          `INSERT INTO daily_night_weather (user_id, study_date, night_weather_id)
+           VALUES (?, ?, ?)
+           ON CONFLICT (user_id, study_date)
+           DO UPDATE SET night_weather_id = excluded.night_weather_id`,
+          user.id, studyDate, weatherId,
+        );
+
+        if (minutes >= user.daily_goal_minutes) {
+          await db.runAsync(
+            "INSERT OR IGNORE INTO daily_goal_achievement (user_id, study_date) VALUES (?, ?)",
+            user.id, studyDate,
+          );
+        }
+      }
+    }
+  });
+}

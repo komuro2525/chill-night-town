@@ -54,6 +54,8 @@ export type DayDetail = {
 export type MonthSummary = {
   totalMinutes: number;
   sessionCount: number;
+  /** その月に学習した夜の数（アルバムの見え方の段階に使う。要件4.2） */
+  nightCount: number;
   /** 最も多かった感情（記録が無ければ null） */
   topEmotion: Emotion | null;
   /** 最も多かった夜の天気（記録が無ければ null） */
@@ -225,8 +227,10 @@ export async function getMonthSummary(
   const totals = await db.getFirstAsync<{
     total: number | null;
     count: number;
+    nights: number;
   }>(
-    `SELECT SUM(duration_minutes) AS total, COUNT(*) AS count
+    `SELECT SUM(duration_minutes) AS total, COUNT(*) AS count,
+            COUNT(DISTINCT study_date) AS nights
        FROM study_session WHERE study_date BETWEEN ? AND ?`,
     startDate,
     endDate,
@@ -282,6 +286,7 @@ export async function getMonthSummary(
   return {
     totalMinutes: totals?.total ?? 0,
     sessionCount: totals?.count ?? 0,
+    nightCount: totals?.nights ?? 0,
     topEmotion: topEmotion ? stripCount(topEmotion) : null,
     topWeather: topWeather ? stripWeather(topWeather) : null,
     emotionCounts: emotionRows.map((r) => ({

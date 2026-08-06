@@ -4,12 +4,14 @@ import {
   BarChart,
   CountList,
   formatHourLabel,
+  StarField,
   Stat,
   summaryStyles,
   type BarDatum,
 } from "@/components/summary-parts";
 import { LightColor, Spacing } from "@/constants/theme";
 import type { MonthSummary } from "@/db/repositories/calendarRepo";
+import { getAlbumStage } from "@/lib/calendar";
 import { formatMinutes } from "@/lib/study-day";
 
 // 月次サマリー・夜の天気アルバム（要件4.2）。
@@ -23,9 +25,12 @@ export function MonthSummaryCard({
   summary,
   // 完了した月のねぎらいメッセージ（要件4.2拡張）。無い月・進行中の月は null
   reviewMessage = null,
+  // 夜空の種（年月）。月ごとに星の配置を変える
+  skySeed,
 }: {
   summary: MonthSummary | null;
   reviewMessage?: string | null;
+  skySeed: number;
 }) {
   if (!summary || summary.sessionCount === 0) {
     return (
@@ -67,6 +72,13 @@ export function MonthSummaryCard({
 
   return (
     <View style={summaryStyles.card}>
+      {/* その月に学習した夜の数に応じて灯る星（要件4.2）。
+          カード全面の背面に敷く。月ごとに決まるので過去の月は当時のまま */}
+      <StarField
+        stage={getAlbumStage(summary.nightCount, "monthly")}
+        seed={skySeed}
+      />
+
       {/* 完了した月のねぎらいの一言（静かなトーン。あるときだけ） */}
       {reviewMessage ? (
         <View style={styles.review}>

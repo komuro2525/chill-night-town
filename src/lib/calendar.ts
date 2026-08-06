@@ -4,7 +4,7 @@
 // グリッドの生成は月初の曜日やうるう年でずれやすく、画面を見ても正しさが
 // 分かりにくいため、DBに触れない純関数にして境界をテストで固定する。
 
-import { STUDY_DAY } from "@/constants/domain";
+import { ALBUM_DECOR, STUDY_DAY } from "@/constants/domain";
 
 import { formatDateKey } from "./study-day";
 
@@ -119,6 +119,31 @@ export function pickLongestNight(nights: NightTotal[]): NightTotal | null {
     }
   }
   return best;
+}
+
+/** 夜の天気アルバムの見え方の段階（要件4.2 / 4.4）。1=飾りなし、2=枠、3=枠＋星 */
+export type AlbumStage = 1 | 2 | 3;
+
+/**
+ * 学習した夜の数からアルバムの見え方の段階を求める（要件4.2 / 4.4）。
+ *
+ * 段階は画面に数値として出さない（出すと段階を上げること自体が目的になる）。
+ * **1段階目は「飾りが無い状態」ではなく現行のカードそのもの**であり、2段階目以降が
+ * 続けた人へのささやかな上乗せになる——夜が少なかった月を欠けた見た目にすると、
+ * 「サボった月」を突きつける形になるためである。
+ *
+ * @param nights 学習した夜の数（月次はその月、通算は全期間）
+ * @param scope 'monthly'（月ごとに変わる）か 'overall'（呼び出し側で不可逆に扱う）
+ */
+export function getAlbumStage(
+  nights: number,
+  scope: "monthly" | "overall",
+): AlbumStage {
+  const { STAGE2, STAGE3 } =
+    scope === "monthly" ? ALBUM_DECOR.MONTHLY : ALBUM_DECOR.OVERALL;
+  if (nights >= STAGE3) return 3;
+  if (nights >= STAGE2) return 2;
+  return 1;
 }
 
 /** よく灯していた時間帯の1区間（要件4.2）。hour は 0〜23、null は夜間帯の外（昼） */

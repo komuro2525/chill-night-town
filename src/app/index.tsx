@@ -694,12 +694,13 @@ export default function HomeScreen() {
     try {
       await devRepo.seedCalendarSampleData();
       await devRepo.seedMonthlyReviewSampleData();
+      await devRepo.seedAlbumStageSampleData();
       await reloadSummary();
       await reloadWeather();
       if (__DEV__)
         Alert.alert(
           "ダミー記録",
-          "過去数日ぶんと、4〜6月の傾向違いの記録を入れました。カレンダーの日別と各月の「ふりかえり」を確認できます。",
+          "過去数日ぶん、4〜6月の傾向違い、アルバムの段階比較用（2か月前=20夜／1か月前=8夜／今月=3夜、通算60夜超）の記録を入れました。",
         );
     } catch (e) {
       console.error("ダミー記録の投入に失敗しました", e);
@@ -1434,7 +1435,7 @@ function DevPanel({
           今夜の学習時間を初期化
         </ThemedText>
       </Pressable>
-      {/* カレンダー確認用のダミー記録（過去数日＋4〜6月の傾向違い）をまとめて入れる */}
+      {/* カレンダー確認用のダミー記録（過去数日＋4〜6月の傾向違い＋アルバムの段階比較）をまとめて入れる */}
       <Pressable onPress={onSeedCalendar} style={styles.devButton}>
         <ThemedText type="small" style={styles.devButtonText}>
           カレンダー用のダミー記録を入れる
