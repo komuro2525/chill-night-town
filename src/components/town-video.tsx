@@ -1,17 +1,15 @@
 import { Image } from "expo-image";
-import { useVideoPlayer, VideoView } from "expo-video";
+import { VideoView } from "expo-video";
 import type { ImageSourcePropType } from "react-native";
 import { StyleSheet } from "react-native";
 
 import type { TownVideo } from "@/constants/townVideo";
+import { useLoopVideoPlayer } from "@/hooks/use-loop-video";
 
 // 街の背景のループ動画（要件2.2）。静止画の代わりに敷く。
 //
-// ・無音で再生する。動画の音は一切使わない
-// ・audioMixingMode は "mixWithOthers" が必須。既定のままだとBGM・環境音（expo-audio）を
-//   止めてしまう。背景が音楽を消すことはあってはならない（要件9）
 // ・ポスター（対応する静止画）を下敷きに敷き、読み込みの一瞬で黒画面が出ないようにする
-// ・アプリがバックグラウンドへ回ると再生は自動で止まる（背景再生を有効にしていないため）
+// ・無音・ループ・バックグラウンドから戻ったときの再開は useLoopVideoPlayer に集約している
 export function TownVideoBackdrop({
   video,
   poster,
@@ -22,12 +20,7 @@ export function TownVideoBackdrop({
   poster: ImageSourcePropType | undefined;
   contentFit?: "cover" | "contain";
 }) {
-  const player = useVideoPlayer(video.source, (p) => {
-    p.loop = true;
-    p.muted = true;
-    p.audioMixingMode = "mixWithOthers";
-    p.play();
-  });
+  const player = useLoopVideoPlayer(video.source);
 
   return (
     <>

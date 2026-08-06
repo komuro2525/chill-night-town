@@ -1,7 +1,8 @@
-import { useVideoPlayer, VideoView } from "expo-video";
+import { VideoView } from "expo-video";
 import { StyleSheet } from "react-native";
 
 import { getWeatherEffect } from "@/constants/weatherEffect";
+import { useLoopVideoPlayer } from "@/hooks/use-loop-video";
 
 // その夜の天気の演出レイヤー（要件8章）。背景（街）の上、UIの下に敷く。
 //
@@ -29,13 +30,9 @@ export function WeatherOverlay({
 
 // プレイヤーはフックのため、演出の有無で条件分岐できるよう内側の部品に分ける。
 function WeatherVideo({ source, opacity }: { source: number; opacity: number }) {
-  const player = useVideoPlayer(source, (p) => {
-    p.loop = true;
-    p.muted = true;
-    // 雨の音は環境音（要件9 / ambient-select.ts）が担う。映像側の音は使わない
-    p.audioMixingMode = "mixWithOthers";
-    p.play();
-  });
+  // 雨の音は環境音（要件9 / ambient-select.ts）が担う。映像側の音は使わない。
+  // 無音・ループ・復帰時の再開はフックに集約している
+  const player = useLoopVideoPlayer(source);
 
   return (
     <VideoView
