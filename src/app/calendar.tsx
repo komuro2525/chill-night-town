@@ -10,13 +10,16 @@ import { runOnJS } from "react-native-reanimated";
 import { CalendarDayDetail } from "@/components/calendar-day-detail";
 import { FeatureTutorial } from "@/components/feature-tutorial";
 import { MonthSummaryCard } from "@/components/month-summary-card";
+import { OverallSummaryCard } from "@/components/overall-summary-card";
 import { LightColor, Spacing } from "@/constants/theme";
 import { useSettings } from "@/contexts/SettingsContext";
-import { calendarRepo, eventRepo } from "@/db/repositories";
+import { calendarRepo, eventRepo, townProgressRepo } from "@/db/repositories";
+import type { TownWithProgress } from "@/db/repositories/townProgressRepo";
 import type {
   DayDetail,
   DayMark,
   MonthSummary,
+  OverallSummary,
 } from "@/db/repositories/calendarRepo";
 import {
   getMonthGrid,
@@ -34,6 +37,14 @@ import { getStudyDate } from "@/lib/study-day";
 
 const WEEKDAYS = ["日", "月", "火", "水", "木", "金", "土"];
 
+// タブの並び。横スワイプはこの順序を1つずつ進む/戻る（端では止まる）
+const TABS = [
+  { key: "calendar", label: "カレンダー" },
+  { key: "summary", label: "ふりかえり" },
+  { key: "overall", label: "これまで" },
+] as const;
+type TabKey = (typeof TABS)[number]["key"];
+
 export default function CalendarScreen() {
   const { user } = useSettings();
   const today = now();
@@ -46,9 +57,12 @@ export default function CalendarScreen() {
   const [eventDates, setEventDates] = useState<Set<string>>(new Set());
   const [summary, setSummary] = useState<MonthSummary | null>(null);
   const [detail, setDetail] = useState<DayDetail | null>(null);
-  // カレンダー（夜を1日ずつ辿る）と ふりかえり（月を俯瞰）を切り替える。
-  // 月の選択は両タブで共有する
-  const [tab, setTab] = useState<"calendar" | "summary">("calendar");
+  // 通算のふりかえり（要件4.4）。月に依存しないため、タブを開いたときだけ読む
+  const [overall, setOverall] = useState<OverallSummary | null>(null);
+  const [towns, setTowns] = useState<TownWithProgress[]>([]);
+  // カレンダー（夜を1日ずつ辿る）／ふりかえり（月を俯瞰）／これまで（通算）を切り替える。
+  // 月の選択はカレンダー・ふりかえりで共有する（これまでは月に依存しない）
+  const [tab, setTab] = useState<TabKey>("calendar");
 
   // 「今日」のマスは暦日ではなく学習日基準（マス＝study_date のため）。
   // 深夜0:00〜4:59は前夜のサイクル内なので、今夜の記録が乗る前日のマスを光らせる
@@ -73,6 +87,25 @@ export default function CalendarScreen() {
   useEffect(() => {
     void reload();
   }, [reload]);
+
+  // 通算は全期間の集計のため、月を切り替えるたびに引き直さない。
+  // 「これまで」を開いたときと、記録を編集したあとにだけ読む
+  const reloadOverall = useCallback(async () => {
+    try {
+      const [sum, townList] = await Promise.all([
+        calendarRepo.getOverallSummary(),
+        townProgressRepo.listTownsWithProgress(),
+      ]);
+      setOverall(sum);
+      setTowns(townList);
+    } catch (e) {
+      console.error("通算のふりかえりの読み込みに失敗しました", e);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (tab === "overall") void reloadOverall();
+  }, [tab, reloadOverall]);
 
   async function openDay(dateKey: string) {
     try {
@@ -108,15 +141,22 @@ export default function CalendarScreen() {
         })
       : null;
 
-  // 横スワイプでタブ切替（左＝ふりかえりへ / 右＝カレンダーへ）。
-  // 2タブなので方向でそのまま行き先が決まる
+  // 横スワイプでタブ切替（左＝次のタブへ / 右＝前のタブへ）。端では止まる
+  const shiftTab = useCallback((delta: number) => {
+    setTab((prev) => {
+      const i = TABS.findIndex((t) => t.key === prev);
+      const next = Math.min(TABS.length - 1, Math.max(0, i + delta));
+      return TABS[next].key;
+    });
+  }, []);
+
   const swipeTabs = Gesture.Race(
     Gesture.Fling()
       .direction(Directions.LEFT)
-      .onEnd(() => runOnJS(setTab)("summary")),
+      .onEnd(() => runOnJS(shiftTab)(1)),
     Gesture.Fling()
       .direction(Directions.RIGHT)
-      .onEnd(() => runOnJS(setTab)("calendar")),
+      .onEnd(() => runOnJS(shiftTab)(-1)),
   );
 
   return (
@@ -124,7 +164,8 @@ export default function CalendarScreen() {
       {/* 初めてカレンダーを開いたとき一度だけ、この機能の説明を出す */}
       <FeatureTutorial featureKey="calendar" />
       <ScrollView contentContainerStyle={styles.scroll}>
-        {/* 月の切り替え */}
+        {/* 月の切り替え。通算（これまで）は月に依存しないため出さない */}
+        {tab !== "overall" ? (
         <View style={styles.monthBar}>
           <Pressable
             onPress={() => setYm((p) => shiftMonth(p.year, p.month, -1))}
@@ -146,29 +187,26 @@ export default function CalendarScreen() {
             <Text style={styles.arrowText}>›</Text>
           </Pressable>
         </View>
+        ) : (
+          /* 月バーを消すと画面が上に詰まるため、同じ高さの余白で位置を揃える */
+          <View style={styles.monthBarPlaceholder} />
+        )}
 
-        {/* タブ: カレンダー ⇄ ふりかえり */}
+        {/* タブ: カレンダー / ふりかえり / これまで */}
         <View style={styles.segment}>
-          <Pressable
-            onPress={() => setTab("calendar")}
-            style={[styles.segItem, tab === "calendar" && styles.segItemActive]}
-            accessibilityLabel="カレンダー"
-            accessibilityState={{ selected: tab === "calendar" }}
-          >
-            <Text style={[styles.segText, tab === "calendar" && styles.segTextActive]}>
-              カレンダー
-            </Text>
-          </Pressable>
-          <Pressable
-            onPress={() => setTab("summary")}
-            style={[styles.segItem, tab === "summary" && styles.segItemActive]}
-            accessibilityLabel="ふりかえり"
-            accessibilityState={{ selected: tab === "summary" }}
-          >
-            <Text style={[styles.segText, tab === "summary" && styles.segTextActive]}>
-              ふりかえり
-            </Text>
-          </Pressable>
+          {TABS.map((t) => (
+            <Pressable
+              key={t.key}
+              onPress={() => setTab(t.key)}
+              style={[styles.segItem, tab === t.key && styles.segItemActive]}
+              accessibilityLabel={t.label}
+              accessibilityState={{ selected: tab === t.key }}
+            >
+              <Text style={[styles.segText, tab === t.key && styles.segTextActive]}>
+                {t.label}
+              </Text>
+            </Pressable>
+          ))}
         </View>
 
         <GestureDetector gesture={swipeTabs}>
@@ -235,9 +273,12 @@ export default function CalendarScreen() {
               })}
             </View>
           </>
-        ) : (
+        ) : tab === "summary" ? (
           /* 月次サマリー・天気アルバム（要件4.2） */
           <MonthSummaryCard summary={summary} reviewMessage={reviewMessage} />
+        ) : (
+          /* 通算のふりかえり（要件4.4） */
+          <OverallSummaryCard summary={overall} towns={towns} />
         )}
           </View>
         </GestureDetector>
@@ -271,6 +312,8 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     marginBottom: Spacing.four,
   },
+  // 月バーと同じ高さ（ボタン44 + 下マージン）。タブ切替で見出しが飛び跳ねないようにする
+  monthBarPlaceholder: { height: 44, marginBottom: Spacing.four },
   arrow: {
     width: 44,
     height: 44,

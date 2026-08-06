@@ -10,6 +10,12 @@
 
 import type { Emotion, NightWeather, StudyTag } from "../types";
 import { getDatabase } from "../database";
+import {
+  pickLongestNight,
+  tallyStartHours,
+  type HourCount,
+  type NightTotal,
+} from "@/lib/calendar";
 
 /** カレンダーのマス点灯用。記録のある学習日と、その夜の天気・目標達成 */
 export type DayMark = {
@@ -56,6 +62,28 @@ export type MonthSummary = {
   emotionCounts: { emotion: Emotion; count: number }[];
   /** 夜の天気アルバム: 集めた天気と夜数（display_order 順、集めた分のみ） */
   weatherAlbum: { weather: NightWeather; nights: number }[];
+  /** 目標に届いた夜の数（割合にはしない。要件4.2） */
+  achievedNights: number;
+  /** 学習内容タグ別の記録回数（多い順に並べるのは表示側） */
+  tagCounts: { tag: StudyTag; count: number }[];
+  /** よく灯していた時間帯（夜の並び順・記録のある区間のみ） */
+  startHours: HourCount[];
+};
+
+/** 通算のふりかえり（要件4.4）。全期間・全街合計の集計 */
+export type OverallSummary = {
+  /** 全期間の実績学習時間の合計（分） */
+  totalMinutes: number;
+  /** 通った夜の数（学習記録のある学習日の数） */
+  nightCount: number;
+  /** いちばん長かった夜（記録が無ければ null） */
+  longestNight: NightTotal | null;
+  /** 通算の夜の天気アルバム（display_order 順、集めた分のみ） */
+  weatherAlbum: { weather: NightWeather; nights: number }[];
+  /** 目標に届いた夜の数（全期間） */
+  achievedNights: number;
+  /** 学習内容タグ別の記録回数（全期間） */
+  tagCounts: { tag: StudyTag; count: number }[];
 };
 
 /** その月に記録のある学習日のマーク情報（要件4.1: 記録のある日にマーク） */
@@ -229,6 +257,23 @@ export async function getMonthSummary(
     endDate,
   );
 
+  // 目標に届いた夜の数（要件4.2）。割合にはしないため、件数だけを数える
+  const achieved = await db.getFirstAsync<{ count: number }>(
+    "SELECT COUNT(*) AS count FROM daily_goal_achievement WHERE study_date BETWEEN ? AND ?",
+    startDate,
+    endDate,
+  );
+
+  const tagRows = await countTagsIn(startDate, endDate);
+
+  // 時間帯はローカル時刻の「時」で数える必要があるため、SQL では数えず開始時刻を取り出す
+  // （start_time はUTCのISO文字列。strftime で数えると時差ぶんずれる）
+  const startTimeRows = await db.getAllAsync<{ start_time: string }>(
+    "SELECT start_time FROM study_session WHERE study_date BETWEEN ? AND ?",
+    startDate,
+    endDate,
+  );
+
   // 最頻は「回数が最大／同数なら display_order の若い方」。
   // クエリを display_order 順に並べてあるため、回数が最大の先頭要素がそのまま答え
   const topEmotion = pickTop(emotionRows, (r) => r.count);
@@ -247,7 +292,96 @@ export async function getMonthSummary(
       weather: stripWeather(r),
       nights: r.nights,
     })),
+    achievedNights: achieved?.count ?? 0,
+    tagCounts: tagRows,
+    startHours: tallyStartHours(startTimeRows.map((r) => r.start_time)),
   };
+}
+
+/**
+ * 通算のふりかえり（要件4.4）。全期間・全街合計で集計する。
+ *
+ * 数え方は月次サマリー（4.2）に揃える。月と違って範囲で絞らないだけで、
+ * 「天気は学習記録のある夜だけを夜の数で数える」条件はそのまま残す。
+ */
+export async function getOverallSummary(): Promise<OverallSummary> {
+  const db = await getDatabase();
+
+  // 学習日ごとの実績合計。夜の数と最長の夜をここから求める
+  // （夜の数を COUNT(DISTINCT) で別に引かず、1本のクエリで賄う）
+  const nightRows = await db.getAllAsync<{
+    study_date: string;
+    minutes: number | null;
+  }>(
+    `SELECT study_date, SUM(duration_minutes) AS minutes
+       FROM study_session
+      GROUP BY study_date`,
+  );
+  const nights: NightTotal[] = nightRows.map((r) => ({
+    studyDate: r.study_date,
+    minutes: r.minutes ?? 0,
+  }));
+
+  const totals = await db.getFirstAsync<{ total: number | null }>(
+    "SELECT SUM(duration_minutes) AS total FROM study_session",
+  );
+
+  // 天気は「学習記録のある夜」を対象に夜の数で数える（1晩1天気）。display_order 順
+  const weatherRows = await db.getAllAsync<NightWeather & { nights: number }>(
+    `SELECT w.*, COUNT(*) AS nights
+       FROM daily_night_weather d
+       JOIN night_weather w ON w.id = d.night_weather_id
+      WHERE EXISTS (SELECT 1 FROM study_session s WHERE s.study_date = d.study_date)
+      GROUP BY w.id
+      ORDER BY w.display_order`,
+  );
+
+  const achieved = await db.getFirstAsync<{ count: number }>(
+    "SELECT COUNT(*) AS count FROM daily_goal_achievement",
+  );
+
+  return {
+    totalMinutes: totals?.total ?? 0,
+    nightCount: nights.length,
+    longestNight: pickLongestNight(nights),
+    weatherAlbum: weatherRows.map((r) => ({
+      weather: stripWeather(r),
+      nights: r.nights,
+    })),
+    achievedNights: achieved?.count ?? 0,
+    tagCounts: await countTagsIn(),
+  };
+}
+
+/**
+ * 学習内容タグ別の記録回数（要件4.2 / 4.4）。
+ *
+ * セッション単位で数える（1セッションに複数タグが付いていれば、それぞれ1回ずつ）。
+ * 削除済みタグ（is_active = 0）も、過去の記録に付いているものは含める——
+ * タグを消しただけで過去の集計が書き換わるのは、記録として正しくないため。
+ *
+ * 範囲を省略すると全期間を集計する（通算のふりかえり）。
+ */
+async function countTagsIn(
+  startDate?: string,
+  endDate?: string,
+): Promise<{ tag: StudyTag; count: number }[]> {
+  const db = await getDatabase();
+  const scoped = startDate !== undefined && endDate !== undefined;
+  const rows = await db.getAllAsync<StudyTag & { count: number }>(
+    `SELECT t.*, COUNT(*) AS count
+       FROM session_tag st
+       JOIN study_tag t ON t.id = st.study_tag_id
+       JOIN study_session s ON s.id = st.study_session_id
+      ${scoped ? "WHERE s.study_date BETWEEN ? AND ?" : ""}
+      GROUP BY t.id
+      ORDER BY t.is_custom, t.display_order, t.id`,
+    ...(scoped ? [startDate, endDate] : []),
+  );
+  return rows.map((r) => {
+    const { count, ...tag } = r;
+    return { tag, count };
+  });
 }
 
 /** display_order 順の配列から、指定した数が最大の要素を返す（同数は先頭＝order若い方） */

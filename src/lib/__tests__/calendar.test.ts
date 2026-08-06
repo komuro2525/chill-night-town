@@ -7,8 +7,10 @@ import {
   getMonthGrid,
   getMonthRange,
   isMonthComplete,
+  pickLongestNight,
   pickMostFrequent,
   shiftMonth,
+  tallyStartHours,
 } from "../calendar";
 
 /** null を除いた実日付のセルだけ取り出す */
@@ -151,5 +153,110 @@ describe("pickMostFrequent（最頻の算出・要件4.2）", () => {
     ]);
     // 同数。id=1 は order=1、id=9 は order 不明（Infinity）→ 1 を選ぶ
     expect(pickMostFrequent(counts, order)).toBe(1);
+  });
+});
+
+describe("tallyStartHours（よく灯していた時間帯・要件4.2）", () => {
+  /** ローカル時刻で指定した日時を、DBと同じUTCのISO文字列にする */
+  const iso = (y: number, m: number, d: number, h: number) =>
+    new Date(y, m - 1, d, h, 30).toISOString();
+
+  it("開始時刻をローカル時刻の時で数える（UTC文字列のまま数えない）", () => {
+    // 保存はUTCのISO文字列。21時台に始めた記録は、時差に関わらず21時台に数える
+    expect(tallyStartHours([iso(2026, 1, 10, 21), iso(2026, 1, 11, 21)])).toEqual([
+      { hour: 21, count: 2 },
+    ]);
+  });
+
+  it("夜の並び（18時台→翌4時台）で返す", () => {
+    const result = tallyStartHours([
+      iso(2026, 1, 10, 1),
+      iso(2026, 1, 10, 23),
+      iso(2026, 1, 10, 18),
+      iso(2026, 1, 11, 4),
+    ]);
+    expect(result.map((r) => r.hour)).toEqual([18, 23, 1, 4]);
+  });
+
+  it("記録の無い時間帯は並べない", () => {
+    const result = tallyStartHours([iso(2026, 1, 10, 22)]);
+    expect(result).toEqual([{ hour: 22, count: 1 }]);
+  });
+
+  it("夜間帯の外（5:00〜17:59）は「昼」としてまとめ、最後に置く", () => {
+    const result = tallyStartHours([
+      iso(2026, 1, 10, 9),
+      iso(2026, 1, 10, 15),
+      iso(2026, 1, 10, 20),
+    ]);
+    expect(result).toEqual([
+      { hour: 20, count: 1 },
+      { hour: null, count: 2 },
+    ]);
+  });
+
+  it("境界: 18時台は夜、17時台は昼。5時台は昼、4時台は夜", () => {
+    expect(tallyStartHours([iso(2026, 1, 10, 18)])[0].hour).toBe(18);
+    expect(tallyStartHours([iso(2026, 1, 10, 17)])[0].hour).toBeNull();
+    expect(tallyStartHours([iso(2026, 1, 10, 5)])[0].hour).toBeNull();
+    expect(tallyStartHours([iso(2026, 1, 10, 4)])[0].hour).toBe(4);
+  });
+
+  it("記録が無ければ空", () => {
+    expect(tallyStartHours([])).toEqual([]);
+  });
+});
+
+describe("pickLongestNight（いちばん長かった夜・要件4.4）", () => {
+  it("実績合計が最大の夜を返す", () => {
+    expect(
+      pickLongestNight([
+        { studyDate: "2026-01-10", minutes: 45 },
+        { studyDate: "2026-02-03", minutes: 180 },
+        { studyDate: "2026-03-21", minutes: 120 },
+      ]),
+    ).toEqual({ studyDate: "2026-02-03", minutes: 180 });
+  });
+
+  it("同じ時間なら古い夜を選ぶ（tie-break）", () => {
+    // 入力順に依らず古い方。新しい記録が増えても最長の夜が移り替わらないこと
+    expect(
+      pickLongestNight([
+        { studyDate: "2026-03-01", minutes: 120 },
+        { studyDate: "2026-01-05", minutes: 120 },
+        { studyDate: "2026-02-10", minutes: 120 },
+      ]),
+    ).toEqual({ studyDate: "2026-01-05", minutes: 120 });
+  });
+
+  it("年をまたいでも古い夜を選べる（辞書順比較）", () => {
+    expect(
+      pickLongestNight([
+        { studyDate: "2026-01-02", minutes: 90 },
+        { studyDate: "2025-12-31", minutes: 90 },
+      ]),
+    ).toEqual({ studyDate: "2025-12-31", minutes: 90 });
+  });
+
+  it("記録が無ければ null", () => {
+    expect(pickLongestNight([])).toBeNull();
+  });
+
+  it("0分の夜しか無ければ null（0分の夜は最長として出さない）", () => {
+    expect(
+      pickLongestNight([
+        { studyDate: "2026-01-10", minutes: 0 },
+        { studyDate: "2026-01-11", minutes: 0 },
+      ]),
+    ).toBeNull();
+  });
+
+  it("0分の夜は候補から外し、実績のある夜を選ぶ", () => {
+    expect(
+      pickLongestNight([
+        { studyDate: "2026-01-09", minutes: 0 },
+        { studyDate: "2026-01-10", minutes: 30 },
+      ]),
+    ).toEqual({ studyDate: "2026-01-10", minutes: 30 });
   });
 });
