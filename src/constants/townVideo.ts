@@ -105,9 +105,22 @@ const TOWN_VIDEO: Record<string, TownVideoSet> = {
           height: 720,
         },
       ],
+      // Lv.4 のみ動きの違う2パターン。学習日ごとにどちらかを流す
       4: [
         {
           source: require("@/assets/home/nightTown/latenight/mp4/nightTown_latenight_lv4_1.mp4"),
+          width: 1280,
+          height: 720,
+        },
+        {
+          source: require("@/assets/home/nightTown/latenight/mp4/nightTown_latenight_lv4_2.mp4"),
+          width: 1280,
+          height: 720,
+        },
+      ],
+      5: [
+        {
+          source: require("@/assets/home/nightTown/latenight/mp4/nightTown_latenight_lv5.mp4"),
           width: 1280,
           height: 720,
         },
