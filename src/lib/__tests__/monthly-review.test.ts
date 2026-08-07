@@ -1,14 +1,19 @@
 // 月のふりかえりメッセージの純ロジック検証（要件4.2の拡張 / 7.1と別系統）。
 //
 // カテゴリ比率のしきい値による傾向の出し分けは、画面を見ても正しさが分かりにくく、
-// 崩れると振り返りの意味（たたえる相手・トーン）が変わる。境界とメッセージ選択の
-// 決定性（月ごと固定・飽きさせない）を固定する。
+// 崩れると振り返りの意味（たたえる相手・トーン）が変わる。境界と、住人ごとの
+// 文面の取り出し（欠けが無いか・フォールバックするか）を固定する。
 
 import {
   buildReviewMessage,
   classifyReviewTone,
+  DEFAULT_REVIEW_VOICE,
   REVIEW_MESSAGES,
+  REVIEW_TONES,
+  REVIEW_VOICE_IDS,
   tallyFromCounts,
+  WEATHER_NOTE_CODES,
+  WEATHER_NOTES,
   type EmotionTally,
 } from "../monthly-review";
 
@@ -103,15 +108,94 @@ describe("classifyReviewTone（傾向の分類）", () => {
   });
 });
 
-describe("buildReviewMessage（月ごと固定・飽きさせない選択）", () => {
-  it("同じ年月・同じ傾向なら常に同じ文面（固定）", () => {
+// 各トーンを引き当てる代表的な傾向（分類のテストで境界は別途固定済み）
+const TONE_SAMPLES = {
+  all_positive: tally(9, 1, 0),
+  positive_with_neutral: tally(6, 3, 1),
+  positive_with_negative: tally(6, 1, 3),
+  calm_steady: tally(3, 6, 1),
+  calm_with_struggle: tally(1, 6, 3),
+  mixed: tally(4, 3, 3),
+  persevered_with_light: tally(3, 1, 6),
+  persevered: tally(1, 2, 6),
+  deep_struggle: tally(1, 1, 8),
+  sparse: tally(0, 0, 0),
+} as const;
+
+describe("buildReviewMessage（住人の声・置換・整形）", () => {
+  it("同じ年月・同じ傾向・同じ住人なら常に同じ文面（固定）", () => {
     const params = {
       tally: tally(6, 1, 3),
       topEmotionLabel: "😊 達成感",
       year: 2026,
       month: 3,
+      npcId: 1,
     };
     expect(buildReviewMessage(params)).toBe(buildReviewMessage(params));
+  });
+
+  it("年月が変わると、本文も候補内を巡回する（同じ傾向が続いても飽きない）", () => {
+    const base = {
+      tally: tally(6, 1, 3),
+      topEmotionLabel: "😊 達成感",
+      npcId: 1,
+    } as const;
+    const variantCount = REVIEW_MESSAGES[1].positive_with_negative.length;
+    const msgs = new Set(
+      Array.from({ length: variantCount }, (_, i) =>
+        buildReviewMessage({ ...base, year: 2026, month: 1 + i }),
+      ),
+    );
+    // 連続する variantCount か月ぶんで、全候補が1回ずつ出そろう
+    expect(msgs.size).toBe(variantCount);
+  });
+
+  it("住人が違えば文面も違う（街ごとに声色が分かれる）", () => {
+    const base = {
+      tally: tally(6, 1, 3),
+      topEmotionLabel: "😊 達成感",
+      year: 2026,
+      month: 3,
+    };
+    const msgs = REVIEW_VOICE_IDS.map((npcId) =>
+      buildReviewMessage({ ...base, npcId }),
+    );
+    expect(new Set(msgs).size).toBe(REVIEW_VOICE_IDS.length);
+  });
+
+  it("知らない住人・未指定なら既定の語り手へフォールバックする", () => {
+    const base = {
+      tally: tally(6, 1, 3),
+      topEmotionLabel: "😊 達成感",
+      year: 2026,
+      month: 3,
+    };
+    const expected = buildReviewMessage({ ...base, npcId: DEFAULT_REVIEW_VOICE });
+    // 文面が未整備の住人が街に立った場合でも、無言にはしない（要件7.1と同じ考え方）
+    expect(buildReviewMessage({ ...base, npcId: 99 })).toBe(expected);
+    expect(buildReviewMessage(base)).toBe(expected);
+  });
+
+  it("全住人×全トーンの文面がそろっている（欠けた組み合わせで無言にならない）", () => {
+    for (const npcId of REVIEW_VOICE_IDS) {
+      for (const tone of REVIEW_TONES) {
+        const variants = REVIEW_MESSAGES[npcId][tone];
+        // トーンごとに複数の言い回しを持つ（同じ傾向が続く月でも同じ文にならないように）
+        expect(variants.length).toBeGreaterThanOrEqual(3);
+        for (const text of variants) expect(text.length).toBeGreaterThan(20);
+      }
+    }
+  });
+
+  it("全住人×全天気の一言がそろっていて、ラベルの置き場所を持つ", () => {
+    for (const npcId of REVIEW_VOICE_IDS) {
+      for (const code of WEATHER_NOTE_CODES) {
+        const notes = WEATHER_NOTES[npcId][code];
+        // 天気ごとに複数の言い回しを持つ（同じ天気が続く月でも同じ文にならないように）
+        expect(notes.length).toBeGreaterThanOrEqual(3);
+        for (const note of notes) expect(note).toContain("{weather}");
+      }
+    }
   });
 
   it("{emotion} は最多感情ラベルへ置換される", () => {
@@ -120,6 +204,7 @@ describe("buildReviewMessage（月ごと固定・飽きさせない選択）", (
       topEmotionLabel: "😊 達成感",
       year: 2026,
       month: 3,
+      npcId: 1,
     });
     expect(msg).toContain("😊 達成感");
     expect(msg).not.toContain("{emotion}");
@@ -131,24 +216,28 @@ describe("buildReviewMessage（月ごと固定・飽きさせない選択）", (
       topEmotionLabel: null,
       year: 2026,
       month: 3,
+      npcId: 1,
     });
     expect(msg).not.toContain("{emotion}");
     expect(msg).toContain("いちばん多かった気持ち");
   });
 
   it("sparse は感情ラベルを使わない（{emotion}を含まない定数）", () => {
-    for (const text of REVIEW_MESSAGES.sparse) {
-      expect(text).not.toContain("{emotion}");
+    for (const npcId of REVIEW_VOICE_IDS) {
+      for (const text of REVIEW_MESSAGES[npcId].sparse) {
+        expect(text).not.toContain("{emotion}");
+      }
     }
     // 天気なし → 天気の一言は付かない。改行整形だけ施した本文になる
-    const raw =
-      REVIEW_MESSAGES.sparse[(2026 * 12 + 3) % REVIEW_MESSAGES.sparse.length];
+    const variants = REVIEW_MESSAGES[1].sparse;
+    const raw = variants[(2026 * 12 + 3) % variants.length];
     const expected = raw.replace(/。/g, "。\n").replace(/\n+$/, "");
     const msg = buildReviewMessage({
       tally: tally(0, 0, 0),
       topEmotionLabel: null,
       year: 2026,
       month: 3,
+      npcId: 1,
     });
     expect(msg).toBe(expected);
   });
@@ -159,6 +248,7 @@ describe("buildReviewMessage（月ごと固定・飽きさせない選択）", (
       topEmotionLabel: "😊 達成感",
       year: 2026,
       month: 3,
+      npcId: 1,
     });
     expect(msg).toContain("\n");
     // 末尾に余分な改行を残さない
@@ -169,36 +259,57 @@ describe("buildReviewMessage（月ごと固定・飽きさせない選択）", (
     expect(breaks).toBe(sentences - 1);
   });
 
-  it("最多の夜の天気があれば、天気に触れる一言が最後に加わる", () => {
-    const msg = buildReviewMessage({
-      tally: tally(6, 1, 3),
-      topEmotionLabel: "😊 達成感",
-      topWeatherLabel: "🌧 雨音の夜",
-      year: 2026,
-      month: 3,
-    });
-    expect(msg).toContain("🌧 雨音の夜");
-    expect(msg).not.toContain("{weather}");
-  });
-
-  it("天気が無ければ天気の一言は付かない", () => {
-    const msg = buildReviewMessage({
-      tally: tally(6, 1, 3),
-      topEmotionLabel: "😊 達成感",
-      topWeatherLabel: null,
-      year: 2026,
-      month: 3,
-    });
-    expect(msg).not.toContain("{weather}");
-    for (const note of ["感じたまま", "目に映った", "心がそう見た", "夜空の記憶"]) {
-      expect(msg).not.toContain(note);
+  it("最多の夜の天気があれば、その住人の天気の一言が最後に加わる", () => {
+    for (const npcId of REVIEW_VOICE_IDS) {
+      const msg = buildReviewMessage({
+        tally: tally(6, 1, 3),
+        topEmotionLabel: "😊 達成感",
+        topWeatherLabel: "🌧 雨音の夜",
+        topWeatherCode: "rainy_night",
+        npcId,
+      });
+      expect(msg).toContain("🌧 雨音の夜");
+      expect(msg).not.toContain("{weather}");
     }
   });
 
-  it("年月が変わると候補内で循環し、文面が変わりうる", () => {
-    // 同じ傾向でも、候補数を跨ぐ連続した月で全て同じにはならない
-    const base = { tally: tally(6, 1, 3), topEmotionLabel: "😊 達成感" };
-    const variantCount = REVIEW_MESSAGES.positive_with_negative.length;
+  it("天気の種類ごとに違う一言になる（ラベルを言い換えるだけにしない）", () => {
+    const msgs = WEATHER_NOTE_CODES.map((code) =>
+      buildReviewMessage({
+        tally: tally(6, 1, 3),
+        topEmotionLabel: "😊 達成感",
+        topWeatherLabel: "天気",
+        topWeatherCode: code,
+        year: 2026,
+        month: 3,
+        npcId: 1,
+      }),
+    );
+    expect(new Set(msgs).size).toBe(WEATHER_NOTE_CODES.length);
+  });
+
+  it("同じ年月・同じ天気なら、天気の一言も毎回同じ（安定した振り返り）", () => {
+    const params = {
+      tally: tally(6, 1, 3),
+      topEmotionLabel: "😊 達成感",
+      topWeatherLabel: "🌧 雨音の夜",
+      topWeatherCode: "rainy_night",
+      year: 2026,
+      month: 3,
+      npcId: 1,
+    };
+    expect(buildReviewMessage(params)).toBe(buildReviewMessage(params));
+  });
+
+  it("年月が変わると、天気の一言は候補内を巡回する（同じ天気が続いても飽きない）", () => {
+    const base = {
+      tally: tally(6, 1, 3),
+      topEmotionLabel: "😊 達成感",
+      topWeatherLabel: "🌧 雨音の夜",
+      topWeatherCode: "rainy_night",
+      npcId: 1,
+    } as const;
+    const variantCount = WEATHER_NOTES[1].rainy_night.length;
     const msgs = new Set(
       Array.from({ length: variantCount }, (_, i) =>
         buildReviewMessage({ ...base, year: 2026, month: 1 + i }),
@@ -208,27 +319,49 @@ describe("buildReviewMessage（月ごと固定・飽きさせない選択）", (
     expect(msgs.size).toBe(variantCount);
   });
 
-  it("非sparseの全トーンに {emotion} を含む候補があり、置換後に未展開が残らない", () => {
-    const tones = {
-      all_positive: tally(9, 1, 0),
-      positive_with_neutral: tally(6, 3, 1),
-      positive_with_negative: tally(6, 1, 3),
-      calm_steady: tally(3, 6, 1),
-      calm_with_struggle: tally(1, 6, 3),
-      mixed: tally(4, 3, 3),
-      persevered_with_light: tally(3, 1, 6),
-      persevered: tally(1, 2, 6),
-      deep_struggle: tally(1, 1, 8),
-    } as const;
-    for (const [, t] of Object.entries(tones)) {
-      const msg = buildReviewMessage({
-        tally: t,
-        topEmotionLabel: "🔥 集中できた",
-        year: 2026,
-        month: 5,
-      });
-      expect(msg).not.toContain("{emotion}");
-      expect(msg.length).toBeGreaterThan(20);
+  it("天気が無ければ天気の一言は付かない", () => {
+    const msg = buildReviewMessage({
+      tally: tally(6, 1, 3),
+      topEmotionLabel: "😊 達成感",
+      topWeatherLabel: null,
+      npcId: 1,
+    });
+    expect(msg).not.toContain("{weather}");
+    // 天気の一言の書き出しが本文に紛れ込んでいないこと（住人ぶん全て）
+    for (const npcId of REVIEW_VOICE_IDS) {
+      for (const note of WEATHER_NOTES[npcId].rainy_night) {
+        expect(msg).not.toContain(note.slice(0, 6));
+      }
+    }
+  });
+
+  it("知らない天気コードなら天気の一言は付けない（未対応の天気を無理に語らない）", () => {
+    const base = {
+      tally: tally(6, 1, 3),
+      topEmotionLabel: "😊 達成感",
+      npcId: 1,
+    };
+    expect(
+      buildReviewMessage({ ...base, topWeatherLabel: "🌈 虹の夜", topWeatherCode: "rainbow_night" }),
+    ).toBe(buildReviewMessage(base));
+  });
+
+  it("全住人×全トーンで、置換後に未展開のプレースホルダが残らない", () => {
+    for (const npcId of REVIEW_VOICE_IDS) {
+      for (const t of Object.values(TONE_SAMPLES)) {
+        const msg = buildReviewMessage({
+          tally: t,
+          topEmotionLabel: "🔥 集中できた",
+          topWeatherLabel: "🌧 雨音の夜",
+          topWeatherCode: "rainy_night",
+          year: 2026,
+          month: 5,
+          npcId,
+        });
+        expect(msg).not.toContain("{emotion}");
+        expect(msg).not.toContain("{weather}");
+        expect(msg.length).toBeGreaterThan(20);
+      }
     }
   });
 });

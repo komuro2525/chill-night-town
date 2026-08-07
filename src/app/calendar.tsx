@@ -48,7 +48,7 @@ const TABS = [
 type TabKey = (typeof TABS)[number]["key"];
 
 export default function CalendarScreen() {
-  const { user } = useSettings();
+  const { user, townNpc } = useSettings();
   const today = now();
   const [ym, setYm] = useState({
     year: today.getFullYear(),
@@ -123,7 +123,7 @@ export default function CalendarScreen() {
   const skySeed = ym.year * 100 + ym.month;
 
   // 完了した月に限り、その月の感情傾向＋最多感情に応じたねぎらいの一言（要件4.2拡張）。
-  // 進行中の月・記録の無い月には出さない。同じ月は毎回同じ文面（buildReviewMessage が年月固定）。
+  // 進行中の月・記録の無い月には出さない。文面は傾向と住人で決まり、同じ月なら毎回同じ。
   const reviewMessage =
     summary &&
     summary.sessionCount > 0 &&
@@ -141,8 +141,13 @@ export default function CalendarScreen() {
           topWeatherLabel: summary.topWeather
             ? `${summary.topWeather.emoji} ${summary.topWeather.name}`
             : null,
+          // 天気の一言はその天気に沿った内容にするため、コードも渡す。
+          // 年月は、天気の一言の候補（天気ごとに3本）を月で決めるために使う
+          topWeatherCode: summary.topWeather?.code ?? null,
           year: ym.year,
           month: ym.month,
+          // 振り返るのは、いまいる街の住人（要件7.1）
+          npcId: townNpc?.id,
         })
       : null;
 
