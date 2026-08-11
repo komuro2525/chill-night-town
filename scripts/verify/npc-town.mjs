@@ -152,8 +152,8 @@ const ownerOf = (db, message) =>
     written.length > 0 && written.every((id) => countOf(id) === 55),
   );
   check(
-    "各街の1人目（既定の住人）は必ず文面を持つ",
-    [1, 3, 4, 5].every((id) => countOf(id) === 55),
+    "8人全員に文面がある（どの住人を選んでも代弁にならない）",
+    written.length === 8 && allNpcIds.length === 8,
   );
   // 街の完成（Lv5到達の夜）は一度きりなので感情別は持たない（要件7.1）
   const completedRows = db
@@ -210,10 +210,24 @@ const ownerOf = (db, message) =>
     "完成メッセージは感情を渡しても感情なしの候補から出る",
     stoveCompleted.includes(mCompleted),
   );
-  // 文面が未整備の住人（セリフがこれからの人・存在しないid）でも無言にはしない
-  const unwrittenId = allNpcIds.find((id) => countOf(id) === 0) ?? 999;
-  const mUnwritten = pick(db, unwrittenId, "goodnight", null);
+  // 8人とも文面を持つが、住人を足した直後（セリフはこれから）でも無言にしない仕組みは残す
+  const mUnwritten = pick(db, 999, "goodnight", null);
   check("文面が無い住人は既定NPC(1)へフォールバックする", ownerOf(db, mUnwritten) === 1);
+
+  // 同じ街の2人が別々の声で話す（選ぶ意味があること）
+  for (const [code, first, second] of [
+    ["nightTown", 1, 6],
+    ["starHill", 3, 7],
+    ["castleTown", 4, 8],
+    ["snowTown", 5, 9],
+  ]) {
+    const a = pick(db, first, "study_start", null);
+    const b = pick(db, second, "study_start", null);
+    check(
+      `${code} の2人は別々の文面を話す（${first} と ${second}）`,
+      ownerOf(db, a) === first && ownerOf(db, b) === second,
+    );
+  }
 
   // --- 5. 語り手の解決（masterRepo.resolveTownNpc 相当） ---
   // 選択があればその住人、無ければその街の既定＝id の小さい方

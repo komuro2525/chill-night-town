@@ -40,7 +40,7 @@ type Migration = {
 // **必ず DELTA_MIGRATIONS の最後の version と一致させること。** 小さいままだと、新規
 // インストールは「最新形のスキーマ＋古い user_version」で始まり、次の起動で適用済みの
 // 差分がもう一度流れて落ちる（ADD COLUMN が duplicate column で失敗する）。
-const SCHEMA_VERSION = 31;
+const SCHEMA_VERSION = 32;
 
 // 既存DB（過去バージョン）向けの差分マイグレーション（version >= 2）。
 // 新規インストールはスキーマSQL（=最新）を適用して一気に SCHEMA_VERSION まで上がるため、
@@ -692,6 +692,16 @@ const DELTA_MIGRATIONS: Migration[] = [
       await db.execAsync(
         "ALTER TABLE town_progress ADD COLUMN selected_npc_id INTEGER",
       );
+      const npcSql = await loadSqlAsset(SEED_NPC_MODULE);
+      await db.execAsync(stripOuterTransaction(npcSql));
+    },
+  },
+  {
+    version: 32,
+    up: async (db) => {
+      // 2人目の住人4人（夜更かし仲間・焚火番の子・桜守の老人・宿の番頭）の
+      // セリフを配布する（各55本）。v31 を通過済みの端末には紹介文しか
+      // 届いていないため、シードを流し直す。
       const npcSql = await loadSqlAsset(SEED_NPC_MODULE);
       await db.execAsync(stripOuterTransaction(npcSql));
     },
