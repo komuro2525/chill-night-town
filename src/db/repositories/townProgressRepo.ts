@@ -81,6 +81,25 @@ export async function updateSubtitle(
 }
 
 /**
+ * その街で語らせる住人を選ぶ（要件7.1 / 10.12）。稼働中も可。
+ *
+ * 記録・判定には影響せず、変わるのはメッセージの声色だけ。稼働中のセッションは
+ * 開始時の住人（`active_session.npc_id`）で語るため、変更は次のセッションから効く。
+ * 選択は街ごとに残るので、街を移って戻れば前に選んだ住人が迎える。
+ */
+export async function updateSelectedNpc(
+  townId: number,
+  npcId: number,
+): Promise<void> {
+  const db = await getDatabase();
+  await db.runAsync(
+    "UPDATE town_progress SET selected_npc_id = ?, updated_at = datetime('now') WHERE town_id = ?",
+    npcId,
+    townId,
+  );
+}
+
+/**
  * プロジェクト型の目標学習時間（分）を設定・変更する（要件6.4 / UC 6.3 手順4）。稼働中不可。
  * レベル再判定は呼び出し側で growthRepo.recomputeTownLevel を続けて呼ぶこと。
  * 値域（60〜30000分）はスキーマの CHECK が担保する。

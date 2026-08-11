@@ -156,6 +156,9 @@ CREATE TABLE town_progress (
     subtitle                    TEXT,               -- 街のサブタイトル（任意、上限20文字はアプリ側検証）
     project_target_minutes      INTEGER CHECK (project_target_minutes IS NULL OR project_target_minutes BETWEEN 60 AND 44640),
     is_selected                 INTEGER NOT NULL DEFAULT 0 CHECK (is_selected IN (0, 1)),
+    -- この街で選んでいる住人（要件7.1）。NULL = その街の既定（npc.id の小さい住人）。
+    -- 街ごとに保持するため user ではなくここに置く（街を移って戻れば前の選択が残る）
+    selected_npc_id             INTEGER REFERENCES npc(id) ON DELETE RESTRICT,
     created_at                  TEXT    NOT NULL DEFAULT (datetime('now')),
     updated_at                  TEXT    NOT NULL DEFAULT (datetime('now')),
     UNIQUE (user_id, town_id)

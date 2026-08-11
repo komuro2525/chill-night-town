@@ -83,29 +83,50 @@ const ownerOf = (db, message) =>
     cols(db, "active_session").includes("npc_id"),
   );
 
-  // 住人は街ごとに1人。街が違えば別人であること（声色が街に紐づく）
+  check(
+    "town_progress に selected_npc_id 列がある（街ごとに語り手を保持する）",
+    cols(db, "town_progress").includes("selected_npc_id"),
+  );
+
+  // 住人は街に属し、1つの街に2人。未選択なら id の小さい方がその街の既定
   const bookstore = npcOfTown(db, "nightTown");
   const observatory = npcOfTown(db, "starHill");
   const teahouse = npcOfTown(db, "castleTown");
   const stove = npcOfTown(db, "snowTown");
-  check("夜の街の住人は書店の店主(1)", bookstore?.id === 1 && bookstore.name === "書店の店主");
+  check("夜の街の既定は書店の店主(1)", bookstore?.id === 1 && bookstore.name === "書店の店主");
   check(
-    "星見の丘の住人は天文台の管理人(3)",
+    "星見の丘の既定は天文台の管理人(3)",
     observatory?.id === 3 && observatory.name === "天文台の管理人",
   );
-  check("夜桜の城下町の住人は茶屋の女将(4)", teahouse?.id === 4);
-  check("雪国の住人はストーブ番の若者(5)", stove?.id === 5);
+  check("夜桜の城下町の既定は茶屋の女将(4)", teahouse?.id === 4);
+  check("雪国の既定はストーブ番の若者(5)", stove?.id === 5);
   check(
     "住人はすべて街に属している（town_id が空の住人がいない）",
     db.prepare("SELECT count(*) c FROM npc WHERE town_id IS NULL").get().c === 0,
   );
   check(
-    "1つの街に住人は1人（当初の配置）",
+    "どの街にも住人が2人いる",
     db
       .prepare(
-        "SELECT count(*) c FROM (SELECT town_id FROM npc GROUP BY town_id HAVING count(*) > 1)",
+        "SELECT count(*) c FROM (SELECT town_id FROM npc WHERE is_active=1 GROUP BY town_id HAVING count(*) = 2)",
       )
-      .get().c === 0,
+      .get().c === 4,
+  );
+  check(
+    "2人目は既存の続きの id（6〜9）で、街の対がそろっている",
+    [
+      ["nightTown", 6],
+      ["starHill", 7],
+      ["castleTown", 8],
+      ["snowTown", 9],
+    ].every(
+      ([code, id]) =>
+        db
+          .prepare(
+            `SELECT count(*) c FROM npc n JOIN town t ON t.id = n.town_id WHERE t.code = ? AND n.id = ?`,
+          )
+          .get(code, id).c === 1,
+    ),
   );
   // 旧2人目（喫茶店のマスター）はセリフ集から外れたので退去済み
   check(
@@ -121,8 +142,12 @@ const ownerOf = (db, message) =>
   const countOf = (id) =>
     db.prepare("SELECT count(*) c FROM npc_message WHERE npc_id=?").get(id).c;
   check(
-    "住人は全員55本ずつ持っている",
+    "1人目の住人は全員55本ずつ持っている",
     [1, 3, 4, 5].every((id) => countOf(id) === 55),
+  );
+  check(
+    "2人目の住人はまだ文面を持たない（既定の住人が代弁する）",
+    [6, 7, 8, 9].every((id) => countOf(id) === 0),
   );
   // 街の完成（Lv5到達の夜）は一度きりなので感情別は持たない（要件7.1）
   const completedRows = db
@@ -144,7 +169,7 @@ const ownerOf = (db, message) =>
   // --- 4. 冪等性 ---
   db.exec(npcSeed);
   check("再シードしても本数は変わらない（冪等）", countOf(1) === 55 && countOf(3) === 55);
-  check("再シードしても住人は増えない", db.prepare("SELECT count(*) c FROM npc").get().c === 4);
+  check("再シードしても住人は増えない", db.prepare("SELECT count(*) c FROM npc").get().c === 8);
 
   // --- 2 & 3. メッセージの選択 ---
   const tired = db.prepare("SELECT id FROM emotion WHERE code='tired'").get().id;
@@ -176,9 +201,29 @@ const ownerOf = (db, message) =>
     "完成メッセージは感情を渡しても感情なしの候補から出る",
     stoveCompleted.includes(mCompleted),
   );
-  // 文面が未整備の住人（街を足したがセリフ集がまだ、という状態）でも無言にはしない
-  const mUnwritten = pick(db, 99, "goodnight", null);
-  check("文面が無い住人は既定NPC(1)へフォールバックする", ownerOf(db, mUnwritten) === 1);
+  // 文面が未整備の住人（2人目・セリフはこれから）でも無言にはしない
+  const mUnwritten = pick(db, 6, "goodnight", null);
+  check("文面が無い2人目は既定NPC(1)へフォールバックする", ownerOf(db, mUnwritten) === 1);
+
+  // --- 5. 語り手の解決（masterRepo.resolveTownNpc 相当） ---
+  // 選択があればその住人、無ければその街の既定＝id の小さい方
+  const resolve = (townCode, selectedNpcId) => {
+    const npcs = db
+      .prepare(
+        `SELECT n.id FROM npc n JOIN town t ON t.id = n.town_id
+          WHERE t.code = ? AND n.is_active = 1 ORDER BY n.id`,
+      )
+      .all(townCode)
+      .map((r) => r.id);
+    return npcs.find((id) => id === selectedNpcId) ?? npcs[0] ?? null;
+  };
+  check("未選択（NULL）なら、その街の既定＝id の小さい住人が語る", resolve("nightTown", null) === 1);
+  check("選択していれば、その住人が語る", resolve("nightTown", 6) === 6);
+  check(
+    "退去した住人を指したままでも、既定へ落ちて無言にならない",
+    resolve("nightTown", 999) === 1,
+  );
+  check("街ごとに別々の選択を持てる", resolve("starHill", 7) === 7 && resolve("nightTown", 6) === 6);
 
   db.close();
 }
@@ -259,6 +304,58 @@ const ownerOf = (db, message) =>
   check(
     "v24後: 文面は最新（旧マスターのメッセージは残っていない）",
     db.prepare("SELECT count(*) c FROM npc_message WHERE message='旧マスターの一言'").get().c === 0,
+  );
+
+  db.close();
+}
+
+// --- 6. v31 マイグレーション（住人を選べるようにする列の追加） ---
+{
+  const db = new DatabaseSync(":memory:");
+  // v30 時点の town_progress を最小限で再現する（selected_npc_id がまだ無い状態）
+  db.exec(`
+    CREATE TABLE town (id INTEGER PRIMARY KEY AUTOINCREMENT, code TEXT NOT NULL UNIQUE, name TEXT NOT NULL);
+    CREATE TABLE npc (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        town_id INTEGER REFERENCES town(id) ON DELETE RESTRICT,
+        description TEXT,
+        is_active INTEGER NOT NULL DEFAULT 1
+    );
+    CREATE TABLE town_progress (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        town_id INTEGER NOT NULL REFERENCES town(id) ON DELETE RESTRICT,
+        is_selected INTEGER NOT NULL DEFAULT 0,
+        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+  `);
+  db.exec(`
+    INSERT INTO town (code, name) VALUES ('nightTown','夜の街'),('starHill','星見の丘');
+    INSERT INTO npc (id, name, town_id) VALUES (1,'書店の店主',1),(3,'天文台の管理人',2);
+    INSERT INTO town_progress (user_id, town_id, is_selected) VALUES (1, 1, 1), (1, 2, 0);
+  `);
+  db.exec("PRAGMA foreign_keys = ON");
+
+  // migrations.ts の v31 と同じ手順（ALTER には REFERENCES を付けない）
+  db.exec("ALTER TABLE town_progress ADD COLUMN selected_npc_id INTEGER");
+
+  check(
+    "v31後: town_progress に selected_npc_id がある",
+    cols(db, "town_progress").includes("selected_npc_id"),
+  );
+  check(
+    "v31後: 既存の街は未選択（NULL）から始まる＝既定の住人が語る",
+    db.prepare("SELECT selected_npc_id FROM town_progress WHERE town_id=1").get()
+      .selected_npc_id === null,
+  );
+  db.exec("UPDATE town_progress SET selected_npc_id = 6 WHERE town_id = 1");
+  check(
+    "v31後: 街ごとに選択を保存できる（他の街の選択は変わらない）",
+    db.prepare("SELECT selected_npc_id FROM town_progress WHERE town_id=1").get()
+      .selected_npc_id === 6 &&
+      db.prepare("SELECT selected_npc_id FROM town_progress WHERE town_id=2").get()
+        .selected_npc_id === null,
   );
 
   db.close();

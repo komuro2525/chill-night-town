@@ -207,6 +207,8 @@ export type TownProgress = {
   subtitle: string | null;
   project_target_minutes: number | null;
   is_selected: Bool;
+  /** この街で選んでいる住人（要件7.1）。null = その街の既定（npc.id の小さい住人） */
+  selected_npc_id: number | null;
   created_at: string;
   updated_at: string;
 };

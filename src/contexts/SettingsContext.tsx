@@ -28,7 +28,9 @@ type SettingsState = {
   notificationSetting: NotificationSetting | null;
   /** 選択中の街と育成進捗。街選択画面（S9）での変更もここを通して各画面へ配る */
   selectedTown: SelectedTown | null;
-  /** 選択中の街に住んでいる住人（要件7.1）。街を切り替えると入れ替わる。未登録の街は null */
+  /** 選択中の街に住んでいる住人の一覧（要件7.1）。先頭がその街の既定。設定10.12で選ぶ */
+  townNpcs: Npc[];
+  /** そのうち実際に語る住人（選択があればその人、無ければ既定）。未登録の街は null */
   townNpc: Npc | null;
 };
 
@@ -46,6 +48,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     audioSetting: null,
     notificationSetting: null,
     selectedTown: null,
+    townNpcs: [],
     townNpc: null,
   });
 
@@ -59,16 +62,22 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
           settingsRepo.getNotificationSetting(),
           townProgressRepo.getSelectedTown(),
         ]);
-      // 住人は街に紐づくため、街が決まってから引く（要件7.1）
-      const townNpc = selectedTown
-        ? await masterRepo.getNpcByTown(selectedTown.town.id)
-        : null;
+      // 住人は街に紐づくため、街が決まってから引く（要件7.1）。
+      // 語り手はその街での選択（town_progress.selected_npc_id）で決まり、無ければ既定＝先頭
+      const townNpcs = selectedTown
+        ? await masterRepo.getNpcsByTown(selectedTown.town.id)
+        : [];
+      const townNpc = masterRepo.resolveTownNpc(
+        townNpcs,
+        selectedTown?.progress.selected_npc_id ?? null,
+      );
       setState({
         ready: true,
         user,
         audioSetting,
         notificationSetting,
         selectedTown,
+        townNpcs,
         townNpc,
       });
     },

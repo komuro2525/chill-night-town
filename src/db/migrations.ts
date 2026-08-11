@@ -36,7 +36,11 @@ type Migration = {
 
 // 現在のスキーマバージョン（db/*.sql が表す「最新」の版）。
 // スキーマを変更したら、スキーマSQLを更新しつつ本値を+1し、DELTA_MIGRATIONS に差分を追加する。
-const SCHEMA_VERSION = 28;
+//
+// **必ず DELTA_MIGRATIONS の最後の version と一致させること。** 小さいままだと、新規
+// インストールは「最新形のスキーマ＋古い user_version」で始まり、次の起動で適用済みの
+// 差分がもう一度流れて落ちる（ADD COLUMN が duplicate column で失敗する）。
+const SCHEMA_VERSION = 31;
 
 // 既存DB（過去バージョン）向けの差分マイグレーション（version >= 2）。
 // 新規インストールはスキーマSQL（=最新）を適用して一気に SCHEMA_VERSION まで上がるため、
@@ -671,6 +675,25 @@ const DELTA_MIGRATIONS: Migration[] = [
       await db.execAsync(
         "ALTER TABLE notification_setting RENAME COLUMN pomodoro_phase_notice_enabled TO study_notice_enabled",
       );
+    },
+  },
+  {
+    version: 31,
+    up: async (db) => {
+      // 1つの街に住人を複数置き、その中から選べるようにする（要件7.1 / 10.12）。
+      //
+      // ・town_progress.selected_npc_id … その街で選んでいる住人。NULL＝その街の既定
+      //   （npc.id の小さい住人）。街ごとに保持するため user ではなくここへ置く——
+      //   街を移って戻れば、前に選んだ住人が迎える。
+      //   ALTER ADD COLUMN に REFERENCES を付けないのは v19/v24 と同じ理由（FK有効時の制約）。
+      // ・各街の2人目（夜更かし仲間・焚火番の子・桜守の老人・宿の番頭）のマスタ行と
+      //   紹介文は db/seed_npc.sql が入れる。セリフはまだ無いため、選んでも当面は
+      //   既定の住人が代わりに話す（pickNpcMessage のフォールバック）。
+      await db.execAsync(
+        "ALTER TABLE town_progress ADD COLUMN selected_npc_id INTEGER",
+      );
+      const npcSql = await loadSqlAsset(SEED_NPC_MODULE);
+      await db.execAsync(stripOuterTransaction(npcSql));
     },
   },
 ];

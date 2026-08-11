@@ -18,18 +18,29 @@ import type {
 export const DEFAULT_NPC_ID = 1;
 
 /**
- * その街に住んでいる住人（要件7.1）。街を選ぶことが住人を選ぶことになる。
+ * その街に住んでいる住人の一覧（要件7.1）。id 昇順＝登場順で返す。
  *
- * 将来ひとつの街に住人を2〜3人置く拡張を想定しているため、複数いる場合は
- * id の小さい行をその街の既定の住人として返す（選択機能はその拡張時に足す）。
- * 住人が未登録の街では null を返し、呼び出し側は既定NPCへ委ねる。
+ * 1つの街に複数の住人が住み、ユーザーがその中から語り手を選ぶ（設定10.12）。
+ * **先頭がその街の既定の住人**（`town_progress.selected_npc_id` が NULL のとき話す人）。
+ * 住人が未登録の街では空配列を返し、呼び出し側は既定NPCへ委ねる。
  */
-export async function getNpcByTown(townId: number): Promise<Npc | null> {
+export async function getNpcsByTown(townId: number): Promise<Npc[]> {
   const db = await getDatabase();
-  return db.getFirstAsync<Npc>(
-    "SELECT * FROM npc WHERE town_id = ? AND is_active = 1 ORDER BY id LIMIT 1",
+  return db.getAllAsync<Npc>(
+    "SELECT * FROM npc WHERE town_id = ? AND is_active = 1 ORDER BY id",
     townId,
   );
+}
+
+/**
+ * その街で実際に語る住人を決める（要件7.1）。
+ * 選択があればその住人、無ければ（または退去済みなら）その街の既定＝先頭。
+ */
+export function resolveTownNpc(
+  npcs: Npc[],
+  selectedNpcId: number | null,
+): Npc | null {
+  return npcs.find((n) => n.id === selectedNpcId) ?? npcs[0] ?? null;
 }
 
 /** 有効な街の一覧（表示順） */

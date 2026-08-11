@@ -30,7 +30,11 @@ import {
   shiftMonth,
 } from "@/lib/calendar";
 import { now } from "@/lib/clock";
-import { buildReviewMessage, tallyFromCounts } from "@/lib/monthly-review";
+import {
+  buildReviewMessage,
+  REVIEW_VOICE_IDS,
+  tallyFromCounts,
+} from "@/lib/monthly-review";
 import { refreshNotifications } from "@/lib/notification-sync";
 import { getStudyDate } from "@/lib/study-day";
 
@@ -48,7 +52,7 @@ const TABS = [
 type TabKey = (typeof TABS)[number]["key"];
 
 export default function CalendarScreen() {
-  const { user, townNpc } = useSettings();
+  const { user, townNpc, townNpcs } = useSettings();
   const today = now();
   const [ym, setYm] = useState({
     year: today.getFullYear(),
@@ -122,6 +126,12 @@ export default function CalendarScreen() {
   // 夜空の種。月ごとに星の配置を変える（同じ空が並ぶと月を移っても景色が変わらない）
   const skySeed = ym.year * 100 + ym.month;
 
+  // 月次ふりかえりの語り手。選んでいる住人に月次の文面が無ければ（新しく増えた住人など）、
+  // 同じ街の既定の住人＝一覧の先頭で振り返る（要件4.2 / 7.1）
+  const reviewVoices: readonly number[] = REVIEW_VOICE_IDS;
+  const reviewVoiceId =
+    townNpc && reviewVoices.includes(townNpc.id) ? townNpc.id : townNpcs[0]?.id;
+
   // 完了した月に限り、その月の感情傾向＋最多感情に応じたねぎらいの一言（要件4.2拡張）。
   // 進行中の月・記録の無い月には出さない。文面は傾向と住人で決まり、同じ月なら毎回同じ。
   const reviewMessage =
@@ -146,8 +156,10 @@ export default function CalendarScreen() {
           topWeatherCode: summary.topWeather?.code ?? null,
           year: ym.year,
           month: ym.month,
-          // 振り返るのは、いまいる街の住人（要件7.1）
-          npcId: townNpc?.id,
+          // 振り返るのは、いま選んでいる住人（要件7.1）。
+          // その住人の月次文面がまだ無ければ、同じ街の既定の住人が代わりに振り返る
+          // （既定NPCへ飛ばすと、いる街と関係のない声になってしまうため）
+          npcId: reviewVoiceId,
         })
       : null;
 
