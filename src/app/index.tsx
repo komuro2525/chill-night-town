@@ -10,8 +10,8 @@ import {
   Alert,
   AppState,
   type ImageSourcePropType,
-  Image as RNImage,
   Pressable,
+  Image as RNImage,
   StyleSheet,
   Text,
   useWindowDimensions,
@@ -22,38 +22,41 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { AutoFinishWatcher } from "@/components/auto-finish-watcher";
 import { BatteryIndicator } from "@/components/battery-indicator";
+import { BgmMiniPlayer } from "@/components/bgm-mini-player";
 import { BreakSuggestionCard } from "@/components/break-suggestion-card";
 import { BreakSuggestionWatcher } from "@/components/break-suggestion-watcher";
-import { BgmMiniPlayer } from "@/components/bgm-mini-player";
 import { ClockButton } from "@/components/clock-button";
-import { GoodnightOverlay } from "@/components/goodnight-overlay";
-import { LandscapeHome } from "@/components/landscape-home";
-import { LevelUpOverlay } from "@/components/level-up-overlay";
 import { FirstRunTutorial } from "@/components/first-run-tutorial";
+import { GoodnightOverlay } from "@/components/goodnight-overlay";
 import { GrowthHintCard } from "@/components/growth-hint-card";
-import { TutorialOverlay } from "@/components/tutorial-overlay";
-import { getTutorialPage } from "@/constants/tutorial";
+import { LandscapeHome } from "@/components/landscape-home";
 import { LevelBadge } from "@/components/level-badge";
+import { LevelUpOverlay } from "@/components/level-up-overlay";
 import { MeasuringIndicator } from "@/components/measuring-indicator";
 import { MinimalHomeUI } from "@/components/minimal-home";
 import { NpcMessageCard } from "@/components/npc-message-card";
 import { PannableBackdrop } from "@/components/pannable-backdrop";
-import { TownVideoBackdrop } from "@/components/town-video";
 import { PomodoroPhaseWatcher } from "@/components/pomodoro-phase-watcher";
 import { RecordModal, type RecordValues } from "@/components/record-modal";
 import { RestoreSessionCard } from "@/components/restore-session-card";
 import { RoundIconButton } from "@/components/round-icon-button";
 import { StudyDayStatus } from "@/components/study-day-status";
+import { ThemedText } from "@/components/themed-text";
 import { TimerDisplay } from "@/components/timer-display";
-import { TimerSetupModal, type TimerSetupValues } from "@/components/timer-setup-modal";
+import {
+  TimerSetupModal,
+  type TimerSetupValues,
+} from "@/components/timer-setup-modal";
+import { TownVideoBackdrop } from "@/components/town-video";
+import { TutorialOverlay } from "@/components/tutorial-overlay";
 import { WeatherOverlay } from "@/components/weather-overlay";
 import { WeatherPicker } from "@/components/weather-picker";
 import { WeatherRow } from "@/components/weather-row";
-import { ThemedText } from "@/components/themed-text";
 import { MIN_SAVE_MINUTES, STUDY_DAY } from "@/constants/domain";
 import { Spacing } from "@/constants/theme";
 import { getTownArt } from "@/constants/townArt";
 import { getTownVideo, type TownVideo } from "@/constants/townVideo";
+import { getTutorialPage } from "@/constants/tutorial";
 import { useAudio } from "@/contexts/AudioContext";
 import { useSettings } from "@/contexts/SettingsContext";
 import { useTimer } from "@/contexts/TimerContext";
@@ -69,14 +72,21 @@ import {
   userRepo,
   weatherRepo,
 } from "@/db/repositories";
-import type { GrowthResult } from "@/db/repositories/growthRepo";
 import {
   HABIT_STEP_PRODUCTION,
   HABIT_STEP_TEST,
 } from "@/db/repositories/devRepo";
+import type { GrowthResult } from "@/db/repositories/growthRepo";
 import type { StudyDaySummary } from "@/db/repositories/sessionRepo";
 import type { SelectedTown } from "@/db/repositories/townProgressRepo";
 import type { ActiveSession, NightWeather } from "@/db/types";
+import { getTimeOfDay } from "@/lib/background-schedule";
+import {
+  getContinueThreshold,
+  getExtensionThreshold,
+  getInitialBreakThreshold,
+  getStudyDayTotalMinutes,
+} from "@/lib/break-suggestion";
 import {
   advanceDevTime,
   now as appNow,
@@ -84,7 +94,6 @@ import {
   setDevTimeToHour,
   useAppNow,
 } from "@/lib/clock";
-import { getTimeOfDay } from "@/lib/background-schedule";
 import { refreshNotifications } from "@/lib/notification-sync";
 import { scheduleTestNotification } from "@/lib/notifications";
 import { getPseudoOnlineCount } from "@/lib/pseudo-online";
@@ -94,12 +103,6 @@ import {
   isNightTime,
 } from "@/lib/study-day";
 import { getActualStudyMinutes, getPlannedEndMs } from "@/lib/timer";
-import {
-  getContinueThreshold,
-  getExtensionThreshold,
-  getInitialBreakThreshold,
-  getStudyDayTotalMinutes,
-} from "@/lib/break-suggestion";
 
 // S2 ホーム画面（夜の街）。
 // Phase 2-1: 選択中の街の背景（レベル連動）＋スワイプ探索（要件2.2）＋OSステータスバー非表示。
@@ -494,7 +497,9 @@ export default function HomeScreen() {
   const handleBreakPause = useCallback(async () => {
     const current = timer.session?.break_suggest_threshold_minutes;
     if (current !== null && current !== undefined) {
-      await activeSessionRepo.updateBreakThreshold(getContinueThreshold(current));
+      await activeSessionRepo.updateBreakThreshold(
+        getContinueThreshold(current),
+      );
     }
     await timer.pause(); // 一時停止側で予約を落とす（UC 12.2）
     setBreakTotal(null);
@@ -504,7 +509,9 @@ export default function HomeScreen() {
   const handleBreakContinue = useCallback(async () => {
     const current = timer.session?.break_suggest_threshold_minutes;
     if (current !== null && current !== undefined) {
-      await activeSessionRepo.updateBreakThreshold(getContinueThreshold(current));
+      await activeSessionRepo.updateBreakThreshold(
+        getContinueThreshold(current),
+      );
       await timer.reload();
     }
     setBreakTotal(null);
@@ -562,14 +569,15 @@ export default function HomeScreen() {
     // 初めておやすみを押したときは、確認より先に短い説明を出す（要件1.3・機能ごとの初回説明）。
     // 「何が起きるのか」を読んでから眠るかどうかを決められるようにするため、
     // 説明は確認の後ではなくボタンを押した時点で出す
-    const seen = (user?.tutorial_seen_features ?? "").split(",").filter(Boolean);
+    const seen = (user?.tutorial_seen_features ?? "")
+      .split(",")
+      .filter(Boolean);
     if (user && !seen.includes("goodnight")) {
       setGoodnightIntro(true);
       return;
     }
     confirmGoodnight();
   }, [user, confirmGoodnight]);
-
 
   // 暗転画面をタップしてホームへ戻る（音はフェードインで再開。要件13）
   const handleWake = useCallback(() => {
@@ -662,7 +670,8 @@ export default function HomeScreen() {
   // 開発用: レベルアップ閾値を 本番(5回/Lv) ⇄ テスト(1回/Lv) で切り替える。
   // 本番は目標達成5回で1レベルのため、演出の確認に手数がかかる
   const handleToggleHabitStep = useCallback(async () => {
-    const next = habitStep === HABIT_STEP_TEST ? HABIT_STEP_PRODUCTION : HABIT_STEP_TEST;
+    const next =
+      habitStep === HABIT_STEP_TEST ? HABIT_STEP_PRODUCTION : HABIT_STEP_TEST;
     try {
       await devRepo.setHabitLevelStep(next);
       setHabitStep(next);
@@ -777,18 +786,23 @@ export default function HomeScreen() {
     armIdle();
   }, [armIdle]);
 
-  // 対象状態に入ったらタイマー開始、外れたら止めて最小表示も解除する
+  // 対象状態に入ったらタイマー開始、外れたら止める。
+  //
+  // 外れたときに最小表示も解除するが、**横向きへ回しただけのときは解除しない**。
+  // 横画面は同じ「街を眺める」状態の別の見せ方であり、端末を回して戻しただけで
+  // 通常表示に戻ってしまうと、最小表示にした意図が失われるため。
+  // 最小表示の解除は画面に触れたとき（markActive）に限る。
   useEffect(() => {
     if (idleActive) {
       armIdle();
     } else {
       if (idleTimer.current) clearTimeout(idleTimer.current);
-      setIdle(false);
+      if (!landscapeMode) setIdle(false);
     }
     return () => {
       if (idleTimer.current) clearTimeout(idleTimer.current);
     };
-  }, [idleActive, armIdle]);
+  }, [idleActive, landscapeMode, armIdle]);
 
   // 前面にいる間だけ無操作を数える（見ていない時間＝背面・ロックは数えない）。
   // 背面に入ったらタイマーを止め、前面に戻ったら通常表示に戻して数え直す
@@ -829,7 +843,9 @@ export default function HomeScreen() {
         level={level}
         session={timer.session}
         // おやすみの暗転しきった後は、見えていない背景を回し続けない（要件13）
-        motionEnabled={user?.background_motion_enabled === 1 && !goodnightDarkened}
+        motionEnabled={
+          user?.background_motion_enabled === 1 && !goodnightDarkened
+        }
         weatherCode={weather?.code ?? null}
         onRestoreFromImmersive={() => {
           // 背景タップ: アイドル最小表示を解除（＝通常表示へ戻す）し、鑑賞モードも解除する
@@ -1018,7 +1034,10 @@ export default function HomeScreen() {
       />
 
       {/* 記録の保存後にかけるNPCの一言（要件7.1） */}
-      <NpcMessageCard message={npcMessage} onClose={() => setNpcMessage(null)} />
+      <NpcMessageCard
+        message={npcMessage}
+        onClose={() => setNpcMessage(null)}
+      />
 
       {/* おやすみの暗転画面（要件13）。タップでホームへ復帰する */}
       <GoodnightOverlay
@@ -1189,7 +1208,11 @@ function IdleOverlay({
       pointerEvents="box-none"
       entering={FadeIn.duration(600)}
     >
-      <MinimalHomeUI session={session} insets={insets} onPressClock={onPressTimer} />
+      <MinimalHomeUI
+        session={session}
+        insets={insets}
+        onPressClock={onPressTimer}
+      />
     </Animated.View>
   );
 }
@@ -1228,7 +1251,9 @@ function TopOverlay({
   return (
     <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
       {/* 左上: バッテリー・日時・仲間 */}
-      <View style={[styles.absolute, styles.topLeft, { top, left: Spacing.four }]}>
+      <View
+        style={[styles.absolute, styles.topLeft, { top, left: Spacing.four }]}
+      >
         <BatteryIndicator />
         <View style={styles.infoBlock}>
           <Text style={styles.dateText}>{dateLabel}</Text>
@@ -1254,12 +1279,18 @@ function TopOverlay({
           onPress={onPressTimer}
           disabled={!canStart && !session}
           // 計測中は文字盤に「終わりの位置」を示す（カウントダウンで急かさない）
-          endAt={session ? new Date(getPlannedEndMs(session, now.getTime())) : null}
+          endAt={
+            session ? new Date(getPlannedEndMs(session, now.getTime())) : null
+          }
         />
         {session ? (
           <MeasuringIndicator session={session} width={CLOCK_SIZE} />
         ) : !canStart ? (
-          <Text style={styles.closedText} numberOfLines={1} adjustsFontSizeToFit>
+          <Text
+            style={styles.closedText}
+            numberOfLines={1}
+            adjustsFontSizeToFit
+          >
             この街が目覚めるのは{STUDY_DAY.START_HOUR}:00から
           </Text>
         ) : null}
@@ -1333,7 +1364,11 @@ function HomeBackground({
   return (
     <>
       {art ? (
-        <TownBackground art={art} video={video} onTap={onRestoreFromImmersive} />
+        <TownBackground
+          art={art}
+          video={video}
+          onTap={onRestoreFromImmersive}
+        />
       ) : (
         <View style={styles.fallback} />
       )}
@@ -1372,7 +1407,11 @@ function TownBackground({
       {video ? (
         <TownVideoBackdrop video={video} poster={art} />
       ) : (
-        <Image source={art} style={StyleSheet.absoluteFill} contentFit="cover" />
+        <Image
+          source={art}
+          style={StyleSheet.absoluteFill}
+          contentFit="cover"
+        />
       )}
     </PannableBackdrop>
   );
@@ -1403,7 +1442,6 @@ function DevPanel({
   const { reload } = useSettings();
 
   if (!__DEV__) return null;
-
 
   async function handleReset() {
     try {
@@ -1444,7 +1482,8 @@ function DevPanel({
       {/* 習慣型のレベルアップ閾値: 本番=5回/Lv ⇄ テスト=1回/Lv */}
       <Pressable onPress={onToggleHabitStep} style={styles.devButton}>
         <ThemedText type="small" style={styles.devButtonText}>
-          レベルアップ: {habitStep === 1 ? "1回/Lv(テスト)" : `${habitStep}回/Lv(本番)`}
+          レベルアップ:{" "}
+          {habitStep === 1 ? "1回/Lv(テスト)" : `${habitStep}回/Lv(本番)`}
         </ThemedText>
       </Pressable>
       {/* 5:00自動終了・ポモドーロの進行を、実際に待たずに確認するため時刻を進める */}

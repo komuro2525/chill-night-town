@@ -5,7 +5,7 @@ import {
 } from "react-native";
 import type { EdgeInsets } from "react-native-safe-area-context";
 
-import { Spacing } from "@/constants/theme";
+import { Fonts, Spacing } from "@/constants/theme";
 import { useAudio } from "@/contexts/AudioContext";
 import type { ActiveSession } from "@/db/types";
 import { useAppNow } from "@/lib/clock";
@@ -20,22 +20,22 @@ import { MeasuringIndicator } from "./measuring-indicator";
 // （縦のアイドルでは詳細（タイマー表示）へ飛ぶ。横画面は閲覧専用のため渡さない）。
 
 const CLOCK_SIZE = 155;
-const WEEKDAYS = ["日", "月", "火", "水", "木", "金", "土"];
+// 曜日は罫線の下に単独で置くため、日付の並びを崩さない短い綴りにする
+const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
-// 例: 2026/08/01(月)
+// 例: 2026.04.19（区切りは中黒ではなくドット。数字の並びを均等に見せる）
 function formatDate(d: Date): string {
   const yyyy = d.getFullYear();
   const mm = String(d.getMonth() + 1).padStart(2, "0");
   const dd = String(d.getDate()).padStart(2, "0");
-  return `${yyyy}/${mm}/${dd}(${WEEKDAYS[d.getDay()]})`;
+  return `${yyyy}.${mm}.${dd}`;
 }
 
-// 例: 21:00 PM
+// 例: 00:52（24時間表記。AM/PM は付けない）
 function formatTime(d: Date): string {
-  const h24 = d.getHours();
-  const hh = String(h24).padStart(2, "0");
+  const hh = String(d.getHours()).padStart(2, "0");
   const mi = String(d.getMinutes()).padStart(2, "0");
-  return `${hh}:${mi} ${h24 < 12 ? "AM" : "PM"}`;
+  return `${hh}:${mi}`;
 }
 
 export function MinimalHomeUI({
@@ -62,13 +62,18 @@ export function MinimalHomeUI({
         pointerEvents="none"
       >
         <BatteryIndicator />
+        {/* 日付・時刻・曜日を罫線で挟んだ置き時計の体裁。罫線は時刻の幅に合わせて
+            伸びるため、曲名はこの塊の外に出す（長い曲名で罫線が伸びないように） */}
         <View style={styles.info}>
           <Text style={styles.date}>{formatDate(now)}</Text>
+          <View style={styles.rule} />
           <Text style={styles.time}>{formatTime(now)}</Text>
-          <Text style={styles.nowPlaying} numberOfLines={1}>
-            ♪ {bgmTrack ? bgmTrack.name : "音楽なし"}
-          </Text>
+          <View style={[styles.rule, styles.ruleAccent]} />
+          <Text style={styles.weekday}>{WEEKDAYS[now.getDay()]}</Text>
         </View>
+        <Text style={styles.nowPlaying} numberOfLines={1}>
+          ♪ {bgmTrack ? bgmTrack.name : "音楽なし"}
+        </Text>
       </View>
 
       {/* 計測中のみ右上に時計＋「作業中」。onPressClock があるときだけタップできる */}
@@ -91,30 +96,63 @@ export function MinimalHomeUI({
   );
 }
 
+// 曜日と下の罫線に使う淡い色。夜の空に沈まず、街の灯り（暖色）とも喧嘩しない
+const ACCENT = "rgba(168,226,222,0.9)";
+
+/** 曲名の折り返しを防ぐ上限幅（これを超えたら末尾を省略する） */
+const NOW_PLAYING_MAX_WIDTH = 240;
+
 const styles = StyleSheet.create({
-  leftInfo: { position: "absolute", gap: Spacing.two },
+  // 中身は左端に揃える。中央揃えにするとブロックの幅（＝曲名の長さ）で
+  // 時刻の位置が変わってしまうため、左端を基準にして動かないようにする
+  leftInfo: {
+    position: "absolute",
+    alignItems: "flex-start",
+    gap: Spacing.two,
+  },
   clock: { position: "absolute", alignItems: "center" },
-  info: { marginTop: Spacing.two, gap: 2 },
+  // 罫線を時刻の幅いっぱいに伸ばすため、中身は中央に揃える
+  info: { marginTop: Spacing.two, alignItems: "center" },
   date: {
-    color: "rgba(255,255,255,0.85)",
-    fontSize: 13,
+    color: "rgba(255,255,255,0.9)",
+    fontSize: 15,
     fontWeight: "500",
+    letterSpacing: 3,
+    fontFamily: Fonts.serif,
     textShadowColor: "rgba(0,0,0,0.6)",
     textShadowRadius: 4,
   },
   time: {
     color: "#ffffff",
-    fontSize: 40,
+    fontSize: 52,
     fontWeight: "300",
-    letterSpacing: 1,
+    letterSpacing: 4,
+    fontFamily: Fonts.serif,
     textShadowColor: "rgba(0,0,0,0.6)",
     textShadowRadius: 6,
   },
+  weekday: {
+    color: ACCENT,
+    fontSize: 15,
+    fontWeight: "500",
+    letterSpacing: 4,
+    fontFamily: Fonts.serif,
+    textShadowColor: "rgba(0,0,0,0.6)",
+    textShadowRadius: 4,
+  },
+  // 時刻の幅に合わせて伸び、左右を少し詰めた罫線
+  rule: {
+    alignSelf: "stretch",
+    height: 1,
+    marginHorizontal: Spacing.four,
+    marginVertical: Spacing.one,
+    backgroundColor: "rgba(255,255,255,0.75)",
+  },
+  ruleAccent: { backgroundColor: ACCENT },
   nowPlaying: {
-    marginTop: Spacing.two,
     color: "rgba(255,255,255,0.8)",
     fontSize: 13,
-    maxWidth: 240,
+    maxWidth: NOW_PLAYING_MAX_WIDTH,
     textShadowColor: "rgba(0,0,0,0.6)",
     textShadowRadius: 4,
   },
