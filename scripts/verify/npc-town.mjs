@@ -141,19 +141,28 @@ const ownerOf = (db, message) =>
   // 文面の本数（セリフ集の内訳: 感情なし＋感情ごと）
   const countOf = (id) =>
     db.prepare("SELECT count(*) c FROM npc_message WHERE npc_id=?").get(id).c;
+  const allNpcIds = db
+    .prepare("SELECT id FROM npc WHERE is_active=1 ORDER BY id")
+    .all()
+    .map((r) => r.id);
+  // 執筆中の住人がいてもよい（0本＝既定の住人が代弁）。書いたなら全区分そろえる
+  const written = allNpcIds.filter((id) => countOf(id) > 0);
   check(
-    "1人目の住人は全員55本ずつ持っている",
-    [1, 3, 4, 5].every((id) => countOf(id) === 55),
+    "文面のある住人は、全員ちょうど55本ずつ持っている",
+    written.length > 0 && written.every((id) => countOf(id) === 55),
   );
   check(
-    "2人目の住人はまだ文面を持たない（既定の住人が代弁する）",
-    [6, 7, 8, 9].every((id) => countOf(id) === 0),
+    "各街の1人目（既定の住人）は必ず文面を持つ",
+    [1, 3, 4, 5].every((id) => countOf(id) === 55),
   );
   // 街の完成（Lv5到達の夜）は一度きりなので感情別は持たない（要件7.1）
   const completedRows = db
     .prepare("SELECT npc_id, emotion_id FROM npc_message WHERE trigger_type='town_completed'")
     .all();
-  check("街の完成メッセージが4人×3本ある", completedRows.length === 12);
+  check(
+    "街の完成メッセージは、文面のある住人ぶん3本ずつある",
+    completedRows.length === written.length * 3,
+  );
   check(
     "街の完成メッセージは感情で出し分けない（emotion_id は全てNULL）",
     completedRows.every((r) => r.emotion_id === null),
@@ -201,9 +210,10 @@ const ownerOf = (db, message) =>
     "完成メッセージは感情を渡しても感情なしの候補から出る",
     stoveCompleted.includes(mCompleted),
   );
-  // 文面が未整備の住人（2人目・セリフはこれから）でも無言にはしない
-  const mUnwritten = pick(db, 6, "goodnight", null);
-  check("文面が無い2人目は既定NPC(1)へフォールバックする", ownerOf(db, mUnwritten) === 1);
+  // 文面が未整備の住人（セリフがこれからの人・存在しないid）でも無言にはしない
+  const unwrittenId = allNpcIds.find((id) => countOf(id) === 0) ?? 999;
+  const mUnwritten = pick(db, unwrittenId, "goodnight", null);
+  check("文面が無い住人は既定NPC(1)へフォールバックする", ownerOf(db, mUnwritten) === 1);
 
   // --- 5. 語り手の解決（masterRepo.resolveTownNpc 相当） ---
   // 選択があればその住人、無ければその街の既定＝id の小さい方

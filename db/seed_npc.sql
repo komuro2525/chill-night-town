@@ -16,7 +16,7 @@
 --   3: 天文台の管理人（starHill）… 55本
 --   4: 茶屋の女将（castleTown）… 55本
 --   5: ストーブ番の若者（snowTown）… 55本
---   6: 夜更かし仲間（nightTown）… 0本
+--   6: 夜更かし仲間（nightTown）… 55本
 --   7: 焚火番の子（starHill）… 0本
 --   8: 桜守の老人（castleTown）… 0本
 --   9: 宿の番頭（snowTown）… 0本
@@ -438,7 +438,82 @@ INSERT INTO npc_message (npc_id, trigger_type, message) VALUES
 -- =====================================================================
 -- NPC 6: 夜更かし仲間（nightTown）
 -- =====================================================================
--- 文面は未整備。整うまでは既定の住人（npc(1)）が代わりに話す
+
+-- study_start（感情を問わない候補）
+INSERT INTO npc_message (npc_id, trigger_type, message) VALUES
+    (6, 'study_start', 'よ、来たね。おれも今来たとこ。'),
+    (6, 'study_start', '今日も夜更かしか。おれもだけど。'),
+    (6, 'study_start', 'となり、空いてるよ。'),
+    (6, 'study_start', '別に急がなくていいと思う。おれは急がない。'),
+    (6, 'study_start', '今日は風がぬるいね。夏が近いのかな。'),
+    (6, 'study_start', 'なんか始めるんでしょ。おれは見てる。'),
+    (6, 'study_start', 'おれ、ここの夜景がけっこう好きなんだよね。'),
+    (6, 'study_start', '気が向いたらでいいよ。おれはしばらくいるから。'),
+    (6, 'study_start', '来ると思ってた。……いや、なんとなく。');
+
+-- study_end（感情を問わない候補）
+INSERT INTO npc_message (npc_id, trigger_type, message) VALUES
+    (6, 'study_end', 'おつかれ。今日はよくやったって、おれは思うけどな。'),
+    (6, 'study_end', '終わったんだ。じゃあ、ちょっと座ってこ。'),
+    (6, 'study_end', 'なんか、いい時間だったね。'),
+    (6, 'study_end', 'おれは何もしてないけど、隣にはいたよ。'),
+    (6, 'study_end', '今日のぶんはもう終わり。あとは適当にすごそ。'),
+    (6, 'study_end', 'お、切り上げるんだ。いい判断だと思う。'),
+    (6, 'study_end', 'だいぶ長かったね。おれ、途中でうとうとしてた。'),
+    (6, 'study_end', '十分でしょ。おれが言うことじゃないけど。'),
+    (6, 'study_end', 'おわり。じゃあ夜景でも見よう。');
+
+-- study_end（感情ごとの出し分け）
+INSERT INTO npc_message (npc_id, trigger_type, emotion_id, message) VALUES
+    (6, 'study_end', (SELECT id FROM emotion WHERE code = 'achievement'), 'いい顔してる。そういう日っていいよね。'),
+    (6, 'study_end', (SELECT id FROM emotion WHERE code = 'focused'), 'すごい集中してたね。話しかけなくてよかった。'),
+    (6, 'study_end', (SELECT id FROM emotion WHERE code = 'persevered'), '踏ん張ってたの、見てたよ。おれは途中で寝てたけど、たぶん見てた。'),
+    (6, 'study_end', (SELECT id FROM emotion WHERE code = 'enjoyed'), '楽しそうだったね。それがいちばんいいよ。'),
+    (6, 'study_end', (SELECT id FROM emotion WHERE code = 'calm'), '静かな夜だったね。おれもぼーっとしてた。'),
+    (6, 'study_end', (SELECT id FROM emotion WHERE code = 'as_usual'), 'いつも通りか。いつも通りができるの、けっこうすごいよ。'),
+    (6, 'study_end', (SELECT id FROM emotion WHERE code = 'sleepy'), '眠そう。おれも眠い。もう寝よ。'),
+    (6, 'study_end', (SELECT id FROM emotion WHERE code = 'tired'), '疲れた顔してる。今日はもう終わりでいいでしょ。'),
+    (6, 'study_end', (SELECT id FROM emotion WHERE code = 'down'), 'なんか元気ないね。……別に聞かないけど、いるから。'),
+    (6, 'study_end', (SELECT id FROM emotion WHERE code = 'anxious'), 'そわそわしてたね。おれもたまにそうなる。'),
+    (6, 'study_end', (SELECT id FROM emotion WHERE code = 'stuck'), '進まなかったんだ。そういう日あるよね。おれなんて毎日そう。');
+
+-- goal_achieved（感情を問わない候補）
+INSERT INTO npc_message (npc_id, trigger_type, message) VALUES
+    (6, 'goal_achieved', '目標いったんだ。すごいじゃん。'),
+    (6, 'goal_achieved', '自分で決めたこと守るの、おれには無理だな。えらいよ。'),
+    (6, 'goal_achieved', '届いたね。おれは何もしてないけど、うれしい。'),
+    (6, 'goal_achieved', 'やったね。おれはもう寝るけど。'),
+    (6, 'goal_achieved', '続けてると、ちゃんと届くんだね。'),
+    (6, 'goal_achieved', '目標達成。ちょっと得意げでいいと思う。');
+
+-- goal_achieved（感情ごとの出し分け）
+INSERT INTO npc_message (npc_id, trigger_type, emotion_id, message) VALUES
+    (6, 'goal_achieved', (SELECT id FROM emotion WHERE code = 'achievement'), '届いて、しかもいい気分。最高じゃん。'),
+    (6, 'goal_achieved', (SELECT id FROM emotion WHERE code = 'focused'), '集中したまま届いたんだ。かっこいいね。'),
+    (6, 'goal_achieved', (SELECT id FROM emotion WHERE code = 'persevered'), '踏ん張って届いたの、おれは見てたよ。'),
+    (6, 'goal_achieved', (SELECT id FROM emotion WHERE code = 'enjoyed'), '楽しみながら目標まで。ずるいくらい上手だね。'),
+    (6, 'goal_achieved', (SELECT id FROM emotion WHERE code = 'calm'), '力んでないのに届いてる。そういうの、憧れるな。'),
+    (6, 'goal_achieved', (SELECT id FROM emotion WHERE code = 'as_usual'), 'ふつうにしてたら届いてたんだ。それが強さでしょ。'),
+    (6, 'goal_achieved', (SELECT id FROM emotion WHERE code = 'sleepy'), '眠いのに届かせたんだ。もう寝ていいよ。おれも寝る。'),
+    (6, 'goal_achieved', (SELECT id FROM emotion WHERE code = 'tired'), '届いた。疲れて当たり前だよ。'),
+    (6, 'goal_achieved', (SELECT id FROM emotion WHERE code = 'down'), '気分は晴れないんだ。でも届いたのは本当だよ。'),
+    (6, 'goal_achieved', (SELECT id FROM emotion WHERE code = 'anxious'), '不安なまま届かせたんだ。おれには真似できないな。'),
+    (6, 'goal_achieved', (SELECT id FROM emotion WHERE code = 'stuck'), '手応えないのに届いてる。あるあるだよね。');
+
+-- town_completed（感情を問わない候補）
+INSERT INTO npc_message (npc_id, trigger_type, message) VALUES
+    (6, 'town_completed', '街、完成したって。おれもここにいたのに、なんか他人事みたいだ。'),
+    (6, 'town_completed', '灯りがぜんぶついてる。ずっと隣で見てたよ、これ。'),
+    (6, 'town_completed', '完成おめでとう。おれはまだここにいるから、また夜更かししよ。');
+
+-- goodnight（感情を問わない候補）
+INSERT INTO npc_message (npc_id, trigger_type, message) VALUES
+    (6, 'goodnight', 'おやすみ。おれももう寝る。'),
+    (6, 'goodnight', 'じゃ、また明日の夜にでも。'),
+    (6, 'goodnight', '今日のこと、たぶん覚えてるよ。たぶんね。'),
+    (6, 'goodnight', '灯り消すね。おやすみ。'),
+    (6, 'goodnight', '眠れないときも、ここにいるから。'),
+    (6, 'goodnight', 'またね。いい夢を。');
 
 -- =====================================================================
 -- NPC 7: 焚火番の子（starHill）
