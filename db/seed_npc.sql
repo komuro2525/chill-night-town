@@ -18,7 +18,7 @@
 --   5: ストーブ番の若者（snowTown）… 55本
 --   6: 夜更かし仲間（nightTown）… 55本
 --   7: 焚火番の子（starHill）… 55本
---   8: 桜守の老人（castleTown）… 0本
+--   8: 桜守の老人（castleTown）… 55本
 --   9: 宿の番頭（snowTown）… 0本
 -- =====================================================================
 
@@ -598,7 +598,82 @@ INSERT INTO npc_message (npc_id, trigger_type, message) VALUES
 -- =====================================================================
 -- NPC 8: 桜守の老人（castleTown）
 -- =====================================================================
--- 文面は未整備。整うまでは既定の住人（npc(1)）が代わりに話す
+
+-- study_start（感情を問わない候補）
+INSERT INTO npc_message (npc_id, trigger_type, message) VALUES
+    (8, 'study_start', '来たか。この木は、私が若い時分から同じ場所に立っている。急がなくていい。'),
+    (8, 'study_start', '今夜も精が出るな。木も人も、伸びる時期は決まっていない。'),
+    (8, 'study_start', '灯りは点いている。好きなだけいなさい。'),
+    (8, 'study_start', '焦らずとも、季節は巡る。今夜のぶんで十分だ。'),
+    (8, 'study_start', '花の下は、考えごとに向いている。昔からそうだ。'),
+    (8, 'study_start', '始めるのか。私は水をやってから、そのあたりにいる。'),
+    (8, 'study_start', '今年の枝は、去年より少し伸びた。見ていなければ気づかん程度にな。'),
+    (8, 'study_start', 'よく来る人の顔は覚えている。あなたもそのひとりだ。'),
+    (8, 'study_start', '夜は長い。木に比べれば、人の一晩など短いものだ。');
+
+-- study_end（感情を問わない候補）
+INSERT INTO npc_message (npc_id, trigger_type, message) VALUES
+    (8, 'study_end', '今夜はここまでだな。木も、休む季節があるから咲く。'),
+    (8, 'study_end', 'おつかれさま。ひと晩ぶん、確かに伸びた。'),
+    (8, 'study_end', 'よくやった。あとは根が水を吸うのを待つようなものだ。'),
+    (8, 'study_end', '今夜のことは、来年の花になる。すぐには見えんがな。'),
+    (8, 'study_end', 'もう休みなさい。夜露が冷える。'),
+    (8, 'study_end', '続けているな。それがいちばん難しいことだ。'),
+    (8, 'study_end', '今夜も咲いていたよ。あなたが手を動かしているあいだ、ずっと。'),
+    (8, 'study_end', '一日でどうにかなるものではない。だから、続くのだ。'),
+    (8, 'study_end', '灯りを落とそう。花は明日も同じ場所にある。');
+
+-- study_end（感情ごとの出し分け）
+INSERT INTO npc_message (npc_id, trigger_type, emotion_id, message) VALUES
+    (8, 'study_end', (SELECT id FROM emotion WHERE code = 'achievement'), '手応えのある夜だったか。そういう年の枝は、よく伸びる。'),
+    (8, 'study_end', (SELECT id FROM emotion WHERE code = 'focused'), '深く入り込めた夜だな。木でいえば、根が伸びている時間だ。'),
+    (8, 'study_end', (SELECT id FROM emotion WHERE code = 'persevered'), 'よく踏ん張った。踏ん張った年のことは、幹に残る。'),
+    (8, 'study_end', (SELECT id FROM emotion WHERE code = 'enjoyed'), '楽しめたか。楽しんで世話をした木は、不思議とよく咲く。'),
+    (8, 'study_end', (SELECT id FROM emotion WHERE code = 'calm'), '穏やかな夜だ。こういう夜が続く年は、いい年になる。'),
+    (8, 'study_end', (SELECT id FROM emotion WHERE code = 'as_usual'), 'いつも通り、か。毎年おなじに咲かせるのが、いちばん骨が折れる。'),
+    (8, 'study_end', (SELECT id FROM emotion WHERE code = 'sleepy'), '眠いだろう。木も夜は眠っている。無理はいらん。'),
+    (8, 'study_end', (SELECT id FROM emotion WHERE code = 'tired'), '疲れたな。今夜はもう、何もしなくていい。'),
+    (8, 'study_end', (SELECT id FROM emotion WHERE code = 'down'), 'そういう夜もある。花の付かない年の枝を、私はいくつも見てきた。'),
+    (8, 'study_end', (SELECT id FROM emotion WHERE code = 'anxious'), '不安なまま手を動かせたか。それは、根を張るということだ。'),
+    (8, 'study_end', (SELECT id FROM emotion WHERE code = 'stuck'), '進まぬ夜だったか。冬の木は、止まって見えて中で支度をしている。');
+
+-- goal_achieved（感情を問わない候補）
+INSERT INTO npc_message (npc_id, trigger_type, message) VALUES
+    (8, 'goal_achieved', '決めたところまで届いたな。見事だ。'),
+    (8, 'goal_achieved', '自分との約束を守れる人は、そう多くない。'),
+    (8, 'goal_achieved', '今夜は咲いたな。祝いに、もう一枝ぶん灯りを点けておこう。'),
+    (8, 'goal_achieved', '届いた。だが休むのも仕事のうちだ、木と同じでな。'),
+    (8, 'goal_achieved', '続けてきたからだ。急に咲く木は無い。'),
+    (8, 'goal_achieved', 'この一夜も、幹の中に積もっていく。');
+
+-- goal_achieved（感情ごとの出し分け）
+INSERT INTO npc_message (npc_id, trigger_type, emotion_id, message) VALUES
+    (8, 'goal_achieved', (SELECT id FROM emotion WHERE code = 'achievement'), '届いて、手応えもある。花も実もある夜だな。'),
+    (8, 'goal_achieved', (SELECT id FROM emotion WHERE code = 'focused'), '集中したまま届いたか。よく手入れの行き届いた枝のようだ。'),
+    (8, 'goal_achieved', (SELECT id FROM emotion WHERE code = 'persevered'), '踏ん張ったぶん、ちゃんと届いた。木は正直だ。'),
+    (8, 'goal_achieved', (SELECT id FROM emotion WHERE code = 'enjoyed'), '楽しみながら届いたか。それがいちばん長く続く。'),
+    (8, 'goal_achieved', (SELECT id FROM emotion WHERE code = 'calm'), '力まずに届いた。いい咲き方だ。'),
+    (8, 'goal_achieved', (SELECT id FROM emotion WHERE code = 'as_usual'), 'いつも通りにしていたら届いていた。それが年季というものだ。'),
+    (8, 'goal_achieved', (SELECT id FROM emotion WHERE code = 'sleepy'), '眠いだろうに、よく届かせた。あとは休みなさい。'),
+    (8, 'goal_achieved', (SELECT id FROM emotion WHERE code = 'tired'), '届いた。疲れて当然だ。今夜はここまでにしよう。'),
+    (8, 'goal_achieved', (SELECT id FROM emotion WHERE code = 'down'), '気は晴れずとも、届いたのは事実だ。花は咲いた年を忘れん。'),
+    (8, 'goal_achieved', (SELECT id FROM emotion WHERE code = 'anxious'), '不安を抱えたまま届かせたか。強い根をしている。'),
+    (8, 'goal_achieved', (SELECT id FROM emotion WHERE code = 'stuck'), '手応えが無くとも、時間は積もっている。木の育ちと同じだ。');
+
+-- town_completed（感情を問わない候補）
+INSERT INTO npc_message (npc_id, trigger_type, message) VALUES
+    (8, 'town_completed', '通りじゅうに灯りが点いた。この桜も、ずいぶん長く見てきたが、今夜の眺めは格別だ。'),
+    (8, 'town_completed', 'ここまで来たか。何年もかけて咲く木のように、あなたも咲いたな。'),
+    (8, 'town_completed', '完成だ。だが木は、咲いたあとも生きている。また通ってきなさい。');
+
+-- goodnight（感情を問わない候補）
+INSERT INTO npc_message (npc_id, trigger_type, message) VALUES
+    (8, 'goodnight', 'おやすみ。良い夢を。'),
+    (8, 'goodnight', '灯りを落とす。夜露が降りる前に休みなさい。'),
+    (8, 'goodnight', 'また来なさい。花はしばらく咲いている。'),
+    (8, 'goodnight', '今夜のあなたのことは、この木が覚えている。'),
+    (8, 'goodnight', '夜は逃げん。ゆっくり休め。'),
+    (8, 'goodnight', 'それでは、また。良い眠りを。');
 
 -- =====================================================================
 -- NPC 9: 宿の番頭（snowTown）
