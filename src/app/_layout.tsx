@@ -125,6 +125,10 @@ function RootNavigator() {
         name="settings/credits"
         options={{ headerShown: true, title: "音楽のクレジット", headerBackTitle: "戻る" }}
       />
+      <Stack.Screen
+        name="settings/notifications"
+        options={{ headerShown: true, title: "通知", headerBackTitle: "戻る" }}
+      />
     </Stack>
   );
 }

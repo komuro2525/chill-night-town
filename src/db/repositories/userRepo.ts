@@ -153,20 +153,8 @@ export async function updateBackgroundMotionEnabled(
   );
 }
 
-/**
- * その夜の写真のON/OFF（要件10.14）。稼働中も可（記録・判定に影響しないため）。
- *
- * OFFのときは撮影の入口を出さず、カメラ権限を一度も要求しない。
- * OFFは「隠す」であって「消す」ではないため、撮影済みの写真は削除しない
- * （カレンダーから閲覧・削除できる）。
- */
-export async function updateNightPhotoEnabled(enabled: boolean): Promise<void> {
-  const db = await getDatabase();
-  await db.runAsync(
-    "UPDATE user SET night_photo_enabled = ?, updated_at = datetime('now')",
-    enabled ? 1 : 0,
-  );
-}
+// 夜の写真のON/OFF（旧10.14）の更新関数は、設定の廃止に伴い削除した
+// （要件 改訂51）。列 user.night_photo_enabled は未使用のまま残っている。
 
 /**
  * バックグラウンド再生のON/OFF（要件9章 / 10.15）。稼働中も可（記録・判定に影響しないため）。

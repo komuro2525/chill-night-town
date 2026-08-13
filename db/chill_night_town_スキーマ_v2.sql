@@ -46,9 +46,10 @@ CREATE TABLE user (
     tutorial_seen_features      TEXT    NOT NULL DEFAULT '',
     -- 背景のループ動画（要件2.2）を再生するか。1=動かす（既定）/ 0=静止画。設定10.11
     background_motion_enabled   INTEGER NOT NULL DEFAULT 1  CHECK (background_motion_enabled IN (0, 1)),
-    -- その夜の写真（要件2.6）を撮る機能のON/OFF。1=使う（既定）/ 0=使わない。設定10.14
-    -- 0のときは撮影の入口を出さず、カメラ権限を一度も要求しない。
-    -- 0にしても撮影済みの写真は削除しない（カレンダーから閲覧・削除できる）
+    -- 【未使用】その夜の写真（要件2.6）のON/OFF設定に使っていた列。設定10.14の廃止に伴い
+    -- アプリからは読み書きしない（要件 改訂51 / テーブル定義書 改訂26）。撮影は常に任意で、
+    -- 撮影を選ばない限りカメラ権限を要求しないため、設定が防ぐものが無かった。
+    -- 列を落とすマイグレーションは配布済み端末へのリスクに見合わないため既定値1のまま残す
     night_photo_enabled         INTEGER NOT NULL DEFAULT 1  CHECK (night_photo_enabled IN (0, 1)),
     -- アプリを離れているあいだもBGM・環境音を鳴らし続けるか（要件9章）。1=続ける（既定）。設定10.15
     -- OFFに戻せるようにするのは、連続再生が電池を使うため

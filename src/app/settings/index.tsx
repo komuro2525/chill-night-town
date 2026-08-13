@@ -1,10 +1,9 @@
 import { useRouter } from "expo-router";
 import { useState } from "react";
-import { ActivityIndicator, Alert, Linking, Pressable, ScrollView, StyleSheet, Switch, View } from "react-native";
+import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Switch, View } from "react-native";
 
 import {
   EditFieldModal,
-  formatClockInput,
   SettingRow,
   SettingSection,
   VolumeRow,
@@ -16,16 +15,13 @@ import { Spacing } from "@/constants/theme";
 import { useAudio, type SoundCategory } from "@/contexts/AudioContext";
 import { useSettings } from "@/contexts/SettingsContext";
 import { useTimer } from "@/contexts/TimerContext";
-import { growthRepo, maintenanceRepo, settingsRepo, townProgressRepo, userRepo } from "@/db/repositories";
+import { growthRepo, maintenanceRepo, townProgressRepo, userRepo } from "@/db/repositories";
 import type { GrowthMethod } from "@/db/types";
 import { useTheme } from "@/hooks/use-theme";
-import { ensureNotificationPermission } from "@/lib/notifications";
-import { refreshNotifications } from "@/lib/notification-sync";
 import { formatMinutes } from "@/lib/study-day";
 import {
   validateDailyGoalMinutes,
   validateNickname,
-  validateNotificationTime,
   validateProjectTargetHours,
 } from "@/lib/validation";
 
@@ -34,25 +30,11 @@ import {
 // グレーアウトし「学習中は変更できません」と添える（要件10 共通ルール）。
 
 const RUNNING_NOTE = "学習中は変更できません";
-// 通知を初めてONにするときの既定時刻（夜間帯のうち一般的な時刻）
-const DEFAULT_NOTIFICATION_TIME = "21:00";
-
-/**
- * 通知許可が得られなかったときの案内（要件12章: OSの設定画面から変更できる旨を表示する）。
- * 一度拒否された後はアプリから許可を要求できないため、OSの設定を開く導線を添える。
- * @param what 許可されると何ができるかの説明（通知の種類ごとに変わる）
- */
-function alertNotificationDenied(what: string) {
-  Alert.alert("通知が許可されていません", `端末の設定から Chill Night Town の通知を許可すると、${what}。`, [
-    { text: "閉じる", style: "cancel" },
-    { text: "設定を開く", onPress: () => void Linking.openSettings() },
-  ]);
-}
 
 export default function SettingsScreen() {
   const router = useRouter();
-  const { user, ready, reload, selectedTown, townNpc, notificationSetting } =
-    useSettings();
+  // 通知の設定は下位画面（settings/notifications）が持つ。ここには入口の行だけ置く
+  const { user, ready, reload, selectedTown, townNpc } = useSettings();
   const { status } = useTimer();
   const audio = useAudio();
   const running = status !== "idle";
@@ -65,86 +47,6 @@ export default function SettingsScreen() {
 
   const [editing, setEditing] = useState<"nickname" | "goal" | null>(null);
   const [projectPrompt, setProjectPrompt] = useState(false);
-  const [timeEditOpen, setTimeEditOpen] = useState(false);
-
-  const notifyEnabled = notificationSetting?.is_enabled === 1;
-  const notifyTime = notificationSetting?.scheduled_time ?? null;
-  const eventNoticeEnabled = notificationSetting?.event_notice_enabled === 1;
-  const studyNoticeEnabled = notificationSetting?.study_notice_enabled === 1;
-
-  // 通知のON/OFF（要件10.3 / 12章）。ONにするときはOSの許可を確保し、
-  // 拒否されたらOFFへ戻してOSの設定から変更できる旨を伝える（要件12章）。
-  // 発火はOSが行い、設定保存時にスケジュール登録・解除する（アプリは時刻を監視しない）
-  async function handleToggleNotification(next: boolean) {
-    try {
-      if (next) {
-        const granted = await ensureNotificationPermission();
-        if (!granted) {
-          alertNotificationDenied("学習開始の時刻をお知らせできます");
-          return; // OFFのまま（Switchは notifyEnabled を見るので戻る）
-        }
-        const time = notifyTime ?? DEFAULT_NOTIFICATION_TIME;
-        await settingsRepo.updateNotificationSetting(true, time);
-      } else {
-        await settingsRepo.updateNotificationSetting(false, null);
-      }
-      // 学習開始リマインドと予定通知をまとめて張り直す（全消し→全再登録）
-      await refreshNotifications();
-      await reload();
-    } catch (e) {
-      console.error("通知設定の更新に失敗しました", e);
-    }
-  }
-
-  // 通知時刻の変更（ONのあいだのみ）。保存して登録し直す
-  async function handleChangeNotificationTime(time: string) {
-    try {
-      await settingsRepo.updateNotificationSetting(true, time);
-      await refreshNotifications();
-      await reload();
-    } catch (e) {
-      console.error("通知時刻の更新に失敗しました", e);
-    }
-  }
-
-  // 予定のお知らせ（4.3）のON/OFF。ONにするときは通知許可を確保する
-  async function handleToggleEventNotice(next: boolean) {
-    try {
-      if (next) {
-        const granted = await ensureNotificationPermission();
-        if (!granted) {
-          alertNotificationDenied("予定のお知らせを受け取れます");
-          return;
-        }
-      }
-      await settingsRepo.updateEventNoticeEnabled(next);
-      await refreshNotifications();
-      await reload();
-    } catch (e) {
-      console.error("予定通知設定の更新に失敗しました", e);
-    }
-  }
-
-  // 学習中のお知らせ（UC 10.10 / 12.2）のON/OFF。
-  // ONにした時点で計測中なら、張り直しの中でその場で以後の出来事が予約される
-  async function handleToggleStudyNotice(next: boolean) {
-    try {
-      if (next) {
-        const granted = await ensureNotificationPermission();
-        if (!granted) {
-          alertNotificationDenied(
-            "休憩や目標到達など、学習中の出来事をお知らせできます",
-          );
-          return;
-        }
-      }
-      await settingsRepo.updateStudyNoticeEnabled(next);
-      await refreshNotifications();
-      await reload();
-    } catch (e) {
-      console.error("学習中のお知らせ設定の更新に失敗しました", e);
-    }
-  }
 
   // 選択中の街は SettingsContext が保持する。S9 で変更すると context 側が更新され、
   // 戻ってきたときには既に最新（非同期の再読み込み待ちが無いのでラグが出ない）。
@@ -231,15 +133,52 @@ export default function SettingsScreen() {
           />
         </SettingSection>
 
-        {/* 街の育て方 */}
-        <SettingSection
-          title="街の育て方"
-          footer={
-            method === "habit"
-              ? "達成した夜に、街の灯りが少し育ちます。"
-              : "積み重ねた学習時間が、目標に向かって街を育てます。"
-          }
-        >
+        {/* 音（要件9 / 10.4）。音量0の音は再生処理自体を行わない。
+            よく触る設定なので、プロフィールの次に置く */}
+        <SettingSection title="音">
+          <VolumeRow
+            first
+            label="BGM"
+            value={audio.volumes.bgm}
+            onChange={(v) => handleVolumeChange("bgm", v)}
+          />
+          <VolumeRow
+            label="環境音"
+            note="夜の天気に合わせて流れる音"
+            value={audio.volumes.ambient}
+            onChange={(v) => handleVolumeChange("ambient", v)}
+          />
+          <VolumeRow
+            label="効果音"
+            value={audio.volumes.sfx}
+            onChange={(v) => handleVolumeChange("sfx", v)}
+          />
+          <VolumeRow
+            label="鐘の音"
+            note="学習を終えたときの音"
+            value={audio.volumes.bell}
+            onChange={(v) => handleVolumeChange("bell", v)}
+          />
+          {/* バックグラウンド再生（要件9 / 10.15）。稼働中も変更可 */}
+          <SettingRow
+            label="バックグラウンド再生"
+            note="画面を消しているあいだも、BGMと環境音を流し続けます"
+            right={
+              <Switch
+                value={audio.backgroundPlayback}
+                onValueChange={(v) => void audio.setBackgroundPlayback(v)}
+              />
+            }
+          />
+          <SettingRow
+            label="音楽のクレジット"
+            onPress={() => router.push("/settings/credits")}
+          />
+        </SettingSection>
+
+        {/* 街（成長方式・切り替え・住人）。住人は街ごとに決まるため、街と同じ節にまとめる
+            （要件6.2 / 6.4 / 7.1・10.12） */}
+        <SettingSection title="街">
           <View style={[styles.methodRow, running && styles.disabled]}>
             <ThemedText>成長方式</ThemedText>
             <Segmented
@@ -252,13 +191,15 @@ export default function SettingsScreen() {
               onChange={(v) => void changeMethod(v)}
             />
           </View>
-          {running ? (
-            <View style={styles.methodNote}>
-              <ThemedText type="small" themeColor="textSecondary">
-                {RUNNING_NOTE}
-              </ThemedText>
-            </View>
-          ) : null}
+          {/* 方式の説明。セクションのfooterは住人の説明に使うため、ここに添える */}
+          <View style={styles.methodNote}>
+            <ThemedText type="small" themeColor="textSecondary">
+              {method === "habit"
+                ? "達成した夜に、街の灯りが少し育ちます"
+                : "積み重ねた学習時間が、目標に向かって街を育てます"}
+              {running ? `\n${RUNNING_NOTE}` : ""}
+            </ThemedText>
+          </View>
           <SettingRow
             label="街の切り替え"
             value={
@@ -270,16 +211,8 @@ export default function SettingsScreen() {
             }
             onPress={() => router.push("/settings/towns")}
           />
-        </SettingSection>
-
-        {/* 夜の住人（NPC）。住人は街ごとに決まっており、ここでは紹介を見るだけ（要件7.1・10.12） */}
-        <SettingSection
-          title="夜の住人"
-          footer="住人は街ごとにいます。いまの街の住人の声で、夜のメッセージが届きます。"
-        >
           <SettingRow
-            first
-            label="いまの街の住人"
+            label="街の住人"
             value={townNpc?.name ?? undefined}
             onPress={() => router.push("/settings/npc")}
           />
@@ -314,28 +247,11 @@ export default function SettingsScreen() {
               />
             }
           />
-          {/* 夜の写真（要件10.14）。オフのあいだはカメラ権限を一度も要求しない */}
-          <SettingRow
-            label="夜の写真"
-            note="今夜の空を1枚だけ残せます。写真は端末の中だけに保存されます。オフにしても、これまでに撮った写真は残ります（消すときはカレンダーから）"
-            right={
-              <Switch
-                value={user.night_photo_enabled === 1}
-                onValueChange={async (v) => {
-                  await userRepo.updateNightPhotoEnabled(v);
-                  await reload();
-                }}
-              />
-            }
-          />
           <SettingRow label="マイタグの管理" onPress={() => router.push("/settings/tags")} />
         </SettingSection>
 
         {/* 表示（要件10.11）。記録・判定に影響しないため稼働中も変更可 */}
-        <SettingSection
-          title="表示"
-          footer="動く背景がまだ用意されていない街や時間帯では、静止画のままです。"
-        >
+        <SettingSection title="表示">
           <SettingRow
             first
             label="背景を動かす"
@@ -352,114 +268,27 @@ export default function SettingsScreen() {
           />
         </SettingSection>
 
-        {/* 音（要件9 / 10.4）。音量0の音は再生処理自体を行わない */}
-        <SettingSection
-          title="音"
-          footer="0にすると、その音は鳴らなくなります。"
-        >
-          <VolumeRow
+        {/* 通知（要件10.3 / 10.13 / 12章）。項目が多いので下位画面へ分けている。
+            見出しと行で「通知」が重ならないよう、この節には見出しを付けない */}
+        <SettingSection>
+          <SettingRow
             first
-            label="BGM"
-            value={audio.volumes.bgm}
-            onChange={(v) => handleVolumeChange("bgm", v)}
-          />
-          <VolumeRow
-            label="環境音"
-            note="夜の天気に合わせて流れる音"
-            value={audio.volumes.ambient}
-            onChange={(v) => handleVolumeChange("ambient", v)}
-          />
-          <VolumeRow
-            label="効果音"
-            value={audio.volumes.sfx}
-            onChange={(v) => handleVolumeChange("sfx", v)}
-          />
-          <VolumeRow
-            label="鐘の音"
-            note="学習を終えたときの音"
-            value={audio.volumes.bell}
-            onChange={(v) => handleVolumeChange("bell", v)}
-          />
-          {/* バックグラウンド再生（要件9 / 10.15）。稼働中も変更可 */}
-          <SettingRow
-            label="アプリを離れても鳴らす"
-            note="画面を消しているあいだも、BGMと環境音を流し続けます。"
-            right={
-              <Switch
-                value={audio.backgroundPlayback}
-                onValueChange={(v) => void audio.setBackgroundPlayback(v)}
-              />
-            }
-          />
-          <SettingRow
-            label="音楽のクレジット"
-            onPress={() => router.push("/settings/credits")}
+            label="通知"
+            note="学習開始・カレンダーの予定・学習中のお知らせ"
+            onPress={() => router.push("/settings/notifications")}
           />
         </SettingSection>
 
-        {/* 通知（要件10.3 / 12章）。発火はOSが行う。稼働中も変更可 */}
-        <SettingSection
-          title="通知"
-          footer="設定した時刻に、そっと学習の始まりをお知らせします。"
-        >
-          <SettingRow
-            first
-            label="学習開始の通知"
-            right={
-              <Switch
-                value={notifyEnabled}
-                onValueChange={(v) => void handleToggleNotification(v)}
-              />
-            }
-          />
-          {notifyEnabled ? (
-            <SettingRow
-              label="通知時刻"
-              value={notifyTime ?? DEFAULT_NOTIFICATION_TIME}
-              onPress={() => setTimeEditOpen(true)}
-            />
-          ) : null}
-          <SettingRow
-            label="予定のお知らせ"
-            note="カレンダーの予定の1週間前と前日の昼に、そっとお知らせします。"
-            right={
-              <Switch
-                value={eventNoticeEnabled}
-                onValueChange={(v) => void handleToggleEventNotice(v)}
-              />
-            }
-          />
-          <SettingRow
-            label="学習中のお知らせ"
-            note="アプリを離れているあいだ、休憩の始まりと終わり・目標に届いたとき・夜が明けたときをお知らせします。"
-            right={
-              <Switch
-                value={studyNoticeEnabled}
-                onValueChange={(v) => void handleToggleStudyNotice(v)}
-              />
-            }
-          />
-        </SettingSection>
-
-        {/* 使い方（タップで各機能の説明一覧へ） */}
-        <SettingSection title="使い方">
+        {/* このアプリについて（使い方・問い合わせ先） */}
+        <SettingSection title="このアプリについて">
           <SettingRow
             first
             label="使い方"
             onPress={() => router.push("/settings/help")}
           />
-        </SettingSection>
-
-        {/* お問い合わせ（メールでの連絡先を表示。メアドが決まったら value を差し替える） */}
-        <SettingSection
-          title="お問い合わせ"
-          footer="表示のアドレス宛に、直接メールでお送りください。"
-        >
           <SettingRow
-            first
             label="メールでのお問い合わせ"
-            value="準備中"
-            note="お問い合わせ先のメールアドレスは準備中です。"
+            note="お問い合わせ先のメールアドレスは準備中です"
           />
         </SettingSection>
 
@@ -480,24 +309,6 @@ export default function SettingsScreen() {
         </SettingSection>
       </ScrollView>
 
-
-      {/* 通知時刻の編集（通知ONのあいだのみ） */}
-      <EditFieldModal
-        visible={timeEditOpen}
-        title="通知時刻"
-        description="17:30〜翌4:30 の範囲で設定できます。18:00より前は夜の始まりまでのカウントダウンをお知らせします。"
-        initialValue={notifyTime ?? DEFAULT_NOTIFICATION_TIME}
-        placeholder="21:00"
-        keyboardType="number-pad"
-        maxLength={5}
-        transform={formatClockInput}
-        validate={validateNotificationTime}
-        onCancel={() => setTimeEditOpen(false)}
-        onSubmit={async (v) => {
-          await handleChangeNotificationTime(v);
-          setTimeEditOpen(false);
-        }}
-      />
 
       {/* ニックネーム編集 */}
       <EditFieldModal

@@ -102,10 +102,11 @@ export function WeatherPicker({
   // 拡大表示中の写真（null なら閉じている）
   const [viewingPhoto, setViewingPhoto] = useState<string | null>(null);
 
-  // 写真の欄を出すのは、機能がONで、かつまだ終わっていない夜のときだけ。
-  // 過ぎた夜には足せない（削除だけはカレンダーから行える。要件2.6）
-  const photoEnabled = user?.night_photo_enabled === 1;
-  const canTakePhoto = photoEnabled && canAttachPhoto(studyDate);
+  // 写真の欄を出すのは、まだ終わっていない夜のときだけ。
+  // 過ぎた夜には足せない（削除だけはカレンダーから行える。要件2.6）。
+  // 撮るかどうかは常に任意（押さなければカメラ権限も要求しない）ため、
+  // 機能自体のON/OFF設定は持たない
+  const canTakePhoto = canAttachPhoto(studyDate);
 
   useEffect(() => {
     if (!visible) return;
