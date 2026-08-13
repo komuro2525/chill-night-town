@@ -26,16 +26,6 @@ export type TutorialPage = {
 
 export const TUTORIAL_PAGES: TutorialPage[] = [
   {
-    key: "overview",
-    firstRun: true,
-    title: "画面の見方",
-    body: [
-      "ここは、夜になると帰ってくる小さな街です。急がず、あなたのペースで過ごしてください。",
-      "画面の上には、今の日付と時刻・街のレベル・タイマーが並びます。中央にはこの街の住人がいて、節目にそっと言葉を添えます。",
-      "下のバーでBGMを、右側のアイコンから環境（天気）・設定・鑑賞モード・おやすみへ移れます。",
-    ],
-  },
-  {
     key: "timer",
     firstRun: true,
     title: "タイマーで学習する",
