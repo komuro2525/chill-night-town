@@ -76,6 +76,33 @@ export function formatStudyDateLabel(studyDate: string): string {
   return `${m}/${d}（${weekday}）の夜`;
 }
 
+/** 曜日の英字3文字。数字の並びを崩さない短さで、日付の下に単独で置くために使う */
+const WEEKDAY_SHORT = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+// --- 置き時計の表記（アイドル最小表示・横画面・ホームで共有する） ---
+// 同じ書式を各画面で書き写すと、片方だけ直したときに見た目がずれる。
+// 大きさや色は画面ごとに変えてよいが、**文字の作り方はここ1つに集約する**。
+
+/** 日付を「2026.08.11」の形にする（区切りはドット。数字の並びを均等に見せる） */
+export function formatDotDate(d: Date): string {
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${yyyy}.${mm}.${dd}`;
+}
+
+/** 時刻を「21:04」の形にする（24時間表記。AM/PM は付けない） */
+export function formatHm(d: Date): string {
+  const hh = String(d.getHours()).padStart(2, "0");
+  const mi = String(d.getMinutes()).padStart(2, "0");
+  return `${hh}:${mi}`;
+}
+
+/** 曜日を「Mon」の形にする */
+export function formatWeekdayShort(d: Date): string {
+  return WEEKDAY_SHORT[d.getDay()];
+}
+
 /**
  * 現在時刻を「2026/08/01(月) 21:00 PM」の形にする。
  * ホーム・タイマー設定・タイマー表示で同じ表記を使う（画面が変わっても時刻の見え方を変えない）。

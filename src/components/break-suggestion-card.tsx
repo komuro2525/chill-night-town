@@ -31,6 +31,7 @@ import { validateExtensionMinutes } from "@/lib/validation";
 export function BreakSuggestionCard({
   visible,
   totalMinutes,
+  reachedGoal,
   onFinish,
   onBreak,
   onContinue,
@@ -39,6 +40,12 @@ export function BreakSuggestionCard({
   visible: boolean;
   /** その学習日の実績合計（分） */
   totalMinutes: number;
+  /**
+   * この時点で一日の目標時間に届いているか。文面の出し分けに使う。
+   * 基準は「今回決めた分」なので、目標より短く設定した夜は届かないまま提案が出る。
+   * そのときに「目標に届きました」と言うと事実と違うため（要件5.1）。
+   */
+  reachedGoal: boolean;
   /** 今夜はここまでにする（終了演出→成果記録へ。タイマー表示の終了操作と同じ） */
   onFinish: () => void;
   /** 休憩する（タイマーを一時停止する。再開はユーザーの操作による） */
@@ -67,7 +74,9 @@ export function BreakSuggestionCard({
     <Modal visible={visible} transparent animationType="fade">
       <View style={styles.backdrop}>
         <View style={styles.card}>
-          <Text style={styles.title}>今夜の目標に届きました</Text>
+          <Text style={styles.title}>
+            {reachedGoal ? "今夜の目標に届きました" : "決めた時間が終わりました"}
+          </Text>
           <Text style={styles.body}>
             ここまでの学習は{formatMinutes(totalMinutes)}です。
           </Text>

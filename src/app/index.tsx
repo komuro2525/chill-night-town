@@ -4,7 +4,7 @@ import { useKeepAwake } from "expo-keep-awake";
 import { useRouter } from "expo-router";
 import * as ScreenOrientation from "expo-screen-orientation";
 import { StatusBar } from "expo-status-bar";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -21,7 +21,6 @@ import Animated, { FadeIn } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { AutoFinishWatcher } from "@/components/auto-finish-watcher";
-import { BatteryIndicator } from "@/components/battery-indicator";
 import { BgmMiniPlayer } from "@/components/bgm-mini-player";
 import { BreakSuggestionCard } from "@/components/break-suggestion-card";
 import { BreakSuggestionWatcher } from "@/components/break-suggestion-watcher";
@@ -31,6 +30,7 @@ import { GoodnightOverlay } from "@/components/goodnight-overlay";
 import { GrowthHintCard } from "@/components/growth-hint-card";
 import { LandscapeHome } from "@/components/landscape-home";
 import { LevelBadge } from "@/components/level-badge";
+import { LevelProgressIndicator } from "@/components/level-progress";
 import { LevelUpOverlay } from "@/components/level-up-overlay";
 import { MeasuringIndicator } from "@/components/measuring-indicator";
 import { MinimalHomeUI } from "@/components/minimal-home";
@@ -53,7 +53,7 @@ import { WeatherOverlay } from "@/components/weather-overlay";
 import { WeatherPicker } from "@/components/weather-picker";
 import { WeatherRow } from "@/components/weather-row";
 import { MIN_SAVE_MINUTES, STUDY_DAY } from "@/constants/domain";
-import { Spacing } from "@/constants/theme";
+import { ClockAccent, Fonts, Spacing } from "@/constants/theme";
 import { getTownArt } from "@/constants/townArt";
 import { getTownVideo, type TownVideo } from "@/constants/townVideo";
 import { getTutorialPage } from "@/constants/tutorial";
@@ -94,11 +94,18 @@ import {
   setDevTimeToHour,
   useAppNow,
 } from "@/lib/clock";
+import {
+  getLevelProgress,
+  type LevelProgress,
+  type LevelThresholds,
+} from "@/lib/growth";
 import { refreshNotifications } from "@/lib/notification-sync";
 import { scheduleTestNotification } from "@/lib/notifications";
 import { getPseudoOnlineCount } from "@/lib/pseudo-online";
 import {
-  formatDateTimeLabel,
+  formatDotDate,
+  formatHm,
+  formatWeekdayShort,
   getStudyDate,
   isNightTime,
 } from "@/lib/study-day";
@@ -168,6 +175,8 @@ export default function HomeScreen() {
   // 成長処理の時点でDBは新レベルに確定するが、暗転の裏で差し替えたいので
   // それまでは上がる前のレベルを見せておく（記録画面の裏で先に変わらないように）
   const [bgLevelHold, setBgLevelHold] = useState<number | null>(null);
+  // 習慣型のレベルアップ閾値。バランス調整できるようマスタから読む（定数は参照しない）
+  const [habitThresholds, setHabitThresholds] = useState<LevelThresholds>({});
   // S5 休憩提案（要件5.1）。表示中の実績合計（分）。null なら非表示
   const [breakTotal, setBreakTotal] = useState<number | null>(null);
   // おやすみ（要件13）。暗転画面に出すNPCの一言。null なら暗転していない
@@ -218,6 +227,21 @@ export default function HomeScreen() {
       mounted = false;
     };
   }, [reloadSummary, reloadWeather]);
+
+  // 習慣型のレベルアップ閾値をマスタから読む（要件6.2: 基準値はマスタで調整可能）。
+  // 起動時に一度だけでよい（マスタはアプリの実行中に変わらない）
+  useEffect(() => {
+    let mounted = true;
+    masterRepo
+      .getGrowthThresholds("habit")
+      .then((t) => {
+        if (mounted) setHabitThresholds(t);
+      })
+      .catch((e) => console.error("レベル閾値の読み込みに失敗しました", e));
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   // 他の画面から戻ってきたら、その夜の天気を読み直す。
   // ホームは裏で生存し続けるため（マウント処理は再実行されない）、これが無いと
@@ -496,12 +520,18 @@ export default function HomeScreen() {
   // 休憩する: 一時停止する。再開はユーザーの操作による。次の基準は超過60分後
   const handleBreakPause = useCallback(async () => {
     const current = timer.session?.break_suggest_threshold_minutes;
+    // 先に一時停止を確定させる。pause() はメモリ上のセッションを先に書き換えてから
+    // DBへ書くため、待たずに reload すると停止前の状態を読み戻してしまう
+    await timer.pause(); // 一時停止側で予約を落とす（UC 12.2）
     if (current !== null && current !== undefined) {
       await activeSessionRepo.updateBreakThreshold(
         getContinueThreshold(current),
       );
+      // 引き上げた基準をメモリ上のセッションへ取り込む。pause() は一時停止の列しか
+      // 書き換えないため、これが無いと見張りが古い基準のまま再判定し、
+      // カードを閉じた瞬間にまた出る（「このまま続ける」側と同じ扱いに揃える）
+      await timer.reload();
     }
-    await timer.pause(); // 一時停止側で予約を落とす（UC 12.2）
     setBreakTotal(null);
   }, [timer]);
 
@@ -719,6 +749,21 @@ export default function HomeScreen() {
   // 上がる前のレベルを見せる（背景とLv表示が同時に切り替わる）
   const level = bgLevelHold ?? selected?.progress.current_level ?? 1;
 
+  // 次のレベルまでの積み上がり（要件6.1・6.2）。レベルの灯りの下に視覚だけで示す。
+  // 段の判定には上の level を使う。演出中に「バッジはLv.3・進捗はLv.4の段」と
+  // 食い違わないよう、表示に使うレベルと必ず揃える
+  const levelProgress = useMemo(() => {
+    if (!user || !selected) return null;
+    return getLevelProgress({
+      method: user.growth_method,
+      currentLevel: level,
+      exp: selected.progress.experience_points,
+      cumulativeMinutes: selected.progress.cumulative_study_minutes,
+      habitThresholds,
+      projectTargetMinutes: selected.progress.project_target_minutes,
+    });
+  }, [user, selected, level, habitThresholds]);
+
   // 縦固定が必要な状態（操作モーダル・演出・システムイベント）。
   // これらが立っている間は横向きを許可しない＝要件2.4「操作系は縦固定／イベント時は縦へ戻す」。
   // 鑑賞モード（immersive）は縦のUI非表示であり、横向き許可の妨げにはしない
@@ -878,6 +923,7 @@ export default function HomeScreen() {
           {selected ? (
             <TopOverlay
               level={level}
+              levelProgress={levelProgress}
               summary={summary}
               goalMinutes={user?.daily_goal_minutes ?? null}
               weather={weather}
@@ -1014,6 +1060,9 @@ export default function HomeScreen() {
         key={breakTotal === null ? "closed" : "open"}
         visible={breakTotal !== null}
         totalMinutes={breakTotal ?? 0}
+        // 基準は「今回決めた分」なので、目標より短い予定で始めた夜は目標未達で出る。
+        // その場合に「目標に届きました」と言わないよう、実績で判定して文面を変える
+        reachedGoal={(breakTotal ?? 0) >= (user?.daily_goal_minutes ?? 0)}
         onFinish={() => void handleBreakFinish()}
         onBreak={() => void handleBreakPause()}
         onContinue={() => void handleBreakContinue()}
@@ -1105,7 +1154,7 @@ function KeepScreenAwake() {
   return null;
 }
 
-// 右側の縦並びアイコン（カレンダー・設定・おやすみ）
+// 右側の縦並びアイコン（カレンダー・設定・おやすみ）と、その下の今夜の学習仲間
 function SideIcons({
   running,
   onGoodnight,
@@ -1117,6 +1166,9 @@ function SideIcons({
 }) {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  // 夜間帯の出入りで表示が切り替わるよう、時刻の変化を見る（要件2.3と同じ判定）
+  const now = useAppNow(10000);
+  const online = isNightTime(now) ? getPseudoOnlineCount() : null;
 
   // おやすみボタン（要件13 / UC 13.1）。
   // 稼働中は「学習中はおやすみできません」と控えめに伝えるだけ（グレーアウト表示）。
@@ -1156,6 +1208,12 @@ function SideIcons({
         dimmed={running}
         accessibilityLabel="おやすみ"
       />
+      {/* 今夜の学習仲間（要件11）。学習を開始できる夜間帯のあいだだけ出す。
+          昼に「今夜の仲間」が居るのは筋が通らず、学習できない時間に人数を見せても
+          置いていかれた感じにしかならないため */}
+      {online !== null ? (
+        <Text style={styles.onlineText}>今夜の学習人数は{online}人</Text>
+      ) : null}
     </View>
   );
 }
@@ -1221,6 +1279,7 @@ function IdleOverlay({
 // 時計の左に Lv バッジ。右側アイコン（カレンダー/設定/おやすみ）・左下（目）・下部BGMは後続で追加する。
 function TopOverlay({
   level,
+  levelProgress,
   summary,
   goalMinutes,
   weather,
@@ -1229,6 +1288,8 @@ function TopOverlay({
   session,
 }: {
   level: number;
+  /** 次のレベルまでの積み上がり。街の完成・判定不能なら null（何も出さない） */
+  levelProgress: LevelProgress | null;
   summary: StudyDaySummary | null;
   goalMinutes: number | null;
   weather: NightWeather | null;
@@ -1240,8 +1301,6 @@ function TopOverlay({
   const insets = useSafeAreaInsets();
   // アプリ内の現在時刻（開発用の上書きが効く）。時計・日時表示・夜間帯判定で共有する
   const now = useAppNow(10000);
-  const dateLabel = formatDateTimeLabel(now);
-  const online = getPseudoOnlineCount();
   const top = insets.top + Spacing.two;
 
   // 夜間帯（18:00〜翌5:00）のみ学習を開始できる（要件2.3）。
@@ -1250,18 +1309,34 @@ function TopOverlay({
 
   return (
     <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
-      {/* 左上: バッテリー・日時・仲間 */}
+      {/* 左上。性質の違うものを3つの塊に分けて置く（要件2.1）:
+            ① 今夜の様子（日時・天気・学習仲間）
+            ② 今夜の学習（時間・目標達成）
+            ③ 街の育ち（レベル・次の灯りまで）
+          バッテリーはここには出さない。無操作30秒でアイドル最小表示へ移り、
+          そこで日付・時刻とともに大きく出るため、通常表示では二重になる */}
       <View
         style={[styles.absolute, styles.topLeft, { top, left: Spacing.four }]}
       >
-        <BatteryIndicator />
+        {/* ① 今夜の様子。天気だけがタップできる（要件2.5: 専用ボタンは設けない）。
+            学習仲間（要件11）は右側のおやすみボタンの下へ置いている */}
         <View style={styles.infoBlock}>
-          <Text style={styles.dateText}>{dateLabel}</Text>
-          {/* 今夜の天気（要件2.5: 専用の常設ボタンは設けず、情報の並びに置く） */}
-          <WeatherRow weather={weather} onPress={onPressWeather} />
-          <Text style={styles.onlineText}>今夜の学習仲間 … {online}人</Text>
+          {/* 最小表示の置き時計と同じ書式（ドット区切り・セリフ体・広い字間）だが、
+              罫線は引かず、時刻も小さくする。通常表示では数十秒しか見ない情報で、
+              主役は街と学習状況のため、家族に見えつつ一段控えめにする */}
+          <Text style={styles.dateText}>{formatDotDate(now)}</Text>
+          <View style={styles.clockRow}>
+            <Text style={styles.timeText}>{formatHm(now)}</Text>
+            <Text style={styles.weekdayText}>{formatWeekdayShort(now)}</Text>
+          </View>
+          {/* 日時から半行ぶん離す。詰めすぎると時刻の一部のように見えるため
+              （間隔はホーム側で持つ。この部品はモーダルでも使うため素のまま置く） */}
+          <View style={styles.weatherRow}>
+            <WeatherRow weather={weather} onPress={onPressWeather} />
+          </View>
         </View>
-        {/* 当学習日の学習時間・目標達成状況（要件2.1） */}
+
+        {/* ② 当学習日の学習時間・目標達成状況（要件2.1） */}
         {summary && goalMinutes !== null ? (
           <StudyDayStatus
             totalMinutes={summary.totalMinutes}
@@ -1269,6 +1344,13 @@ function TopOverlay({
             achieved={summary.achieved}
           />
         ) : null}
+
+        {/* ③ 街の育ち。達成 → 経験値 → レベルのつながりが見えるよう、
+            学習状況のすぐ下に置く（従来は時計の左だった） */}
+        <View style={styles.growthBlock}>
+          <LevelBadge level={level} />
+          <LevelProgressIndicator progress={levelProgress} />
+        </View>
       </View>
 
       {/* 右上: 大きなアナログ時計＝タイマー。夜間帯外は非活性（要件2.3） */}
@@ -1296,19 +1378,6 @@ function TopOverlay({
         ) : null}
       </View>
 
-      {/* 時計の左・縦中央あたりに Lv バッジ */}
-      <View
-        style={[
-          styles.absolute,
-          {
-            // 左カラム（日時・仲間）と重ならない高さに置く
-            top: top + 80,
-            right: Spacing.four + CLOCK_SIZE + Spacing.three,
-          },
-        ]}
-      >
-        <LevelBadge level={level} />
-      </View>
     </View>
   );
 }
@@ -1524,6 +1593,9 @@ const styles = StyleSheet.create({
   sideIcons: {
     right: Spacing.four,
     gap: Spacing.three,
+    // 学習仲間の1行は丸アイコンより横に長い。中央揃えのままだとその幅に引きずられて
+    // アイコンが左へずれてしまうため、右端に揃えて位置を固定する
+    alignItems: "flex-end",
   },
   immersiveButton: {
     left: Spacing.four,
@@ -1533,16 +1605,61 @@ const styles = StyleSheet.create({
     right: Spacing.four,
     bottom: Spacing.six,
   },
+  // 3つの塊（今夜の様子／今夜の学習／街の育ち）は、塊どうしを広めに空けて
+  // 区切りを作る。塊の中は詰めることで、線を引かずにまとまりを見せる
   topLeft: {
-    gap: Spacing.two,
+    gap: Spacing.three,
   },
   infoBlock: {
     gap: 2,
   },
+  // 天気と学習仲間は「今夜の様子」としてひと続きに読ませる
+  tonightRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+  },
+  growthBlock: {
+    alignItems: "center",
+    // レベルの灯りと、その下の積み上がりは近づけて主従を見せる
+    gap: 5,
+    // 左端の他の行と頭を揃える（中身は中央寄せのため、塊自体は左に置く）
+    alignSelf: "flex-start",
+  },
+  // 最小表示の置き時計と同じ書式で、一段控えめに（罫線なし・時刻も小さい）
   dateText: {
-    color: "#ffffff",
-    fontSize: 13,
+    color: "rgba(255,255,255,0.75)",
+    fontSize: 11,
     fontWeight: "500",
+    letterSpacing: 2,
+    fontFamily: Fonts.serif,
+    textShadowColor: "rgba(0,0,0,0.6)",
+    textShadowRadius: 4,
+  },
+  clockRow: {
+    flexDirection: "row",
+    alignItems: "baseline",
+    gap: Spacing.two,
+  },
+  // 日時から半行ぶん下げる（infoBlock の gap 2pt に上乗せする）
+  weatherRow: {
+    marginTop: Spacing.two,
+  },
+  timeText: {
+    color: "rgba(255,255,255,0.95)",
+    fontSize: 22,
+    fontWeight: "300",
+    letterSpacing: 2,
+    fontFamily: Fonts.serif,
+    textShadowColor: "rgba(0,0,0,0.6)",
+    textShadowRadius: 5,
+  },
+  weekdayText: {
+    color: ClockAccent,
+    fontSize: 11,
+    fontWeight: "500",
+    letterSpacing: 2,
+    fontFamily: Fonts.serif,
     textShadowColor: "rgba(0,0,0,0.6)",
     textShadowRadius: 4,
   },
@@ -1575,10 +1692,14 @@ const styles = StyleSheet.create({
     textShadowColor: "rgba(0,0,0,0.6)",
     textShadowRadius: 4,
   },
+  // おやすみボタンの下に置く今夜の学習仲間（要件11）。丸アイコンより控えめに。
+  // アイコンの並び（gap）よりもう一段空けて、ボタン群と地続きに見えないようにする
   onlineText: {
-    color: "rgba(255,255,255,0.85)",
+    marginTop: Spacing.three,
+    color: "rgba(255,255,255,0.8)",
     fontSize: 12,
     fontWeight: "500",
+    letterSpacing: 0.5,
     textShadowColor: "rgba(0,0,0,0.6)",
     textShadowRadius: 4,
   },

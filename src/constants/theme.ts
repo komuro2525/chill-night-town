@@ -68,3 +68,10 @@ export const MaxContentWidth = 800;
 export const LightRgb = "255,206,138";
 /** 街の灯り色。達成・選択・強調など、夜のUIのアクセントとして全画面で共有する */
 export const LightColor = `rgba(${LightRgb},0.95)`;
+
+/**
+ * 置き時計の曜日・罫線に使う淡い青緑。
+ * 夜空の上でも沈まず、街の灯り（暖色）と役割が混ざらないよう寒色にしている
+ * （暖色は「達成・強調」が持っているため、時刻まわりの装飾には使わない）。
+ */
+export const ClockAccent = "rgba(168,226,222,0.9)";

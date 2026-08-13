@@ -71,6 +71,69 @@ export function resolveNextLevel(
   return Math.min(GROWTH.MAX_LEVEL, Math.max(currentLevel, computedLevel));
 }
 
+/** 次のレベルまでの積み上がり（ホームの表示用）。単位は成長方式で変わる */
+export type LevelProgress = {
+  /** 現在の段で貯まった量（習慣型＝経験値の回数／プロジェクト型＝分） */
+  filled: number;
+  /** 現在の段を終えるのに要る量（同上の単位） */
+  total: number;
+  /** 0〜1。プロジェクト型のバーに使う */
+  ratio: number;
+};
+
+/**
+ * 次のレベルまでの進捗を求める（要件6.1・6.2 / ホームの表示用）。
+ *
+ * 「あと何回で灯りが増えるか」を視覚で示すためのもので、判定には使わない。
+ * **次の段が無いときは null を返す**:
+ *   ・Lv.5（街完成）に到達済み — もう上がらないため、空のゲージを残さない
+ *   ・プロジェクト型で目標学習時間が未設定 — 段の区切りが決まらない
+ *
+ * レベルは下がらない（resolveNextLevel）ため、成長方式の切り替えや目標時間の
+ * 変更で「レベルの割に実績値が小さい」状態が起こり得る。その場合に負の量や
+ * 100%超を返さないよう、0〜total に丸める。
+ */
+export function getLevelProgress(params: {
+  method: GrowthMethod;
+  currentLevel: number;
+  exp: number;
+  cumulativeMinutes: number;
+  habitThresholds: LevelThresholds;
+  projectTargetMinutes: number | null;
+}): LevelProgress | null {
+  const {
+    method,
+    currentLevel,
+    exp,
+    cumulativeMinutes,
+    habitThresholds,
+    projectTargetMinutes,
+  } = params;
+
+  // 街が完成していれば次の段は無い
+  if (currentLevel >= GROWTH.MAX_LEVEL) return null;
+
+  let thresholds: LevelThresholds;
+  let value: number;
+  if (method === "habit") {
+    thresholds = habitThresholds;
+    value = exp;
+  } else {
+    if (projectTargetMinutes === null) return null;
+    thresholds = getProjectThresholds(projectTargetMinutes);
+    value = cumulativeMinutes;
+  }
+
+  // Lv.1 の下限は0。次の段の閾値が無ければ、そこで打ち止め（表示しない）
+  const prev = currentLevel <= 1 ? 0 : (thresholds[currentLevel] ?? 0);
+  const next = thresholds[currentLevel + 1];
+  if (next === undefined || next <= prev) return null;
+
+  const total = next - prev;
+  const filled = Math.max(0, Math.min(total, value - prev));
+  return { filled, total, ratio: filled / total };
+}
+
 /**
  * 経験値を付与すべきか（要件6.2①）。
  *

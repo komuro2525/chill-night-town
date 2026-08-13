@@ -8,6 +8,7 @@ import type { LevelThresholds } from "../growth";
 import {
   computeLevel,
   getLevelFromValue,
+  getLevelProgress,
   getProjectThresholds,
   resolveNextLevel,
   shouldGrantExp,
@@ -205,5 +206,116 @@ describe("computeLevel（成長後のレベル）", () => {
         projectTargetMinutes: null,
       }),
     ).toBe(2);
+  });
+});
+
+describe("getLevelProgress（次のレベルまでの積み上がり・ホームの表示用）", () => {
+  const base = {
+    habitThresholds: HABIT,
+    projectTargetMinutes: null as number | null,
+  };
+
+  it("習慣型: Lv.1で経験値3なら 3/5（あと2回で灯りが増える）", () => {
+    expect(
+      getLevelProgress({
+        ...base,
+        method: "habit",
+        currentLevel: 1,
+        exp: 3,
+        cumulativeMinutes: 0,
+      }),
+    ).toEqual({ filled: 3, total: 5, ratio: 3 / 5 });
+  });
+
+  it("習慣型: 段が上がると、その段の中での積み上がりになる（Lv.3で経験値12なら 2/5）", () => {
+    // Lv3の下限は10、Lv4の閾値は15。12-10=2
+    expect(
+      getLevelProgress({
+        ...base,
+        method: "habit",
+        currentLevel: 3,
+        exp: 12,
+        cumulativeMinutes: 0,
+      }),
+    ).toEqual({ filled: 2, total: 5, ratio: 2 / 5 });
+  });
+
+  it("Lv.5（街完成）は null（もう上がらないため空のゲージを残さない）", () => {
+    expect(
+      getLevelProgress({
+        ...base,
+        method: "habit",
+        currentLevel: 5,
+        exp: 20,
+        cumulativeMinutes: 0,
+      }),
+    ).toBeNull();
+  });
+
+  it("プロジェクト型: 目標600分・Lv.1で累計60分なら 60/120", () => {
+    // Lv2の閾値は 600/5=120分
+    expect(
+      getLevelProgress({
+        ...base,
+        method: "project",
+        currentLevel: 1,
+        exp: 0,
+        cumulativeMinutes: 60,
+        projectTargetMinutes: 600,
+      }),
+    ).toEqual({ filled: 60, total: 120, ratio: 0.5 });
+  });
+
+  it("プロジェクト型: 最後の段は目標そのもの（Lv.4→Lv.5は他の段の2倍）", () => {
+    // 目標600分: Lv4=360, Lv5=600。段の長さは240分
+    expect(
+      getLevelProgress({
+        ...base,
+        method: "project",
+        currentLevel: 4,
+        exp: 0,
+        cumulativeMinutes: 480,
+        projectTargetMinutes: 600,
+      }),
+    ).toEqual({ filled: 120, total: 240, ratio: 0.5 });
+  });
+
+  it("プロジェクト型で目標が未設定なら null（段の区切りが決まらない）", () => {
+    expect(
+      getLevelProgress({
+        ...base,
+        method: "project",
+        currentLevel: 2,
+        exp: 0,
+        cumulativeMinutes: 100,
+        projectTargetMinutes: null,
+      }),
+    ).toBeNull();
+  });
+
+  it("レベルの割に実績値が小さくても負にならない（方式の切替・目標変更のあと）", () => {
+    // レベルは下がらないため、習慣型へ切り替えた直後は exp が段の下限に満たないことがある
+    expect(
+      getLevelProgress({
+        ...base,
+        method: "habit",
+        currentLevel: 4,
+        exp: 2,
+        cumulativeMinutes: 0,
+      }),
+    ).toEqual({ filled: 0, total: 5, ratio: 0 });
+  });
+
+  it("段を超える実績値でも total を超えない", () => {
+    expect(
+      getLevelProgress({
+        ...base,
+        method: "project",
+        currentLevel: 1,
+        exp: 0,
+        cumulativeMinutes: 99999,
+        projectTargetMinutes: 600,
+      }),
+    ).toEqual({ filled: 120, total: 120, ratio: 1 });
   });
 });

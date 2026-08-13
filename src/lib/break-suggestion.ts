@@ -15,7 +15,12 @@
 
 import { BREAK_REPROMPT_INTERVAL_MINUTES } from "@/constants/domain";
 import type { ActiveSession } from "@/db/types";
-import { getActualStudyMinutes, getPomodoroPhase, getElapsedSeconds } from "./timer";
+import {
+  getActualStudyMinutes,
+  getElapsedSeconds,
+  getPlannedMinutes,
+  getPomodoroPhase,
+} from "./timer";
 
 /**
  * その学習日の実績学習時間の合計（分）。
@@ -32,7 +37,15 @@ export function getStudyDayTotalMinutes(
 /**
  * いま休憩提案を表示すべきか（要件5.1）。
  *
- * @param enabled 頑張りすぎ防止の設定（10.6）。OFFなら本機能は一切動作しない
+ * 設定（10.8）が効くのは**2回目以降の再表示だけ**。最初の1回＝「今回決めた分を
+ * 終えた」という知らせは、設定に関わらず出す。長く続けすぎるのを防ぐ機能と、
+ * ユーザーが自分で決めた区切りを伝えることは役割が違うため（設定をOFFにすると
+ * 予定学習時間が何の意味も持たなくなるのを避ける）。
+ *
+ * 何回目かは基準の値で分かる。基準は最初「開始時実績＋予定学習時間」で、
+ * 継続・延長のたびに引き上げられる一方通行のため、初期値のままなら1回目。
+ *
+ * @param enabled 頑張りすぎ防止の設定（10.8）。OFFなら2回目以降を出さない
  * @param savedMinutes その学習日の保存済み実績合計（分）
  */
 export function shouldSuggestBreak(
@@ -41,10 +54,11 @@ export function shouldSuggestBreak(
   atMs: number,
   enabled: boolean,
 ): boolean {
-  if (!enabled) return false;
-
   const threshold = session.break_suggest_threshold_minutes;
   if (threshold === null) return false;
+
+  const isFirstNotice = threshold <= savedMinutes + getPlannedMinutes(session);
+  if (!enabled && !isFirstNotice) return false;
 
   const total = getStudyDayTotalMinutes(savedMinutes, session, atMs);
   if (total < threshold) return false;
@@ -64,14 +78,22 @@ export function shouldSuggestBreak(
 }
 
 /**
- * 最初の休憩提案を出す基準（分）。要件5.1（改訂）。
+ * 最初の休憩提案を出す基準（分）。要件5.1。
  *
- * 「一日の目標時間」と「開始時点の実績合計 ＋ 今回のセッションの予定学習時間」の大きい方。
- * ユーザーが自分で決めた学習時間の途中では提案を出さないため、目標が予定より短くても、
- * 決めた分を終えるまで割り込まない（コンセプト: 急かさない・責めない）。
+ * 「開始時点の実績合計 ＋ 今回のセッションの予定学習時間」＝**今回決めた分を終えた時点**。
+ * 一日の目標時間とは切り離す。
+ *
+ * ・予定が目標より長いとき（目標60・今回90）は90分で出す。自分で決めた学習時間の
+ *   途中で割り込んで急かさないため（コンセプト: 急かさない・責めない）。
+ * ・予定が目標より短いとき（目標60・今回30）は30分で出す。「30分やる」と決めて
+ *   始めた区切りを一度知らせるため。目標を下限にすると、目標より短い予定学習時間が
+ *   何にも影響しなくなり、設定した意味が失われる。
+ * ・目標に届いた時点そのものでは出さない。目標到達は経験値を得る肯定的な出来事であり、
+ *   休憩を促す場面ではないため。
+ *
  * 予定学習時間は黙々=設定分数／ポモドーロ=作業時間×回数（呼び出し側で算出して渡す。2モード共通）。
  *
- * @param goalMinutes    一日の学習目標時間
+ * @param goalMinutes    一日の学習目標時間（現在は基準に使わない。上のコメントを参照）
  * @param savedMinutes   開始時点の実績合計（その学習日の保存済み）
  * @param plannedMinutes 今回のセッションの予定学習時間
  */
@@ -80,7 +102,11 @@ export function getInitialBreakThreshold(
   savedMinutes: number,
   plannedMinutes: number,
 ): number {
-  return Math.max(goalMinutes, savedMinutes + plannedMinutes);
+  // 一日の目標時間は基準に使わない（引数は呼び出し側の取り違えを防ぐために残す）。
+  // 目標を下限にすると、目標より短く設定した予定学習時間が何にも影響しなくなり、
+  // 「30分やる」と決めて始めた区切りが素通りしてしまうため（要件5.1）。
+  void goalMinutes;
+  return savedMinutes + plannedMinutes;
 }
 
 /**

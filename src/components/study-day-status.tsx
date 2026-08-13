@@ -1,11 +1,16 @@
 import { StyleSheet, Text, View } from "react-native";
 
-import { LightColor, Spacing } from "@/constants/theme";
+import { Fonts, LightColor, Spacing } from "@/constants/theme";
 import { formatMinutes } from "@/lib/study-day";
 
 // 当学習日の学習時間・目標達成状況（要件2.1）。
 // コンセプト準拠: 未達成を「不足」「あと◯分」と煽らない。静かに事実だけを置く。
-const BAR_WIDTH = 76;
+//
+// 見出し（小さく・控えめ）→ 時間（大きく）→ バー → 目標、の順に置く。
+// 学習時間はホームでいちばん見たい数字なので、ラベルと同じ大きさの1行に
+// 埋めてしまわず、時刻表示と同じセリフ体で独立させる。
+// ただし時計より大きくはしない（数字を誇示する画面にはしない）。
+const BAR_WIDTH = 92;
 const BAR_HEIGHT = 3;
 
 export function StudyDayStatus({
@@ -23,9 +28,8 @@ export function StudyDayStatus({
 
   return (
     <View style={styles.container}>
-      <Text style={styles.time}>
-        今夜の学習 {formatMinutes(totalMinutes)}
-      </Text>
+      <Text style={styles.label}>今夜の学習</Text>
+      <Text style={styles.time}>{formatMinutes(totalMinutes)}</Text>
 
       <View style={styles.bar}>
         <View
@@ -50,12 +54,25 @@ const styles = StyleSheet.create({
   container: {
     gap: Spacing.one,
   },
-  time: {
-    color: "#ffffff",
-    fontSize: 13,
+  // 見出しは目立たせない。主役は下の数字
+  label: {
+    color: "rgba(255,255,255,0.6)",
+    fontSize: 10,
     fontWeight: "500",
+    letterSpacing: 2,
     textShadowColor: "rgba(0,0,0,0.6)",
     textShadowRadius: 4,
+  },
+  // 時刻表示と同じセリフ体で揃える（同じ「今夜の数字」として読ませる）。
+  // 時計（22pt）とは差をつけ、並んでも競わない大きさにする
+  time: {
+    color: "rgba(255,255,255,0.95)",
+    fontSize: 17,
+    fontWeight: "300",
+    letterSpacing: 1.5,
+    fontFamily: Fonts.serif,
+    textShadowColor: "rgba(0,0,0,0.6)",
+    textShadowRadius: 5,
   },
   bar: {
     width: BAR_WIDTH,
@@ -77,8 +94,9 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 0 },
   },
   goal: {
-    color: "rgba(255,255,255,0.7)",
+    color: "rgba(255,255,255,0.65)",
     fontSize: 11,
+    letterSpacing: 1,
     textShadowColor: "rgba(0,0,0,0.6)",
     textShadowRadius: 4,
   },

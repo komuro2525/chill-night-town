@@ -40,22 +40,35 @@ export function WeatherRow({
   );
 }
 
+// 触れる行だと分かるようにする（要件2.5: 専用の丸ボタンは設けないため、
+// 見た目だけが手掛かりになる）。線を1本だけ敷き、ボタンにはしない
+const UNDERLINE = "rgba(255,255,255,0.28)";
+
 const styles = StyleSheet.create({
+  // 絵文字と文字の間を空け、下線ぶんの余白を持たせる。
+  // 自分の幅ぶんだけ下線を引きたいので、行は内容の幅に留める
   row: {
+    alignSelf: "flex-start",
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
+    gap: 7,
+    paddingBottom: 3,
+    borderBottomWidth: 1,
+    borderBottomColor: UNDERLINE,
   },
   pressed: {
     opacity: 0.6,
   },
+  // 天気は絵文字が主役なので、文字より一回り大きくする
   emoji: {
-    fontSize: 13,
+    fontSize: 15,
   },
   name: {
     color: "#ffffff",
     fontSize: 13,
     fontWeight: "500",
+    // 上の日時（置き時計の書式）と字間を合わせ、同じ並びのものとして読ませる
+    letterSpacing: 1.2,
     textShadowColor: "rgba(0,0,0,0.6)",
     textShadowRadius: 4,
   },
@@ -63,6 +76,7 @@ const styles = StyleSheet.create({
   placeholder: {
     color: "rgba(255,255,255,0.6)",
     fontSize: 13,
+    letterSpacing: 1.2,
     textShadowColor: "rgba(0,0,0,0.6)",
     textShadowRadius: 4,
   },

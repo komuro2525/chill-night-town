@@ -67,11 +67,40 @@ describe("getStudyDayTotalMinutes（保存済み＋進行中の合算）", () =>
 });
 
 describe("shouldSuggestBreak（表示の判定・要件5.1）", () => {
-  it("頑張りすぎ防止がOFFなら一切表示しない", () => {
-    // 基準を大きく超えていても出さない
+  it("頑張りすぎ防止がOFFでも、最初の1回（決めた分の到達）は表示する", () => {
+    // 予定120分・保存済み0・基準は初期値の120。決めた区切りの知らせは設定に依らない
     expect(
-      shouldSuggestBreak(simple(), 120, at("2026-01-10T22:00:00"), false),
+      shouldSuggestBreak(
+        simple({ break_suggest_threshold_minutes: 120 }),
+        0,
+        at("2026-01-10T23:00:00"),
+        false,
+      ),
+    ).toBe(true);
+  });
+
+  it("頑張りすぎ防止がOFFなら、2回目以降（超過60分ごと）は表示しない", () => {
+    // 一度「継続」して基準が引き上がった状態（初期値120 → 180）。
+    // 保存済みは0のまま（記録は終了時に保存されるため、セッション中は増えない）
+    expect(
+      shouldSuggestBreak(
+        simple({ break_suggest_threshold_minutes: 180 }),
+        0,
+        at("2026-01-11T00:00:00"),
+        false,
+      ),
     ).toBe(false);
+  });
+
+  it("頑張りすぎ防止がONなら2回目以降も表示する", () => {
+    expect(
+      shouldSuggestBreak(
+        simple({ break_suggest_threshold_minutes: 180 }),
+        0,
+        at("2026-01-11T00:00:00"),
+        true,
+      ),
+    ).toBe(true);
   });
 
   it("合計が基準に届くまでは表示しない", () => {
@@ -147,15 +176,17 @@ describe("shouldSuggestBreak（ポモドーロの作業中には割り込まな�
   });
 });
 
-describe("getInitialBreakThreshold（決めた分を終えるまで提案を出さない・要件5.1改訂）", () => {
+describe("getInitialBreakThreshold（今回決めた分を終えた時点で出す・要件5.1）", () => {
   it("予定が目標より長いとき、予定の分だけ基準を後ろへずらす", () => {
     // 目標60・開始時実績0・予定90 → 90（60で割り込まない）
     expect(getInitialBreakThreshold(60, 0, 90)).toBe(90);
   });
 
-  it("予定が目標より短いときは目標を採用する", () => {
-    // 目標60・開始時実績0・予定30 → 60
-    expect(getInitialBreakThreshold(60, 0, 30)).toBe(60);
+  it("予定が目標より短いときは予定で出す（目標を下限にしない）", () => {
+    // 目標60・開始時実績0・予定30 → 30。
+    // 目標を下限にすると、目標より短く設定した予定が何にも影響しなくなり、
+    // 「30分やる」と決めた区切りが素通りしてしまう
+    expect(getInitialBreakThreshold(60, 0, 30)).toBe(30);
   });
 
   it("すでに学習した分（開始時実績）も足す（今回の予定を丸ごと邪魔しない）", () => {
@@ -163,12 +194,13 @@ describe("getInitialBreakThreshold（決めた分を終えるまで提案を出�
     expect(getInitialBreakThreshold(60, 40, 90)).toBe(130);
   });
 
-  it("予定と目標が同じなら目標どおり", () => {
+  it("予定と目標が同じなら同じ値になる", () => {
     expect(getInitialBreakThreshold(60, 0, 60)).toBe(60);
   });
 
-  it("予定0（未指定相当）でも目標を下回らない", () => {
-    expect(getInitialBreakThreshold(60, 0, 0)).toBe(60);
+  it("目標時間は基準に影響しない（同じ予定なら目標が何分でも同じ）", () => {
+    expect(getInitialBreakThreshold(10, 0, 30)).toBe(30);
+    expect(getInitialBreakThreshold(720, 0, 30)).toBe(30);
   });
 });
 

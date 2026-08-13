@@ -5,10 +5,15 @@ import {
 } from "react-native";
 import type { EdgeInsets } from "react-native-safe-area-context";
 
-import { Fonts, Spacing } from "@/constants/theme";
+import { ClockAccent, Fonts, Spacing } from "@/constants/theme";
 import { useAudio } from "@/contexts/AudioContext";
 import type { ActiveSession } from "@/db/types";
 import { useAppNow } from "@/lib/clock";
+import {
+  formatDotDate,
+  formatHm,
+  formatWeekdayShort,
+} from "@/lib/study-day";
 import { getPlannedEndMs } from "@/lib/timer";
 import { BatteryIndicator } from "./battery-indicator";
 import { ClockButton } from "./clock-button";
@@ -20,23 +25,6 @@ import { MeasuringIndicator } from "./measuring-indicator";
 // （縦のアイドルでは詳細（タイマー表示）へ飛ぶ。横画面は閲覧専用のため渡さない）。
 
 const CLOCK_SIZE = 155;
-// 曜日は罫線の下に単独で置くため、日付の並びを崩さない短い綴りにする
-const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-
-// 例: 2026.04.19（区切りは中黒ではなくドット。数字の並びを均等に見せる）
-function formatDate(d: Date): string {
-  const yyyy = d.getFullYear();
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
-  const dd = String(d.getDate()).padStart(2, "0");
-  return `${yyyy}.${mm}.${dd}`;
-}
-
-// 例: 00:52（24時間表記。AM/PM は付けない）
-function formatTime(d: Date): string {
-  const hh = String(d.getHours()).padStart(2, "0");
-  const mi = String(d.getMinutes()).padStart(2, "0");
-  return `${hh}:${mi}`;
-}
 
 export function MinimalHomeUI({
   session,
@@ -65,11 +53,11 @@ export function MinimalHomeUI({
         {/* 日付・時刻・曜日を罫線で挟んだ置き時計の体裁。罫線は時刻の幅に合わせて
             伸びるため、曲名はこの塊の外に出す（長い曲名で罫線が伸びないように） */}
         <View style={styles.info}>
-          <Text style={styles.date}>{formatDate(now)}</Text>
+          <Text style={styles.date}>{formatDotDate(now)}</Text>
           <View style={styles.rule} />
-          <Text style={styles.time}>{formatTime(now)}</Text>
+          <Text style={styles.time}>{formatHm(now)}</Text>
           <View style={[styles.rule, styles.ruleAccent]} />
-          <Text style={styles.weekday}>{WEEKDAYS[now.getDay()]}</Text>
+          <Text style={styles.weekday}>{formatWeekdayShort(now)}</Text>
         </View>
         <Text style={styles.nowPlaying} numberOfLines={1}>
           ♪ {bgmTrack ? bgmTrack.name : "音楽なし"}
@@ -95,9 +83,6 @@ export function MinimalHomeUI({
     </>
   );
 }
-
-// 曜日と下の罫線に使う淡い色。夜の空に沈まず、街の灯り（暖色）とも喧嘩しない
-const ACCENT = "rgba(168,226,222,0.9)";
 
 /** 曲名の折り返しを防ぐ上限幅（これを超えたら末尾を省略する） */
 const NOW_PLAYING_MAX_WIDTH = 240;
@@ -132,7 +117,7 @@ const styles = StyleSheet.create({
     textShadowRadius: 6,
   },
   weekday: {
-    color: ACCENT,
+    color: ClockAccent,
     fontSize: 15,
     fontWeight: "500",
     letterSpacing: 4,
@@ -148,7 +133,7 @@ const styles = StyleSheet.create({
     marginVertical: Spacing.one,
     backgroundColor: "rgba(255,255,255,0.75)",
   },
-  ruleAccent: { backgroundColor: ACCENT },
+  ruleAccent: { backgroundColor: ClockAccent },
   nowPlaying: {
     color: "rgba(255,255,255,0.8)",
     fontSize: 13,

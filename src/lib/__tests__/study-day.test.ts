@@ -6,7 +6,10 @@
 import {
   clampNonNegativeSeconds,
   formatDateKey,
+  formatDotDate,
+  formatHm,
   formatMinutes,
+  formatWeekdayShort,
   getStudyDate,
   isCurrentStudyDay,
   isNightTime,
@@ -116,5 +119,26 @@ describe("formatMinutes（学習時間の表示）", () => {
     [720, "12時間"],
   ])("%i分 → %s", (input, expected) => {
     expect(formatMinutes(input)).toBe(expected);
+  });
+});
+
+describe("置き時計の表記（アイドル最小表示・横画面・ホームで共有）", () => {
+  it("日付はドット区切りで、月日を2桁に揃える", () => {
+    // 桁が揃っていないと、分を刻むたびに文字幅が変わって数字が横に動く
+    expect(formatDotDate(new Date(2026, 7, 1))).toBe("2026.08.01");
+    expect(formatDotDate(new Date(2026, 11, 25))).toBe("2026.12.25");
+  });
+
+  it("時刻は24時間表記で2桁に揃える（AM/PMは付けない）", () => {
+    expect(formatHm(new Date(2026, 7, 1, 0, 5))).toBe("00:05");
+    expect(formatHm(new Date(2026, 7, 1, 9, 0))).toBe("09:00");
+    expect(formatHm(new Date(2026, 7, 1, 21, 30))).toBe("21:30");
+  });
+
+  it("曜日は英字3文字", () => {
+    // 2026-08-09 は日曜
+    expect(formatWeekdayShort(new Date(2026, 7, 9))).toBe("Sun");
+    expect(formatWeekdayShort(new Date(2026, 7, 10))).toBe("Mon");
+    expect(formatWeekdayShort(new Date(2026, 7, 15))).toBe("Sat");
   });
 });
