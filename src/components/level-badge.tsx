@@ -2,6 +2,8 @@ import { StyleSheet, Text, View } from "react-native";
 
 import { GROWTH } from "@/constants/domain";
 import { LightRgb } from "@/constants/theme";
+import type { LevelProgress } from "@/lib/growth";
+import { LevelProgressIndicator } from "./level-progress";
 
 // 街のレベル表示（案1: 灯りドット）。
 // 背景アートが「Lv1=家も街灯も暗い → Lv5=窓と街灯が煌々と灯る」という
@@ -96,9 +98,12 @@ function LightDot({
 export function LevelBadge({
   level,
   maxLevel = GROWTH.MAX_LEVEL,
+  progress,
 }: {
   level: number;
   maxLevel?: number;
+  /** 次のレベルまでの積み上がり（省略可）。渡すと灯りの並びの真下にバーで敷く */
+  progress?: LevelProgress | null;
 }) {
   const clamped = Math.max(0, Math.min(maxLevel, level));
   // レベルが上がるほど発光が育つ（Lv1で最小、maxLevelで最大）
@@ -113,6 +118,9 @@ export function LevelBadge({
           <LightDot key={i} lit={i < clamped} intensity={intensity} />
         ))}
       </View>
+      {/* 次のレベルまでの積み上がり。灯りの並びと同じ幅のバーで真下に敷く
+          （灯りは段、バーは段の中の進み具合。形を分けて混同を防ぐ） */}
+      <LevelProgressIndicator progress={progress ?? null} />
     </View>
   );
 }

@@ -30,7 +30,6 @@ import { GoodnightOverlay } from "@/components/goodnight-overlay";
 import { GrowthHintCard } from "@/components/growth-hint-card";
 import { LandscapeHome } from "@/components/landscape-home";
 import { LevelBadge } from "@/components/level-badge";
-import { LevelProgressIndicator } from "@/components/level-progress";
 import { LevelUpOverlay } from "@/components/level-up-overlay";
 import { MeasuringIndicator } from "@/components/measuring-indicator";
 import { MinimalHomeUI } from "@/components/minimal-home";
@@ -109,7 +108,11 @@ import {
   getStudyDate,
   isNightTime,
 } from "@/lib/study-day";
-import { getActualStudyMinutes, getPlannedEndMs } from "@/lib/timer";
+import {
+  getActualStudyMinutes,
+  getPlannedEndMs,
+  getPlannedMinutes,
+} from "@/lib/timer";
 
 // S2 ホーム画面（夜の街）。
 // Phase 2-1: 選択中の街の背景（レベル連動）＋スワイプ探索（要件2.2）＋OSステータスバー非表示。
@@ -179,6 +182,9 @@ export default function HomeScreen() {
   const [habitThresholds, setHabitThresholds] = useState<LevelThresholds>({});
   // S5 休憩提案（要件5.1）。表示中の実績合計（分）。null なら非表示
   const [breakTotal, setBreakTotal] = useState<number | null>(null);
+  // 表示中のカードが「その夜で初めて目標に届いた瞬間」のものか。
+  // 一晩に何度カードが出ても、達成の宣言は最初の一度だけにするための印
+  const [breakGoalNewlyReached, setBreakGoalNewlyReached] = useState(false);
   // おやすみ（要件13）。暗転画面に出すNPCの一言。null なら暗転していない
   const [goodnightMessage, setGoodnightMessage] = useState<string | null>(null);
   // おやすみの暗転がしきったか。暗転中に背景のループ動画を裏で回し続けないために使う
@@ -1039,16 +1045,27 @@ export default function HomeScreen() {
           enabled={user.overwork_prevention_enabled === 1}
           suppressed={breakTotal !== null || record !== null}
           onSuggest={() => {
+            // コールバックの中では外側の絞り込みが効かないため、ここで取り直す
+            const session = timer.session;
+            if (!session || !user) return;
             // 鑑賞モード中はUIを復帰させてから表示する（要件2.4）
             setImmersive(false);
             // 休憩モーダルが出たことを、柔らかい通知音で1回知らせる（要件5.1・UC 5.1。鐘は使わない）
             audio.playSfx("break_notice");
-            setBreakTotal(
-              getStudyDayTotalMinutes(
-                summary?.totalMinutes ?? 0,
-                timer.session,
-                nowMs(),
-              ),
+            const saved = summary?.totalMinutes ?? 0;
+            const total = getStudyDayTotalMinutes(saved, session, nowMs());
+            setBreakTotal(total);
+            // 「今夜の目標に届きました」と言えるのは、その夜で初めて届いた瞬間だけ。
+            //   ・保存済みが既に目標に達している → 前のセッションで達成済み
+            //   ・基準が初期値でない          → このセッションで一度カードを出した後
+            // どちらかに当てはまれば、達成の宣言ではなく区切りの知らせとして出す
+            const threshold = session.break_suggest_threshold_minutes ?? 0;
+            const isFirstCard =
+              threshold <= saved + getPlannedMinutes(session);
+            setBreakGoalNewlyReached(
+              isFirstCard &&
+                saved < user.daily_goal_minutes &&
+                total >= user.daily_goal_minutes,
             );
           }}
         />
@@ -1062,7 +1079,7 @@ export default function HomeScreen() {
         totalMinutes={breakTotal ?? 0}
         // 基準は「今回決めた分」なので、目標より短い予定で始めた夜は目標未達で出る。
         // その場合に「目標に届きました」と言わないよう、実績で判定して文面を変える
-        reachedGoal={(breakTotal ?? 0) >= (user?.daily_goal_minutes ?? 0)}
+        reachedGoal={breakGoalNewlyReached}
         onFinish={() => void handleBreakFinish()}
         onBreak={() => void handleBreakPause()}
         onContinue={() => void handleBreakContinue()}
@@ -1365,8 +1382,7 @@ function TopOverlay({
         {/* ③ 街の育ち。達成 → 経験値 → レベルのつながりが見えるよう、
             学習状況のすぐ下に置く（従来は時計の左だった） */}
         <View style={styles.growthBlock}>
-          <LevelBadge level={level} />
-          <LevelProgressIndicator progress={levelProgress} />
+          <LevelBadge level={level} progress={levelProgress} />
         </View>
       </View>
 
@@ -1636,11 +1652,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 4,
   },
+  // レベルの灯りと積み上がりの並びは LevelBadge が持つ（真下に揃える必要があるため）
   growthBlock: {
-    alignItems: "center",
-    // レベルの灯りと、その下の積み上がりは近づけて主従を見せる
-    gap: 5,
-    // 左端の他の行と頭を揃える（中身は中央寄せのため、塊自体は左に置く）
     alignSelf: "flex-start",
   },
   // 最小表示の置き時計と同じ書式で、一段控えめに（罫線なし・時刻も小さい）
