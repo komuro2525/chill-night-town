@@ -64,22 +64,22 @@ const styles = StyleSheet.create({
     width: DOT_SIZE,
     height: DOT_SIZE,
     borderRadius: DOT_SIZE / 2,
-    backgroundColor: "rgba(255,255,255,0.18)",
+    backgroundColor: "rgba(255,255,255,0.3)",
   },
   // 溜まったぶんは灯りの色をうっすら乗せる（発光はさせない。主役はレベルの灯り）
   dotFilled: {
-    backgroundColor: `rgba(${LightRgb},0.7)`,
+    backgroundColor: `rgba(${LightRgb},0.9)`,
   },
   bar: {
     width: BAR_WIDTH,
     height: BAR_HEIGHT,
     borderRadius: BAR_HEIGHT / 2,
-    backgroundColor: "rgba(255,255,255,0.18)",
+    backgroundColor: "rgba(255,255,255,0.3)",
     overflow: "hidden",
   },
   barFill: {
     height: BAR_HEIGHT,
     borderRadius: BAR_HEIGHT / 2,
-    backgroundColor: `rgba(${LightRgb},0.7)`,
+    backgroundColor: `rgba(${LightRgb},0.9)`,
   },
 });

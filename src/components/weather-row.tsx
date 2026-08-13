@@ -74,7 +74,7 @@ const styles = StyleSheet.create({
   },
   // 未選択のときは控えめに（選択は必須ではない。要件2.5）
   placeholder: {
-    color: "rgba(255,255,255,0.6)",
+    color: "rgba(255,255,255,0.75)",
     fontSize: 13,
     letterSpacing: 1.2,
     textShadowColor: "rgba(0,0,0,0.6)",

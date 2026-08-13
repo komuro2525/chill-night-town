@@ -70,8 +70,7 @@ export const LightRgb = "255,206,138";
 export const LightColor = `rgba(${LightRgb},0.95)`;
 
 /**
- * 置き時計の曜日・罫線に使う淡い青緑。
- * 夜空の上でも沈まず、街の灯り（暖色）と役割が混ざらないよう寒色にしている
- * （暖色は「達成・強調」が持っているため、時刻まわりの装飾には使わない）。
+ * 置き時計の曜日・罫線に使うアクセント。
+ * 街の灯り（暖色）に揃え、アプリ全体で使う色を1系統にまとめている。
  */
-export const ClockAccent = "rgba(168,226,222,0.9)";
+export const ClockAccent = `rgba(${LightRgb},0.9)`;

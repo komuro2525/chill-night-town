@@ -71,7 +71,6 @@ const TOWN_VIDEO: Record<string, TownVideoSet> = {
           height: 720,
         },
       ],
-      // 動作確認用の暫定素材。本素材ができたら同じパスへ差し替える
       5: [
         {
           source: require("@/assets/home/nightTown/night/mp4/nightTown_night_lv5.mp4"),

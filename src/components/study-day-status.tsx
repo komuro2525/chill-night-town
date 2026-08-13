@@ -29,7 +29,12 @@ export function StudyDayStatus({
   return (
     <View style={styles.container}>
       <Text style={styles.label}>今夜の学習</Text>
-      <Text style={styles.time}>{formatMinutes(totalMinutes)}</Text>
+      {/* 達成したら数字そのものを灯りの色にする。この塊でいちばん大きく、
+          最初に目が行く要素のため、文字を読まなくても達成が分かる。
+          変わるのは達成したときだけで、未達成では何も起きない（責めない） */}
+      <Text style={[styles.time, achieved && styles.timeAchieved]}>
+        {formatMinutes(totalMinutes)}
+      </Text>
 
       <View style={styles.bar}>
         <View
@@ -41,7 +46,9 @@ export function StudyDayStatus({
         />
       </View>
 
-      <Text style={[styles.goal, achieved && styles.goalAchieved]}>
+      {/* 文言は達成しても色を変えない。数字とバーが既に灯りの色で達成を語っており、
+          この小さな塊で暖色が3つになるとうるさくなるため */}
+      <Text style={styles.goal}>
         {achieved
           ? "目標を達成しています"
           : `目標 ${formatMinutes(goalMinutes)}`}
@@ -54,9 +61,9 @@ const styles = StyleSheet.create({
   container: {
     gap: Spacing.one,
   },
-  // 見出しは目立たせない。主役は下の数字
+  // 見出しは目立たせない。主役は下の数字（ただし夜の背景でも読める濃さは保つ）
   label: {
-    color: "rgba(255,255,255,0.6)",
+    color: "rgba(255,255,255,0.78)",
     fontSize: 10,
     fontWeight: "500",
     letterSpacing: 2,
@@ -78,13 +85,13 @@ const styles = StyleSheet.create({
     width: BAR_WIDTH,
     height: BAR_HEIGHT,
     borderRadius: BAR_HEIGHT / 2,
-    backgroundColor: "rgba(255,255,255,0.2)",
+    backgroundColor: "rgba(255,255,255,0.3)",
     overflow: "hidden",
   },
   barFill: {
     height: BAR_HEIGHT,
     borderRadius: BAR_HEIGHT / 2,
-    backgroundColor: "rgba(255,255,255,0.55)",
+    backgroundColor: "rgba(255,255,255,0.72)",
   },
   barFillAchieved: {
     backgroundColor: LightColor,
@@ -94,13 +101,14 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 0 },
   },
   goal: {
-    color: "rgba(255,255,255,0.65)",
+    color: "rgba(255,255,255,0.8)",
     fontSize: 11,
     letterSpacing: 1,
     textShadowColor: "rgba(0,0,0,0.6)",
     textShadowRadius: 4,
   },
-  goalAchieved: {
+  // 達成した夜だけ、数字が街の灯りの色になる
+  timeAchieved: {
     color: LightColor,
   },
 });

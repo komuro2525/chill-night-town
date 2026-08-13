@@ -1303,6 +1303,23 @@ function TopOverlay({
   const now = useAppNow(10000);
   const top = insets.top + Spacing.two;
 
+  // 学習時間・目標達成は「保存済みの記録 ＋ 稼働中セッション」の合算で見る（UC 2.1 備考）。
+  // 保存済みだけを見ていると、学習中は数字が増えず達成にもならない。
+  //
+  // 達成の判定に daily_goal_achievement（経験値の付与済み記録）を使わないのは、
+  // あれが「終了時に・習慣型のときだけ」書かれる成長側の台帳のため。
+  // プロジェクト型では永久に書かれず、何時間学習しても達成にならなかった。
+  // ただし付与済みなら達成として扱う。目標時間を後から引き上げても、
+  // 一度示した達成を取り消さないため（レベルが下がらないのと同じ考え方）
+  const dayTotalMinutes = getStudyDayTotalMinutes(
+    summary?.totalMinutes ?? 0,
+    session,
+    now.getTime(),
+  );
+  const goalAchieved =
+    (summary?.achieved ?? false) ||
+    (goalMinutes !== null && dayTotalMinutes >= goalMinutes);
+
   // 夜間帯（18:00〜翌5:00）のみ学習を開始できる（要件2.3）。
   // useNow が定期的に更新されるため、時刻の変化時にも判定し直される
   const canStart = isNightTime(now);
@@ -1336,12 +1353,12 @@ function TopOverlay({
           </View>
         </View>
 
-        {/* ② 当学習日の学習時間・目標達成状況（要件2.1） */}
+        {/* ② 当学習日の学習時間・目標達成状況（要件2.1 / UC 2.1 備考） */}
         {summary && goalMinutes !== null ? (
           <StudyDayStatus
-            totalMinutes={summary.totalMinutes}
+            totalMinutes={dayTotalMinutes}
             goalMinutes={goalMinutes}
-            achieved={summary.achieved}
+            achieved={goalAchieved}
           />
         ) : null}
 
@@ -1628,7 +1645,7 @@ const styles = StyleSheet.create({
   },
   // 最小表示の置き時計と同じ書式で、一段控えめに（罫線なし・時刻も小さい）
   dateText: {
-    color: "rgba(255,255,255,0.75)",
+    color: "rgba(255,255,255,0.88)",
     fontSize: 11,
     fontWeight: "500",
     letterSpacing: 2,
@@ -1696,7 +1713,7 @@ const styles = StyleSheet.create({
   // アイコンの並び（gap）よりもう一段空けて、ボタン群と地続きに見えないようにする
   onlineText: {
     marginTop: Spacing.three,
-    color: "rgba(255,255,255,0.8)",
+    color: "rgba(255,255,255,0.9)",
     fontSize: 12,
     fontWeight: "500",
     letterSpacing: 0.5,

@@ -1,5 +1,6 @@
 import * as Battery from "expo-battery";
 import { useEffect, useState } from "react";
+import { AppState } from "react-native";
 
 export type BatteryInfo = {
   /** 0〜1。取得不可（シミュレータ等）の場合は 1 を仮置き */
@@ -37,12 +38,17 @@ export function useBattery(): BatteryInfo {
       if (mounted) setCharging(c);
     };
 
-    Battery.getBatteryLevelAsync()
-      .then((l) => {
-        if (l >= 0) applyLevel(l);
-      })
-      .catch(() => {});
-    Battery.getBatteryStateAsync().then(applyCharging).catch(() => {});
+    // 端末へ現在値を聞き直す
+    const refresh = () => {
+      Battery.getBatteryLevelAsync()
+        .then((l) => {
+          if (l >= 0) applyLevel(l);
+        })
+        .catch(() => {});
+      Battery.getBatteryStateAsync().then(applyCharging).catch(() => {});
+    };
+
+    refresh();
 
     const levelSub = Battery.addBatteryLevelListener(({ batteryLevel }) => {
       if (batteryLevel >= 0) applyLevel(batteryLevel);
@@ -51,10 +57,18 @@ export function useBattery(): BatteryInfo {
       applyCharging(batteryState);
     });
 
+    // アプリが背面にいる間はOSから変化の通知が届かない。そのため戻ってきた時点では
+    // 離れる直前の値のままで、次に残量が動くまで実際とずれ続ける。
+    // 前面に戻ったら聞き直して、その場で合わせる
+    const appSub = AppState.addEventListener("change", (state) => {
+      if (state === "active") refresh();
+    });
+
     return () => {
       mounted = false;
       levelSub.remove();
       stateSub.remove();
+      appSub.remove();
     };
   }, []);
 
