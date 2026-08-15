@@ -159,6 +159,11 @@ export function WeatherPicker({
       });
       // 撮り直しなら古い実体を捨てる（1学習日1枚）
       if (previous && previous !== result.fileName) deletePhotoFile(previous);
+    } catch (e) {
+      // 保存や記録の書き込みで落ちても、握りつぶさず静かに知らせる
+      // （ここで投げると呼び出し元は void のため誰も拾えず、押しても無反応に見える）
+      console.error("その夜の写真の保存に失敗しました", e);
+      Alert.alert("写真を残せませんでした", "少し時間をおいて試してください。");
     } finally {
       setCapturing(false);
     }

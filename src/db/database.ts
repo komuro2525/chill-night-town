@@ -19,10 +19,18 @@ async function openAndInitialize(): Promise<SQLiteDatabase> {
 /**
  * 初期化済みの DB を取得する。初回呼び出し時にオープンとマイグレーションを行い、
  * 以降は同一インスタンスを返す。
+ *
+ * 失敗した Promise はキャッシュに残さない。残すと、起動時の一度きりの失敗
+ * （オープンの競合など）で以後アプリが生きているあいだ全てのDBアクセスが
+ * 同じエラーを返し続け、画面の再読み込みでも復帰できなくなるため。
  */
 export function getDatabase(): Promise<SQLiteDatabase> {
   if (!databasePromise) {
-    databasePromise = openAndInitialize();
+    const attempt = openAndInitialize().catch((e) => {
+      if (databasePromise === attempt) databasePromise = null;
+      throw e;
+    });
+    databasePromise = attempt;
   }
   return databasePromise;
 }

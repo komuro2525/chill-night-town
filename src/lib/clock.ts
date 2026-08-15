@@ -30,6 +30,43 @@ export function now(): Date {
 }
 
 /**
+ * 同じ間隔の購読者で1本の setInterval を共有する。
+ *
+ * 見張り（自動終了・休憩提案・ポモドーロのフェーズ）は同時に3つ動くため、
+ * それぞれが自前の1秒タイマーを持つとタイマーが3本走り、位相もずれて
+ * 別々の描画が3回起きる。1本にまとめれば更新は同じ tick に揃い、
+ * 描画も1回にまとまる（判定は純関数で時刻から導くため、位相の共有で困らない）。
+ */
+const tickers = new Map<
+  number,
+  { id: ReturnType<typeof setInterval>; subscribers: Set<(ms: number) => void> }
+>();
+
+function subscribeTick(intervalMs: number, onTick: (ms: number) => void): () => void {
+  let ticker = tickers.get(intervalMs);
+  if (!ticker) {
+    const subscribers = new Set<(ms: number) => void>();
+    const id = setInterval(() => {
+      const t = nowMs();
+      subscribers.forEach((fn) => fn(t));
+    }, intervalMs);
+    ticker = { id, subscribers };
+    tickers.set(intervalMs, ticker);
+  }
+  ticker.subscribers.add(onTick);
+  return () => {
+    const current = tickers.get(intervalMs);
+    if (!current) return;
+    current.subscribers.delete(onTick);
+    // 最後の購読者が外れたらタイマーごと止める（画面を離れた後も動かさない）
+    if (current.subscribers.size === 0) {
+      clearInterval(current.id);
+      tickers.delete(intervalMs);
+    }
+  };
+}
+
+/**
  * 一定間隔で更新される現在時刻を返す。
  * 時計・経過時間の表示や、時刻の変化に応じた判定（夜間帯・5:00到達）に使う。
  */
@@ -37,8 +74,9 @@ export function useAppNow(intervalMs = 1000): Date {
   const [ms, setMs] = useState(() => nowMs());
 
   useEffect(() => {
-    const id = setInterval(() => setMs(nowMs()), intervalMs);
-    return () => clearInterval(id);
+    // 購読開始時に採り直す（共有 tick に相乗りするため、初回の位相が最大1間隔ずれうる）
+    setMs(nowMs());
+    return subscribeTick(intervalMs, setMs);
   }, [intervalMs]);
 
   // 開発用オフセットの変更を、次の tick を待たずに反映する

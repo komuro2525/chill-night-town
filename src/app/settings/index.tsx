@@ -104,8 +104,10 @@ export default function SettingsScreen() {
   }
 
   // プロジェクト型に切り替えるときの目標時間確定。目標を保存→方式切替→レベル再判定。
-  async function confirmProjectTarget(hoursText: string) {
-    if (!user || !selectedTown) return;
+  async function confirmProjectTarget(hoursText: string): Promise<string | void> {
+    // 街が読めていないまま黙って閉じると、方式が習慣型のままなのに切り替わったように見える。
+    // 文言を返して閉じずに知らせる（EditFieldModal の非同期エラーの作法）
+    if (!user || !selectedTown) return "街の情報を読み込めませんでした";
     const minutes = Number(hoursText.trim()) * 60;
     await townProgressRepo.updateProjectTargetMinutes(selectedTown.town.id, minutes);
     await userRepo.updateGrowthMethod("project");

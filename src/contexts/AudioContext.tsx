@@ -819,9 +819,15 @@ export function AudioProvider({ children }: { children: ReactNode }) {
     }
   }, [applyQueue]);
 
+  // 保存に失敗しても投げない（呼び出し側は void で呼ぶため誰も拾えない）。
+  // 保存できなくても、キューの組み直しは現在のDB値で行って表示の辻褄を合わせる
   const setBgmSource = useCallback(
     async (source: BgmSource) => {
-      await settingsRepo.updateBgmSource(source);
+      try {
+        await settingsRepo.updateBgmSource(source);
+      } catch (e) {
+        console.error("再生ソースの保存に失敗しました", e);
+      }
       // タブ切替はそのソースの先頭曲から流す（要件9）
       await refreshBgmQueue({ playFromTop: true });
     },
@@ -830,7 +836,11 @@ export function AudioProvider({ children }: { children: ReactNode }) {
 
   const setBgmShuffle = useCallback(
     async (on: boolean) => {
-      await settingsRepo.updateBgmShuffle(on);
+      try {
+        await settingsRepo.updateBgmShuffle(on);
+      } catch (e) {
+        console.error("シャッフル設定の保存に失敗しました", e);
+      }
       await refreshBgmQueue();
     },
     [refreshBgmQueue],

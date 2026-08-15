@@ -165,6 +165,9 @@ export default function HomeScreen() {
     minutes: number;
     studyDate: string;
   } | null>(null);
+  // 成果記録に出す天気。記録の学習日のものを引く（5:00自動終了・翌日の中断復元で
+  // 終わると、記録の夜とホームの weather（現在の学習日）は別の夜になるため）
+  const [recordWeather, setRecordWeather] = useState<NightWeather | null>(null);
   // 記録の保存後にかけるNPCの一言（要件7.1）。選ばれた感情に応じて出し分ける
   const [npcMessage, setNpcMessage] = useState<string | null>(null);
   // 直近の成長結果（要件6.1）。NPCメッセージの出し分けと演出に使う
@@ -248,6 +251,25 @@ export default function HomeScreen() {
       mounted = false;
     };
   }, []);
+
+  // 成果記録を開いたら、その記録の学習日の天気を引く。
+  // ホームの weather を流用すると、5:00をまたいで終了したときに別の夜の天気を
+  // 出してしまい、選び直しても行の表示が変わらない
+  useEffect(() => {
+    if (!record) return;
+    let mounted = true;
+    weatherRepo
+      .getWeatherByStudyDate(record.studyDate)
+      .then((w) => {
+        if (mounted) setRecordWeather(w);
+      })
+      .catch((e) =>
+        console.error("記録した夜の天気の読み込みに失敗しました", e),
+      );
+    return () => {
+      mounted = false;
+    };
+  }, [record]);
 
   // 他の画面から戻ってきたら、その夜の天気を読み直す。
   // ホームは裏で生存し続けるため（マウント処理は再実行されない）、これが無いと
@@ -1027,9 +1049,12 @@ export default function HomeScreen() {
           // 現在時刻ではなく保存した記録の学習日（5:00をまたいで終了しても前夜として扱う）
           studyDate={record.studyDate}
           minutes={record.minutes}
-          weather={weather}
+          weather={recordWeather}
           emotionEnabled={user.emotion_record_enabled === 1}
-          onChangeWeather={(w) => void handleSelectWeather(w, record.studyDate)}
+          onChangeWeather={(w) => {
+            setRecordWeather(w);
+            void handleSelectWeather(w, record.studyDate);
+          }}
           onSave={(v) => void handleSaveRecord(v)}
           // 保存せず離脱した場合も、成長処理は実行済み。感情は空でNPC/演出へ進む（要件3.4）
           onClose={() => showPostRecord(null)}

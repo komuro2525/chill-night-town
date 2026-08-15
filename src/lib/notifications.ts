@@ -154,7 +154,9 @@ export async function applyNotificationSchedule({
       content: { title: n.title, body: n.body },
       trigger: {
         type: Notifications.SchedulableTriggerInputTypes.DATE,
-        date: n.fireAt,
+        // 予定の発火時刻もアプリ内時刻（clock.ts）で組み立てているため、
+        // 学習中のお知らせと同じく実時間へ直す（本番は常に恒等）
+        date: toRealTime(n.fireAt),
       },
     });
   }
