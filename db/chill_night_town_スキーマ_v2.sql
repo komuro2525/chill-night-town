@@ -1,7 +1,7 @@
 -- =====================================================================
 -- Chill Night Town - SQLite スキーマ定義 v2
 -- 対象: React Native (Expo) + TypeScript / expo-sqlite
--- 対応文書: chill_night_town_テーブル定義書_v2.md
+-- 対応文書: docs/テーブル定義書.md
 -- 作成方針:
 --   ・真偽値は INTEGER (0=false, 1=true) で統一
 --   ・日時は TEXT (ISO8601, 例: '2026-07-04T22:30:00') で統一
