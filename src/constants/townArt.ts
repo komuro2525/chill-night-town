@@ -63,7 +63,15 @@ const TOWN_ART: Record<string, TownArt> = {
       return { 1: only, 2: only, 3: only, 4: only, 5: only };
     })(),
   },
-  // snowTown / starHill は画像未制作のため未登録（「準備中」枠として表示・選択不可）
+  // starHill（星見の丘）。castleTown と同じく night の Lv.5 が1枚のみ。
+  // 暫定で全レベルに同じ画像を使う（レベル別の画像ができたら差し替える）。
+  starHill: {
+    night: (() => {
+      const only = require("@/assets/home/starHill/night/png/starHill_night_lv5.png");
+      return { 1: only, 2: only, 3: only, 4: only, 5: only };
+    })(),
+  },
+  // snowTown は画像未制作のため未登録（「準備中」枠として表示・選択不可）
 };
 
 /**

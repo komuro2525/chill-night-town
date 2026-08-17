@@ -15,7 +15,11 @@ import { POMODORO, SIMPLE_PLANNED_MINUTES, STUDY_DAY } from "@/constants/domain"
 import { LightColor, Spacing } from "@/constants/theme";
 import type { NightWeather, TimerMode } from "@/db/types";
 import { useAppNow } from "@/lib/clock";
-import { formatDateTimeLabel } from "@/lib/study-day";
+import {
+  formatDotDate,
+  formatHm,
+  formatWeekdayShort,
+} from "@/lib/study-day";
 import {
   validatePlannedMinutes,
   validatePomodoroBreakMinutes,
@@ -88,7 +92,9 @@ export function TimerSetupModal({
   const circle = Math.min(CIRCLE_MAX, width - Spacing.four * 2);
   // 日時はこの中で刻む（親から文字列で受け取ると、開いているあいだ時刻が止まって見える）。
   // 分までの表示なので10秒ごとで足りる
-  const dateTimeLabel = formatDateTimeLabel(useAppNow(10000));
+  // 日時の書き方はホームの置き時計・タイマー詳細と揃える（画面が変わっても表記を変えない）
+  const at = useAppNow(10000);
+  const dateTimeLabel = `${formatDotDate(at)}  ${formatHm(at)}  ${formatWeekdayShort(at)}`;
 
   const [mode, setMode] = useState<TimerMode>(initialMode);
   const [planned, setPlanned] = useState(String(initialPlanned));

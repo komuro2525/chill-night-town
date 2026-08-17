@@ -104,25 +104,6 @@ export function formatWeekdayShort(d: Date): string {
 }
 
 /**
- * 現在時刻を「2026/08/01(月) 21:00 PM」の形にする。
- * ホーム・タイマー設定・タイマー表示で同じ表記を使う（画面が変わっても時刻の見え方を変えない）。
- *
- * 表示側は自分で時刻を刻んでこの関数へ渡すこと（親から文字列を受け取ると、
- * 親が再描画されるまで時刻が止まって見える）。
- */
-export function formatDateTimeLabel(d: Date): string {
-  const yyyy = d.getFullYear();
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
-  const dd = String(d.getDate()).padStart(2, "0");
-  const weekday = WEEKDAY_LABELS[d.getDay()];
-  const h24 = d.getHours();
-  const hh = String(h24).padStart(2, "0");
-  const mi = String(d.getMinutes()).padStart(2, "0");
-  const ampm = h24 < 12 ? "AM" : "PM";
-  return `${yyyy}/${mm}/${dd}(${weekday}) ${hh}:${mi} ${ampm}`;
-}
-
-/**
  * 学習時間（分）を日本語の表示用文字列にする。
  * 例: 0 → '0分' / 45 → '45分' / 60 → '1時間' / 95 → '1時間35分'
  */
