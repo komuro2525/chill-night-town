@@ -54,6 +54,8 @@ CREATE TABLE user (
     -- アプリを離れているあいだもBGM・環境音を鳴らし続けるか（要件9章）。1=続ける（既定）。設定10.15
     -- OFFに戻せるようにするのは、連続再生が電池を使うため
     background_audio_enabled    INTEGER NOT NULL DEFAULT 1  CHECK (background_audio_enabled IN (0, 1)),
+    -- アイドル最小表示・横画面で、計測中に時計と経過時間を出すか。1=出す（既定）/ 0=「作業中」だけ。設定10.16
+    minimal_clock_enabled       INTEGER NOT NULL DEFAULT 1  CHECK (minimal_clock_enabled IN (0, 1)),
     created_at                  TEXT    NOT NULL DEFAULT (datetime('now')),
     updated_at                  TEXT    NOT NULL DEFAULT (datetime('now'))
 );

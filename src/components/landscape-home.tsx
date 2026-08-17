@@ -28,6 +28,7 @@ export function LandscapeHome({
   session,
   weatherCode,
   effectsEnabled,
+  clockHidden,
 }: {
   /** 選択中の街の全景（未登録なら暗い背景のみ） */
   art: ImageSourcePropType | undefined;
@@ -39,6 +40,8 @@ export function LandscapeHome({
   weatherCode: string | null | undefined;
   /** 天気の演出を出すか（「背景を動かす」設定・おやすみの暗転に追従する） */
   effectsEnabled: boolean;
+  /** 設定「学習中の時計」（要件10.16）がOFFか。計測中の時計と経過時間を出さない */
+  clockHidden: boolean;
 }) {
   const insets = useSafeAreaInsets();
   // 情報表示の表示/非表示（タップでトグル）。初期は表示
@@ -62,7 +65,13 @@ export function LandscapeHome({
       <WeatherOverlay weatherCode={weatherCode} enabled={effectsEnabled} />
 
       {/* アイドル最小表示と同じUI。横画面は閲覧専用のため時計は非操作（onPressClock を渡さない） */}
-      {infoVisible ? <MinimalHomeUI session={session} insets={insets} /> : null}
+      {infoVisible ? (
+        <MinimalHomeUI
+          session={session}
+          insets={insets}
+          clockHidden={clockHidden}
+        />
+      ) : null}
     </Pressable>
   );
 }

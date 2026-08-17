@@ -919,6 +919,7 @@ export default function HomeScreen() {
         motionEnabled={
           user?.background_motion_enabled === 1 && !goodnightDarkened
         }
+        clockHidden={user?.minimal_clock_enabled === 0}
         weatherCode={weather?.code ?? null}
         onRestoreFromImmersive={() => {
           // 背景タップ: アイドル最小表示を解除（＝通常表示へ戻す）し、鑑賞モードも解除する
@@ -936,6 +937,7 @@ export default function HomeScreen() {
       {uiVisible && idle ? (
         <IdleOverlay
           session={timer.session}
+          clockHidden={user?.minimal_clock_enabled === 0}
           // 最小表示中でも時計を押したら詳細（タイマー表示）へ。計測中のみ時計は出る
           onPressTimer={() =>
             timer.session ? setTimerOpen(true) : setSetupOpen(true)
@@ -1296,9 +1298,12 @@ function devHourLabel(hour: number | null): string {
 // 表示へ戻し、時計だけはタップで詳細（タイマー表示）へ飛べる（要件2.4）。
 function IdleOverlay({
   session,
+  clockHidden,
   onPressTimer,
 }: {
   session: ActiveSession | null;
+  /** 設定「学習中の時計」（要件10.16）がOFFか */
+  clockHidden: boolean;
   onPressTimer: () => void;
 }) {
   const insets = useSafeAreaInsets();
@@ -1311,6 +1316,7 @@ function IdleOverlay({
       <MinimalHomeUI
         session={session}
         insets={insets}
+        clockHidden={clockHidden}
         onPressClock={onPressTimer}
       />
     </Animated.View>
@@ -1452,6 +1458,7 @@ function HomeBackground({
   level,
   session,
   motionEnabled,
+  clockHidden,
   weatherCode,
   onRestoreFromImmersive,
 }: {
@@ -1462,6 +1469,8 @@ function HomeBackground({
   session: ActiveSession | null;
   /** 設定「背景を動かす」（要件10.11）。OFFなら動画素材があっても静止画 */
   motionEnabled: boolean;
+  /** 設定「学習中の時計」（要件10.16）がOFFか。横画面の最小UIへ渡す */
+  clockHidden: boolean;
   /** その学習日に選択された天気（要件8）。未選択は null＝演出なし */
   weatherCode: string | null | undefined;
   /** 鑑賞モード中に背景をタップしたときの復帰 */
@@ -1487,6 +1496,7 @@ function HomeBackground({
         session={session}
         weatherCode={weatherCode}
         effectsEnabled={motionEnabled}
+        clockHidden={clockHidden}
       />
     );
   }

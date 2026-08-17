@@ -193,13 +193,16 @@ export default function SettingsScreen() {
               onChange={(v) => void changeMethod(v)}
             />
           </View>
-          {/* 方式の説明。セクションのfooterは住人の説明に使うため、ここに添える */}
+          {/* 方式の説明。セクションのfooterは住人の説明に使うため、ここに添える。
+              稼働中は説明を出さず、変更できない旨だけにする（選べないときに
+              選び方の説明が残っていても読む意味がないため） */}
           <View style={styles.methodNote}>
             <ThemedText type="small" themeColor="textSecondary">
-              {method === "habit"
-                ? "達成した夜に、街の灯りが少し育ちます"
-                : "積み重ねた学習時間が、目標に向かって街を育てます"}
-              {running ? `\n${RUNNING_NOTE}` : ""}
+              {running
+                ? RUNNING_NOTE
+                : method === "habit"
+                  ? "達成した夜に、街の灯りが少し育ちます"
+                  : "積み重ねた学習時間が、目標に向かって街を育てます"}
             </ThemedText>
           </View>
           <SettingRow
@@ -211,12 +214,20 @@ export default function SettingsScreen() {
                   : selectedTown.town.name
                 : undefined
             }
-            onPress={() => router.push("/settings/towns")}
+            // 稼働中は開かせない（要件10.5）。切り替えが不可である以上、
+            // 開いてできることが限られ、入れるのに切り替えだけ弾かれるほうが分かりにくい
+            onPress={running ? undefined : () => router.push("/settings/towns")}
+            disabled={running}
+            note={running ? RUNNING_NOTE : undefined}
           />
           <SettingRow
             label="街の住人"
             value={townNpc?.name ?? undefined}
-            onPress={() => router.push("/settings/npc")}
+            // 稼働中は変更不可（要件10.12）。判定・記録には影響しないが、今夜の語りは
+            // 開始時の住人で固定されるため、選び直せても今夜の言葉は変わらず紛らわしい
+            onPress={running ? undefined : () => router.push("/settings/npc")}
+            disabled={running}
+            note={running ? RUNNING_NOTE : undefined}
           />
         </SettingSection>
 
@@ -263,6 +274,20 @@ export default function SettingsScreen() {
                 value={user.background_motion_enabled === 1}
                 onValueChange={async (v) => {
                   await userRepo.updateBackgroundMotionEnabled(v);
+                  await reload();
+                }}
+              />
+            }
+          />
+          {/* 学習中の時計（要件10.16）。稼働中も変更可 */}
+          <SettingRow
+            label="学習中の時計"
+            note="放置中と横向きのとき、学習中の時計と経過時間を出します。オフにすると「学習中」の表示だけになります"
+            right={
+              <Switch
+                value={user.minimal_clock_enabled === 1}
+                onValueChange={async (v) => {
+                  await userRepo.updateMinimalClockEnabled(v);
                   await reload();
                 }}
               />

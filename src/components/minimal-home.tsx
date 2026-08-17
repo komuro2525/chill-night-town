@@ -29,11 +29,19 @@ const CLOCK_SIZE = 155;
 export function MinimalHomeUI({
   session,
   insets,
+  clockHidden = false,
   onPressClock,
 }: {
   /** 計測中セッション（非計測時は null）。計測中のみ時計＋作業中を出す */
   session: ActiveSession | null;
   insets: EdgeInsets;
+  /**
+   * 設定「学習中の時計」（要件10.16）がOFFか。
+   * true なら時計と経過時間を出さず、「作業中」の一言だけを残す。
+   * 状態表示まで消さないのは、計測中だと分かる手掛かりが無くなると
+   * 回しっぱなしのまま放置する事故が起きるため。
+   */
+  clockHidden?: boolean;
   /** 指定時のみ時計をタップできる（縦のアイドルで詳細へ飛ぶ。横画面は渡さない＝非操作） */
   onPressClock?: () => void;
 }) {
@@ -60,7 +68,7 @@ export function MinimalHomeUI({
           <Text style={styles.weekday}>{formatWeekdayShort(now)}</Text>
         </View>
         <Text style={styles.nowPlaying} numberOfLines={1}>
-          ♪ {bgmTrack ? bgmTrack.name : "音楽なし"}
+          ♫ {bgmTrack ? bgmTrack.name : "音楽なし"}
         </Text>
       </View>
 
@@ -70,16 +78,22 @@ export function MinimalHomeUI({
           style={[styles.clock, { top, right: insets.right + Spacing.four }]}
           pointerEvents={onPressClock ? "auto" : "none"}
         >
-          <ClockButton
-            size={CLOCK_SIZE}
-            now={now}
-            onPress={onPressClock ?? (() => {})}
-            disabled={false}
-            endAt={new Date(getPlannedEndMs(session, now.getTime()))}
-            // 一時停止中は回さない（止まっていることが光で分かる）
-            running={session.pause_started_at === null}
+          {clockHidden ? null : (
+            <ClockButton
+              size={CLOCK_SIZE}
+              now={now}
+              onPress={onPressClock ?? (() => {})}
+              disabled={false}
+              endAt={new Date(getPlannedEndMs(session, now.getTime()))}
+              // 一時停止中は回さない（止まっていることが光で分かる）
+              running={session.pause_started_at === null}
+            />
+          )}
+          <MeasuringIndicator
+            session={session}
+            width={CLOCK_SIZE}
+            timeHidden={clockHidden}
           />
-          <MeasuringIndicator session={session} width={CLOCK_SIZE} />
         </View>
       ) : null}
     </>
@@ -137,8 +151,9 @@ const styles = StyleSheet.create({
   },
   ruleAccent: { backgroundColor: ClockAccent },
   nowPlaying: {
-    color: "rgba(255,255,255,0.8)",
+    color: "rgba(255,255,255,0.9)",
     fontSize: 13,
+    fontWeight: "600",
     maxWidth: NOW_PLAYING_MAX_WIDTH,
     textShadowColor: "rgba(0,0,0,0.6)",
     textShadowRadius: 4,

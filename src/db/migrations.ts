@@ -40,7 +40,7 @@ type Migration = {
 // **必ず DELTA_MIGRATIONS の最後の version と一致させること。** 小さいままだと、新規
 // インストールは「最新形のスキーマ＋古い user_version」で始まり、次の起動で適用済みの
 // 差分がもう一度流れて落ちる（ADD COLUMN が duplicate column で失敗する）。
-const SCHEMA_VERSION = 32;
+const SCHEMA_VERSION = 33;
 
 // 既存DB（過去バージョン）向けの差分マイグレーション（version >= 2）。
 // 新規インストールはスキーマSQL（=最新）を適用して一気に SCHEMA_VERSION まで上がるため、
@@ -704,6 +704,16 @@ const DELTA_MIGRATIONS: Migration[] = [
       // 届いていないため、シードを流し直す。
       const npcSql = await loadSqlAsset(SEED_NPC_MODULE);
       await db.execAsync(stripOuterTransaction(npcSql));
+    },
+  },
+  {
+    version: 33,
+    up: async (db) => {
+      // アイドル最小表示・横画面で、計測中に時計と経過時間を出すか（要件10.16）。
+      // 既定1＝出す。0にすると「作業中」の一言だけを残す
+      await db.execAsync(
+        "ALTER TABLE user ADD COLUMN minimal_clock_enabled INTEGER NOT NULL DEFAULT 1 CHECK (minimal_clock_enabled IN (0, 1))",
+      );
     },
   },
 ];

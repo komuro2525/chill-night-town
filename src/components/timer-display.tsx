@@ -11,7 +11,11 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Spacing } from "@/constants/theme";
 import type { ActiveSession, NightWeather } from "@/db/types";
 import { useTimerNow } from "@/hooks/use-timer-now";
-import { formatDateTimeLabel } from "@/lib/study-day";
+import {
+  formatDotDate,
+  formatHm,
+  formatWeekdayShort,
+} from "@/lib/study-day";
 import {
   getActualStudySeconds,
   getElapsedSeconds,
@@ -69,7 +73,9 @@ export function TimerDisplay({
   // 経過の秒境界に合わせて更新される現在時刻。日時表示もこれを使う
   // （親から文字列で受け取ると、親が再描画されるまで時刻が止まって見える）
   const now = useTimerNow(session);
-  const dateTimeLabel = formatDateTimeLabel(new Date(now));
+  // 日時の書き方はホームの置き時計に揃える（画面が変わっても表記を変えない）
+  const at = new Date(now);
+  const dateTimeLabel = `${formatDotDate(at)}  ${formatHm(at)}  ${formatWeekdayShort(at)}`;
 
   const isPaused = session.pause_started_at !== null;
   const elapsed = getElapsedSeconds(session, now);

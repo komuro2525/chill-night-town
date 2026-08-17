@@ -53,6 +53,8 @@ export type User = {
   night_photo_enabled: Bool;
   /** アプリを離れているあいだもBGM・環境音を鳴らし続けるか（1=続ける・既定）。要件9章 / 10.15 */
   background_audio_enabled: Bool;
+  /** アイドル最小表示・横画面で、計測中に時計と経過時間を出すか（要件10.16） */
+  minimal_clock_enabled: Bool;
   created_at: string;
   updated_at: string;
 };

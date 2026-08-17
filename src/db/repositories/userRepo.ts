@@ -170,6 +170,20 @@ export async function updateBackgroundAudioEnabled(
   );
 }
 
+/**
+ * アイドル最小表示・横画面で、計測中に時計と経過時間を出すか（要件10.16）。稼働中も可。
+ * OFFのときも「作業中」の一言は残す（計測中だと分かる手掛かりを消さないため）。
+ */
+export async function updateMinimalClockEnabled(
+  enabled: boolean,
+): Promise<void> {
+  const db = await getDatabase();
+  await db.runAsync(
+    "UPDATE user SET minimal_clock_enabled = ?, updated_at = datetime('now')",
+    enabled ? 1 : 0,
+  );
+}
+
 /** 頑張りすぎ防止（休憩提案）のON/OFF（要件10.8）。稼働中も可 */
 export async function updateOverworkPreventionEnabled(
   enabled: boolean,

@@ -22,10 +22,16 @@ import { formatDuration } from "./timer-display";
 export function MeasuringIndicator({
   session,
   width,
+  timeHidden = false,
 }: {
   session: ActiveSession;
   /** 時計と同じ幅に揃えて中央寄せする */
   width: number;
+  /**
+   * 経過時間を出さず、状態の一言だけにする（要件10.16「学習中の時計」がOFFのとき）。
+   * 時間を意識したくない人向けだが、状態まで消すと計測中だと分からなくなるため残す。
+   */
+  timeHidden?: boolean;
 }) {
   const now = useTimerNow(session);
 
@@ -54,7 +60,7 @@ export function MeasuringIndicator({
       style={[styles.text, { width }, isPaused && styles.paused]}
       numberOfLines={1}
     >
-      {formatDuration(seconds)} {label}
+      {timeHidden ? label : `${formatDuration(seconds)} ${label}`}
     </Text>
   );
 }
