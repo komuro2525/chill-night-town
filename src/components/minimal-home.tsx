@@ -76,6 +76,8 @@ export function MinimalHomeUI({
             onPress={onPressClock ?? (() => {})}
             disabled={false}
             endAt={new Date(getPlannedEndMs(session, now.getTime()))}
+            // 一時停止中は回さない（止まっていることが光で分かる）
+            running={session.pause_started_at === null}
           />
           <MeasuringIndicator session={session} width={CLOCK_SIZE} />
         </View>

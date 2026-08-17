@@ -18,6 +18,7 @@ import {
   getPlannedEndMs,
   getPomodoroPhase,
 } from "@/lib/timer";
+import { OrbitingLight } from "./orbiting-light";
 import { WeatherRow } from "./weather-row";
 
 // S4 学習タイマー表示（要件3.2 / UC 3.2）。
@@ -30,6 +31,8 @@ import { WeatherRow } from "./weather-row";
 
 const CIRCLE_MAX = 320;
 const CONTROL_SIZE = 56;
+/** 中央の円の枠の太さ。計測中の光の粒をこの線に乗せる */
+const CIRCLE_BORDER = 2;
 
 /** 時刻を HH:MM にする（終わりの目安の表示用） */
 function formatClockTime(d: Date): string {
@@ -121,6 +124,17 @@ export function TimerDisplay({
             { width: circle, height: circle, borderRadius: circle / 2 },
           ]}
         >
+          {/* 計測中だけ、枠の上を光の粒が回る（一時停止すると止まる）。
+              ホームの時計と同じ部品で、どちらを見ても同じ動きに見えるようにする */}
+          <OrbitingLight
+            size={circle}
+            borderWidth={CIRCLE_BORDER}
+            // この円は自分自身に枠線を持つ（子の原点が枠の内側になる）
+            borderOnParent
+            // 円が大きいぶん、同じ長さでは短く見える。この画面だけ尾を伸ばす
+            trailScale={2}
+            running={!isPaused}
+          />
           <View style={styles.circleInner}>
             {phase ? (
               <>
@@ -263,7 +277,7 @@ const styles = StyleSheet.create({
   circle: {
     alignSelf: "center",
     marginTop: Spacing.three,
-    borderWidth: 2,
+    borderWidth: CIRCLE_BORDER,
     borderColor: "rgba(255,255,255,0.28)",
     backgroundColor: "rgba(18,26,46,0.75)",
     alignItems: "center",

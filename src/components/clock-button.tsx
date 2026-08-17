@@ -1,7 +1,12 @@
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
+import { OrbitingLight } from "./orbiting-light";
+
 // 終了予定を示す針の色。控えめな赤にして、白い針の邪魔をしない
 const END_COLOR = "rgba(226,110,110,0.85)";
+
+/** 文字盤の枠の太さ。計測中の光の粒をこの線に乗せる */
+const RIM_WIDTH = 2.5;
 // 予定を過ぎた後の色（Lvの灯りと同じ琥珀）。予定より長く学習したことを責めない
 const GOAL_PASSED_COLOR = "rgba(255,206,138,0.85)";
 
@@ -49,6 +54,7 @@ export function ClockButton({
   onPress,
   disabled = false,
   endAt = null,
+  running = false,
 }: {
   size?: number;
   now: Date;
@@ -62,6 +68,11 @@ export function ClockButton({
    * 短針も合わせて描く（例: 21:00開始・90分なら、21:30に長針は重なるが短針は重ならない）。
    */
   endAt?: Date | null;
+  /**
+   * 計測中か（一時停止中は false）。true のあいだ、枠の内側を光の粒が回る。
+   * 経過時間の数字を見なくても「動いている」ことが分かるようにするため。
+   */
+  running?: boolean;
 }) {
   const center = size / 2;
   const hours = now.getHours() % 12;
@@ -96,7 +107,8 @@ export function ClockButton({
         height: size,
         borderRadius: size / 2,
         backgroundColor: "rgba(18,26,46,0.4)",
-        overflow: "hidden",
+        // overflow: hidden は付けない。中身（数字・針）はもともと円に収まっており、
+        // 切り抜くと枠の上を回る光の粒とそのにじみが欠けてしまうため
         // 非活性でも時刻は読めるよう、消し込みすぎない
         opacity: disabled ? 0.45 : 1,
       }}
@@ -184,11 +196,14 @@ export function ClockButton({
         style={{
           ...StyleSheet.absoluteFillObject,
           borderRadius: size / 2,
-          borderWidth: 2.5,
+          borderWidth: RIM_WIDTH,
           // 枠の色は針と同じにする
           borderColor: "rgba(255,255,255,0.95)",
         }}
       />
+
+      {/* 計測中だけ、枠の上を光の粒が回る（枠より上に描く） */}
+      <OrbitingLight size={size} borderWidth={RIM_WIDTH} running={running} />
     </Pressable>
   );
 }

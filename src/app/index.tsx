@@ -1422,6 +1422,8 @@ function TopOverlay({
           endAt={
             session ? new Date(getPlannedEndMs(session, now.getTime())) : null
           }
+          // 一時停止中は回さない（止まっていることが光で分かる）
+          running={session !== null && session.pause_started_at === null}
         />
         {session ? (
           <MeasuringIndicator session={session} width={CLOCK_SIZE} />
