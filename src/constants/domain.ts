@@ -29,8 +29,30 @@ export const SIMPLE_PLANNED_MINUTES = {
 export const POMODORO = {
   WORK_MINUTES: { MIN: 5, MAX: 120, DEFAULT: 25 },
   BREAK_MINUTES: { MIN: 1, MAX: 30, DEFAULT: 5 },
-  LOOP_COUNT: { MIN: 1, MAX: 10, DEFAULT: 1 },
+  /**
+   * 繰り返し回数（要件3.1）。**1回は選べない。**
+   * 構成は 作業×n ＋ 休憩×(n−1) のため、n=1 では休憩が一度も入らず黙々モードと
+   * 同じものになる。ポモドーロを選ぶのは作業と休憩を繰り返したい場合であり、
+   * 休憩の入らない選択肢を残す理由がない。
+   *
+   * スキーマの CHECK は 1〜10 のまま広く残しているため（改訂履歴 要件52）、
+   * DBから読んだ前回値が1のことがある。表示前に clampLoopCount で丸める。
+   */
+  LOOP_COUNT: { MIN: 2, MAX: 10, DEFAULT: 2 },
 } as const;
+
+/**
+ * DBから読んだ繰り返し回数を、アプリが受け付ける値域へ丸める（要件3.1）。
+ *
+ * 値域を2〜10へ狭めたのは後からのため、それ以前に保存された前回値は1のことがある。
+ * スキーマの CHECK は 1〜10 のまま残しているので、DB側では弾かれない。
+ */
+export function clampLoopCount(value: number): number {
+  return Math.min(
+    POMODORO.LOOP_COUNT.MAX,
+    Math.max(POMODORO.LOOP_COUNT.MIN, value),
+  );
+}
 
 /** 延長宣言（分）。要件5.2 */
 export const EXTENSION_MINUTES = {

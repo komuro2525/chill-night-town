@@ -3,6 +3,7 @@
 // 値域は docs（要件定義書）とスキーマの CHECK 制約が正。
 // ここではその境界（ちょうど・1つ外側）を固定し、ドキュメントとのズレを検出する。
 
+import { clampLoopCount } from "@/constants/domain";
 import {
   validateDailyGoalMinutes,
   validateExtensionMinutes,
@@ -61,7 +62,7 @@ describe("validatePlannedMinutes（黙々モードの予定学習時間・10〜6
   });
 });
 
-describe("validatePomodoro*（作業5〜120分 / 休憩1〜30分 / 繰り返し1〜10回）", () => {
+describe("validatePomodoro*（作業5〜120分 / 休憩1〜30分 / 繰り返し2〜10回）", () => {
   it("作業時間の境界", () => {
     expect(ok(validatePomodoroWorkMinutes("4"))).toBe(false);
     expect(ok(validatePomodoroWorkMinutes("5"))).toBe(true);
@@ -76,9 +77,10 @@ describe("validatePomodoro*（作業5〜120分 / 休憩1〜30分 / 繰り返し1
     expect(ok(validatePomodoroBreakMinutes("31"))).toBe(false);
   });
 
-  it("繰り返し回数の境界", () => {
-    expect(ok(validatePomodoroLoopCount("0"))).toBe(false);
-    expect(ok(validatePomodoroLoopCount("1"))).toBe(true);
+  it("繰り返し回数の境界（1回は選べない・要件3.1）", () => {
+    // 1回では休憩が一度も入らず（作業×1 ＋ 休憩×0）、黙々モードと同じものになる
+    expect(ok(validatePomodoroLoopCount("1"))).toBe(false);
+    expect(ok(validatePomodoroLoopCount("2"))).toBe(true);
     expect(ok(validatePomodoroLoopCount("10"))).toBe(true);
     expect(ok(validatePomodoroLoopCount("11"))).toBe(false);
   });
@@ -158,5 +160,23 @@ describe("validateNotificationTime（17:30〜翌4:30・要件12章）", () => {
     ["12:00は範囲外（タイマーを開始できない時間）", "12:00", false],
   ])("%s", (_label, input, expected) => {
     expect(ok(validateNotificationTime(input))).toBe(expected);
+  });
+});
+
+describe("clampLoopCount（保存済みの前回値を値域へ丸める・要件3.1）", () => {
+  // 値域を2〜10へ狭めたのは後からで、スキーマのCHECKは1〜10のまま残している。
+  // そのためDBから読んだ前回値が1のことがあり、表示前に丸める必要がある
+  it("1（値域を狭める前に保存された値）は2へ繰り上げる", () => {
+    expect(clampLoopCount(1)).toBe(2);
+  });
+
+  it("値域内はそのまま", () => {
+    expect(clampLoopCount(2)).toBe(2);
+    expect(clampLoopCount(5)).toBe(5);
+    expect(clampLoopCount(10)).toBe(10);
+  });
+
+  it("上限を超える値は10へ丸める", () => {
+    expect(clampLoopCount(11)).toBe(10);
   });
 });

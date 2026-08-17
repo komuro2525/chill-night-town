@@ -51,7 +51,7 @@ import { TutorialOverlay } from "@/components/tutorial-overlay";
 import { WeatherOverlay } from "@/components/weather-overlay";
 import { WeatherPicker } from "@/components/weather-picker";
 import { WeatherRow } from "@/components/weather-row";
-import { MIN_SAVE_MINUTES, STUDY_DAY } from "@/constants/domain";
+import { clampLoopCount, MIN_SAVE_MINUTES, STUDY_DAY } from "@/constants/domain";
 import { ClockAccent, Fonts, Spacing } from "@/constants/theme";
 import { getTownArt } from "@/constants/townArt";
 import { getTownVideo, type TownVideo } from "@/constants/townVideo";
@@ -1181,7 +1181,8 @@ export default function HomeScreen() {
           initialPlanned={user.planned_minutes}
           initialWork={user.pomodoro_work_minutes}
           initialBreak={user.pomodoro_break_minutes}
-          initialLoop={user.pomodoro_loop_count}
+          // 値域を2〜10へ狭める前に保存された前回値は1のことがあるため丸める（要件3.1）
+          initialLoop={clampLoopCount(user.pomodoro_loop_count)}
           initialWeather={weather}
           onStart={handleStart}
           onRememberSettings={handleRememberSettings}
