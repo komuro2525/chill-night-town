@@ -55,23 +55,113 @@ const TOWN_ART: Record<string, TownArt> = {
       5: require("@/assets/home/nightTown/latenight/png/nightTown_latenight_lv5.png"),
     },
   },
-  // castleTown。画像は night の Lv.5 が1枚のみ。暫定で全レベルに同じ画像を使う。
-  // レベル別・時間帯別の画像ができたら差し替える。
+  // castleTown（夜桜の城下町）。全時間帯 Lv.1〜Lv.5 が揃っている。
   castleTown: {
-    night: (() => {
-      const only = require("@/assets/home/castleTown/night/png/castleTown_night_lv5.png");
-      return { 1: only, 2: only, 3: only, 4: only, 5: only };
-    })(),
+    night: {
+      1: require("@/assets/home/castleTown/night/png/castleTown_night_lv1.png"),
+      2: require("@/assets/home/castleTown/night/png/castleTown_night_lv2.png"),
+      3: require("@/assets/home/castleTown/night/png/castleTown_night_lv3.png"),
+      4: require("@/assets/home/castleTown/night/png/castleTown_night_lv4.png"),
+      5: require("@/assets/home/castleTown/night/png/castleTown_night_lv5.png"),
+    },
+    day: {
+      1: require("@/assets/home/castleTown/day/png/castleTown_day_lv1.png"),
+      2: require("@/assets/home/castleTown/day/png/castleTown_day_lv2.png"),
+      3: require("@/assets/home/castleTown/day/png/castleTown_day_lv3.png"),
+      4: require("@/assets/home/castleTown/day/png/castleTown_day_lv4.png"),
+      5: require("@/assets/home/castleTown/day/png/castleTown_day_lv5.png"),
+    },
+    sunset: {
+      1: require("@/assets/home/castleTown/sunset/png/castleTown_sunset_lv1.png"),
+      2: require("@/assets/home/castleTown/sunset/png/castleTown_sunset_lv2.png"),
+      3: require("@/assets/home/castleTown/sunset/png/castleTown_sunset_lv3.png"),
+      4: require("@/assets/home/castleTown/sunset/png/castleTown_sunset_lv4.png"),
+      5: require("@/assets/home/castleTown/sunset/png/castleTown_sunset_lv5.png"),
+    },
+    sunrise: {
+      1: require("@/assets/home/castleTown/sunrise/png/castleTown_sunrise_lv1.png"),
+      2: require("@/assets/home/castleTown/sunrise/png/castleTown_sunrise_lv2.png"),
+      3: require("@/assets/home/castleTown/sunrise/png/castleTown_sunrise_lv3.png"),
+      4: require("@/assets/home/castleTown/sunrise/png/castleTown_sunrise_lv4.png"),
+      5: require("@/assets/home/castleTown/sunrise/png/castleTown_sunrise_lv5.png"),
+    },
+    latenight: {
+      1: require("@/assets/home/castleTown/latenight/png/castleTown_latenight_lv1.png"),
+      2: require("@/assets/home/castleTown/latenight/png/castleTown_latenight_lv2.png"),
+      3: require("@/assets/home/castleTown/latenight/png/castleTown_latenight_lv3.png"),
+      4: require("@/assets/home/castleTown/latenight/png/castleTown_latenight_lv4.png"),
+      5: require("@/assets/home/castleTown/latenight/png/castleTown_latenight_lv5.png"),
+    },
   },
-  // starHill（星見の丘）。castleTown と同じく night の Lv.5 が1枚のみ。
-  // 暫定で全レベルに同じ画像を使う（レベル別の画像ができたら差し替える）。
+  // starHill（星見の丘）。全時間帯 Lv.1〜Lv.5 が揃っている。
   starHill: {
-    night: (() => {
-      const only = require("@/assets/home/starHill/night/png/starHill_night_lv5.png");
-      return { 1: only, 2: only, 3: only, 4: only, 5: only };
-    })(),
+    night: {
+      1: require("@/assets/home/starHill/night/png/starHill_night_lv1.png"),
+      2: require("@/assets/home/starHill/night/png/starHill_night_lv2.png"),
+      3: require("@/assets/home/starHill/night/png/starHill_night_lv3.png"),
+      4: require("@/assets/home/starHill/night/png/starHill_night_lv4.png"),
+      5: require("@/assets/home/starHill/night/png/starHill_night_lv5.png"),
+    },
+    day: {
+      1: require("@/assets/home/starHill/day/png/starHill_day_lv1.png"),
+      2: require("@/assets/home/starHill/day/png/starHill_day_lv2.png"),
+      3: require("@/assets/home/starHill/day/png/starHill_day_lv3.png"),
+      4: require("@/assets/home/starHill/day/png/starHill_day_lv4.png"),
+      5: require("@/assets/home/starHill/day/png/starHill_day_lv5.png"),
+    },
+    sunset: {
+      1: require("@/assets/home/starHill/sunset/png/starHill_sunset_lv1.png"),
+      2: require("@/assets/home/starHill/sunset/png/starHill_sunset_lv2.png"),
+      3: require("@/assets/home/starHill/sunset/png/starHill_sunset_lv3.png"),
+      4: require("@/assets/home/starHill/sunset/png/starHill_sunset_lv4.png"),
+      5: require("@/assets/home/starHill/sunset/png/starHill_sunset_lv5.png"),
+    },
+    sunrise: {
+      1: require("@/assets/home/starHill/sunrise/png/starHill_sunrise_lv1.png"),
+      2: require("@/assets/home/starHill/sunrise/png/starHill_sunrise_lv2.png"),
+      3: require("@/assets/home/starHill/sunrise/png/starHill_sunrise_lv3.png"),
+      4: require("@/assets/home/starHill/sunrise/png/starHill_sunrise_lv4.png"),
+      5: require("@/assets/home/starHill/sunrise/png/starHill_sunrise_lv5.png"),
+    },
+    latenight: {
+      1: require("@/assets/home/starHill/latenight/png/starHill_latenight_lv1.png"),
+      2: require("@/assets/home/starHill/latenight/png/starHill_latenight_lv2.png"),
+      3: require("@/assets/home/starHill/latenight/png/starHill_latenight_lv3.png"),
+      4: require("@/assets/home/starHill/latenight/png/starHill_latenight_lv4.png"),
+      5: require("@/assets/home/starHill/latenight/png/starHill_latenight_lv5.png"),
+    },
   },
-  // snowTown は画像未制作のため未登録（「準備中」枠として表示・選択不可）
+  // snowTown（雪国）。sunset だけ素材が無く、その帯は night へフォールバックする。
+  snowTown: {
+    night: {
+      1: require("@/assets/home/snowTown/night/png/snowTown_night_lv1.png"),
+      2: require("@/assets/home/snowTown/night/png/snowTown_night_lv2.png"),
+      3: require("@/assets/home/snowTown/night/png/snowTown_night_lv3.png"),
+      4: require("@/assets/home/snowTown/night/png/snowTown_night_lv4.png"),
+      5: require("@/assets/home/snowTown/night/png/snowTown_night_lv5.png"),
+    },
+    day: {
+      1: require("@/assets/home/snowTown/day/png/snowTown_day_lv1.png"),
+      2: require("@/assets/home/snowTown/day/png/snowTown_day_lv2.png"),
+      3: require("@/assets/home/snowTown/day/png/snowTown_day_lv3.png"),
+      4: require("@/assets/home/snowTown/day/png/snowTown_day_lv4.png"),
+      5: require("@/assets/home/snowTown/day/png/snowTown_day_lv5.png"),
+    },
+    sunrise: {
+      1: require("@/assets/home/snowTown/sunrise/png/snowTown_sunrise_lv1.png"),
+      2: require("@/assets/home/snowTown/sunrise/png/snowTown_sunrise_lv2.png"),
+      3: require("@/assets/home/snowTown/sunrise/png/snowTown_sunrise_lv3.png"),
+      4: require("@/assets/home/snowTown/sunrise/png/snowTown_sunrise_lv4.png"),
+      5: require("@/assets/home/snowTown/sunrise/png/snowTown_sunrise_lv5.png"),
+    },
+    latenight: {
+      1: require("@/assets/home/snowTown/latenight/png/snowTown_latenight_lv1.png"),
+      2: require("@/assets/home/snowTown/latenight/png/snowTown_latenight_lv2.png"),
+      3: require("@/assets/home/snowTown/latenight/png/snowTown_latenight_lv3.png"),
+      4: require("@/assets/home/snowTown/latenight/png/snowTown_latenight_lv4.png"),
+      5: require("@/assets/home/snowTown/latenight/png/snowTown_latenight_lv5.png"),
+    },
+  },
 };
 
 /**
