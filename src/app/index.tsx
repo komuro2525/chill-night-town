@@ -841,9 +841,13 @@ export default function HomeScreen() {
   // 最小表示も解除する。戻ってくると数え直す（要件2.1のアイドル最小化はホーム限定）。
   const idleActive = uiVisible && !loading && isFocused;
 
-  // アイドル判定はコールバックから最新の可否を見たいので ref に控える
+  // アイドル判定はコールバックから最新の可否を見たいので ref に控える。
+  // 代入はレンダー中ではなく effect で行う（レンダー中の ref 書き込みは
+  // React Compiler が扱えない）。読むのは armIdle 内＝コミット後なので支障はない
   const idleActiveRef = useRef(idleActive);
-  idleActiveRef.current = idleActive;
+  useEffect(() => {
+    idleActiveRef.current = idleActive;
+  });
 
   // 無操作タイマーを張り直す（対象状態のときだけ）。発火でアイドル最小表示へ移る
   const armIdle = useCallback(() => {
