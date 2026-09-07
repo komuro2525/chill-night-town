@@ -131,7 +131,7 @@ const TOWN_ART: Record<string, TownArt> = {
       5: require("@/assets/home/starHill/latenight/png/starHill_latenight_lv5.png"),
     },
   },
-  // snowTown（雪国）。sunset だけ素材が無く、その帯は night へフォールバックする。
+  // snowTown（雪国）。全時間帯 Lv.1〜Lv.5 が揃っている。
   snowTown: {
     night: {
       1: require("@/assets/home/snowTown/night/png/snowTown_night_lv1.png"),
@@ -146,6 +146,13 @@ const TOWN_ART: Record<string, TownArt> = {
       3: require("@/assets/home/snowTown/day/png/snowTown_day_lv3.png"),
       4: require("@/assets/home/snowTown/day/png/snowTown_day_lv4.png"),
       5: require("@/assets/home/snowTown/day/png/snowTown_day_lv5.png"),
+    },
+    sunset: {
+      1: require("@/assets/home/snowTown/sunset/png/snowTown_sunset_lv1.png"),
+      2: require("@/assets/home/snowTown/sunset/png/snowTown_sunset_lv2.png"),
+      3: require("@/assets/home/snowTown/sunset/png/snowTown_sunset_lv3.png"),
+      4: require("@/assets/home/snowTown/sunset/png/snowTown_sunset_lv4.png"),
+      5: require("@/assets/home/snowTown/sunset/png/snowTown_sunset_lv5.png"),
     },
     sunrise: {
       1: require("@/assets/home/snowTown/sunrise/png/snowTown_sunrise_lv1.png"),
