@@ -84,7 +84,9 @@ export default function PlaylistScreen() {
 
   // お気に入りの追加/解除を知らせるトースト（少し出してフェードで消す）
   const [toast, setToast] = useState<{ text: string; added: boolean } | null>(null);
-  const toastOpacity = useRef(new Animated.Value(0)).current;
+  // useRef(...).current はレンダー中の ref 参照になり React Compiler が扱えない。
+  // 遅延初期化の useState なら生成は初回だけで、setter を呼ばないので再描画も起きない
+  const [toastOpacity] = useState(() => new Animated.Value(0));
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const showFavoriteToast = useCallback(

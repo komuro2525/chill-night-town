@@ -65,7 +65,9 @@ export async function saveCapturedPhoto(params: {
 
   const destination = new File(dir, fileName);
   if (destination.exists) destination.delete();
-  new File(result.uri).move(destination);
+  // move() は SDK 56 から非同期。await しないと「保存が成功してからDBを更新する」
+  // 順序（要件2.6）が崩れ、実体のない参照が記録に残りうる
+  await new File(result.uri).move(destination);
 }
 
 /** 写真1枚の実体を削除する（存在しなければ何もしない） */

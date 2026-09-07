@@ -280,10 +280,10 @@ export function RecordModal({
 }
 
 const styles = StyleSheet.create({
-  overlay: { ...StyleSheet.absoluteFillObject },
+  overlay: { ...StyleSheet.absoluteFill },
   flex: { flex: 1 },
   scrim: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: "rgba(3,6,15,0.85)",
   },
   content: { flex: 1, paddingHorizontal: Spacing.four },

@@ -48,11 +48,15 @@ export function LevelUpOverlay({
   const backdrop = useSharedValue(0);
   const card = useSharedValue(0);
 
-  // 再生中にコールバックが張り替わっても演出をやり直さないよう、参照はrefで見る
+  // 再生中にコールバックが張り替わっても演出をやり直さないよう、参照はrefで見る。
+  // 代入は effect で行う（レンダー中の ref 書き込みは React Compiler が扱えない）。
+  // 読むのはアニメーションの完了コールバック＝コミット後なので支障はない
   const onBlackoutRef = useRef(onBlackout);
-  onBlackoutRef.current = onBlackout;
   const onDoneRef = useRef(onDone);
-  onDoneRef.current = onDone;
+  useEffect(() => {
+    onBlackoutRef.current = onBlackout;
+    onDoneRef.current = onDone;
+  });
 
   const visible = level !== null;
 

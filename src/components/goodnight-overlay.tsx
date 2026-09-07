@@ -35,9 +35,13 @@ export function GoodnightOverlay({
 }) {
   const opacity = useSharedValue(0);
 
-  // 暗転中にコールバックが張り替わっても演出をやり直さないよう、参照はrefで見る
+  // 暗転中にコールバックが張り替わっても演出をやり直さないよう、参照はrefで見る。
+  // 代入は effect で行う（レンダー中の ref 書き込みは React Compiler が扱えない）。
+  // 読むのは withTiming の完了コールバック＝コミット後なので支障はない
   const onBlackoutRef = useRef(onBlackout);
-  onBlackoutRef.current = onBlackout;
+  useEffect(() => {
+    onBlackoutRef.current = onBlackout;
+  });
 
   useEffect(() => {
     const toDark = message !== null;

@@ -185,10 +185,10 @@ export function SessionEditModal({
 }
 
 const styles = StyleSheet.create({
-  overlay: { ...StyleSheet.absoluteFillObject },
+  overlay: { ...StyleSheet.absoluteFill },
   flex: { flex: 1 },
   scrim: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     // 不透明にして下の日別詳細を透かさない（透けると読みづらい）
     backgroundColor: "#05070f",
   },
