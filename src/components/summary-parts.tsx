@@ -468,7 +468,7 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(255,255,255,0.04)",
   },
   listBar: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     right: undefined,
     backgroundColor: "rgba(255,206,138,0.16)",
   },

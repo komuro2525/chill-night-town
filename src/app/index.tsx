@@ -1,7 +1,6 @@
-import { useIsFocused } from "@react-navigation/native";
 import { Image } from "expo-image";
 import { useKeepAwake } from "expo-keep-awake";
-import { useRouter } from "expo-router";
+import { useIsFocused, useRouter } from "expo-router";
 import * as ScreenOrientation from "expo-screen-orientation";
 import { StatusBar } from "expo-status-bar";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -1657,7 +1656,7 @@ function DevPanel({
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#05070f", overflow: "hidden" },
-  fallback: { ...StyleSheet.absoluteFillObject, backgroundColor: "#05070f" },
+  fallback: { ...StyleSheet.absoluteFill, backgroundColor: "#05070f" },
   absolute: {
     position: "absolute",
   },
@@ -1732,7 +1731,7 @@ const styles = StyleSheet.create({
     textShadowRadius: 4,
   },
   discardedBackdrop: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: "rgba(3,6,15,0.6)",
     alignItems: "center",
     justifyContent: "center",

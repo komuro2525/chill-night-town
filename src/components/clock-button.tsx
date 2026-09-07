@@ -194,7 +194,7 @@ export function ClockButton({
       <View
         pointerEvents="none"
         style={{
-          ...StyleSheet.absoluteFillObject,
+          ...StyleSheet.absoluteFill,
           borderRadius: size / 2,
           borderWidth: RIM_WIDTH,
           // 枠の色は針と同じにする

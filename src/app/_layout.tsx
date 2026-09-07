@@ -1,9 +1,10 @@
 import {
   DarkTheme,
   DefaultTheme,
+  Stack,
   ThemeProvider,
-} from "@react-navigation/native";
-import { Stack, useRouter } from "expo-router";
+  useRouter,
+} from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { useEffect } from "react";
 import { useColorScheme } from "react-native";
