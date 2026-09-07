@@ -27,6 +27,7 @@ export function LandscapeHome({
   video,
   session,
   weatherCode,
+  studyDate,
   effectsEnabled,
   clockHidden,
 }: {
@@ -38,6 +39,8 @@ export function LandscapeHome({
   session: ActiveSession | null;
   /** その学習日に選択された天気（要件8）。未選択は null＝演出なし */
   weatherCode: string | null | undefined;
+  /** 表示中の学習日（YYYY-MM-DD）。天気の素材が複数あるときの抽選に使う */
+  studyDate: string;
   /** 天気の演出を出すか（「背景を動かす」設定・おやすみの暗転に追従する） */
   effectsEnabled: boolean;
   /** 設定「学習中の時計」（要件10.16）がOFFか。計測中の時計と経過時間を出さない */
@@ -62,7 +65,11 @@ export function LandscapeHome({
       )}
 
       {/* 天気の演出（要件8）。街より上・最小情報表示より下に敷く */}
-      <WeatherOverlay weatherCode={weatherCode} enabled={effectsEnabled} />
+      <WeatherOverlay
+        weatherCode={weatherCode}
+        studyDate={studyDate}
+        enabled={effectsEnabled}
+      />
 
       {/* アイドル最小表示と同じUI。横画面は閲覧専用のため時計は非操作（onPressClock を渡さない） */}
       {infoVisible ? (

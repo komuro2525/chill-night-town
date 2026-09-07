@@ -82,22 +82,22 @@ INSERT INTO growth_level_threshold (method, level, required_value) VALUES
 
 -- =====================================================================
 -- ambient_sound : 音源マスタ
---   BGM: テスト用2曲
---   ※file_path は実ファイル名と完全に一致させること（大文字小文字を含む）
---   ※アプリ組み込み配布の可否は、配布元（DOVA-SYNDROME等）および
---     アーティスト個別のライセンス規約をリリース前に必ず原文で確認すること
+--   BGM: db/seed_bgm.sql が投入する（新規/既存の両方へ流す単一の出所。
+--        79曲。曲を足すときは同ファイルと src/constants/audioAssets.ts の両方へ）
 --   環境音: 音源調達後に追加する（下のコメントを雛形として使用）
 -- =====================================================================
-INSERT INTO ambient_sound (code, sound_type, name, artist, file_path) VALUES
-    ('bgm_223am',    'bgm', '2:23 AM',                'しゃろう', 'assets/audio/bgm/2_23_AM.mp3'),
-    ('bgm_lofigirl', 'bgm', 'ローファイ少女は今日も寝不足', 'しゃろう', 'assets/audio/bgm/ローファイ少女は今日も寝不足.mp3');
 
--- 環境音の追加用雛形（ファイル調達後にコメントを外して更新する）
+-- 環境音の追加用雛形。
+--   音源は調達済み（assets/audio/ambient/）だが、再生に行は要らないため投入していない。
+--   音源の解決は src/constants/audioAssets.ts の静的マップ、天気との対応は
+--   src/lib/ambient-select.ts が持つ（BGM・効果音と同じ方式）。
+--   将来ユーザーが環境音を個別に選べるようにするときに、下のコメントを外す。
+--   コードは audioAssets.ts の AMBIENT のキーと揃えること。
 -- INSERT INTO ambient_sound (code, sound_type, name, artist, file_path) VALUES
---     ('amb_rain',   'ambient', '雨音', NULL, 'assets/audio/ambient/rain.mp3'),
---     ('amb_wind',   'ambient', '夜風', NULL, 'assets/audio/ambient/wind.mp3'),
---     ('amb_waves',  'ambient', '波音', NULL, 'assets/audio/ambient/waves.mp3'),
---     ('amb_forest', 'ambient', '森の音', NULL, 'assets/audio/ambient/forest.mp3');
+--     ('amb_rain',         'ambient', '雨音',   NULL, 'assets/audio/ambient/amb_rain.mp3'),
+--     ('amb_thunder_rain', 'ambient', '雷雨',   NULL, 'assets/audio/ambient/amb_thunder_rain.mp3'),
+--     ('amb_wind',         'ambient', '夜風',   NULL, 'assets/audio/ambient/amb_wind.mp3'),
+--     ('amb_insect',       'ambient', '虫の音', NULL, 'assets/audio/ambient/amb_insect.mp3');
 
 -- =====================================================================
 -- npc : NPCマスタ（街ごとに1人の住人。画像は素材制作時に確定）

@@ -16,6 +16,10 @@ const SEED_SQL_MODULE = require("../../db/chill_night_town_シードデータ.sq
 // 生成物であり、文面の正は docs/NPCセリフ集.md（npm run npc:seed で再生成する）。
 // eslint-disable-next-line @typescript-eslint/no-require-imports -- 同上
 const SEED_NPC_MODULE = require("../../db/seed_npc.sql") as number;
+// BGM音源マスタ。新規初期化と既存DBのデルタの両方から exec して、曲目録を単一の出所にする
+// （冪等：code で衝突したら曲名・アーティスト・パスを上書きする）。
+// eslint-disable-next-line @typescript-eslint/no-require-imports -- 同上
+const SEED_BGM_MODULE = require("../../db/seed_bgm.sql") as number;
 
 /**
  * シードSQLはファイル自身が `BEGIN TRANSACTION; ... COMMIT;` で囲まれている。
@@ -40,7 +44,7 @@ type Migration = {
 // **必ず DELTA_MIGRATIONS の最後の version と一致させること。** 小さいままだと、新規
 // インストールは「最新形のスキーマ＋古い user_version」で始まり、次の起動で適用済みの
 // 差分がもう一度流れて落ちる（ADD COLUMN が duplicate column で失敗する）。
-const SCHEMA_VERSION = 33;
+const SCHEMA_VERSION = 34;
 
 // 既存DB（過去バージョン）向けの差分マイグレーション（version >= 2）。
 // 新規インストールはスキーマSQL（=最新）を適用して一気に SCHEMA_VERSION まで上がるため、
@@ -716,6 +720,20 @@ const DELTA_MIGRATIONS: Migration[] = [
       );
     },
   },
+  {
+    version: 34,
+    up: async (db) => {
+      // BGMを78曲追加して79曲にする（要件9）。素材は配布元の区分どおり
+      // assets/audio/bgm/ループあり|ループなし/<アーティスト>/ に置いた。
+      // ループの有無は素材整理のための区分で、再生挙動は変えない（どちらも同じプールに入り、
+      // 繰り返しはユーザーの1曲リピート操作で行う）ため、マスタには持たせない。
+      //
+      // 曲目録は db/seed_bgm.sql が単一の出所（冪等）。既存の「ローファイ少女は今日も寝不足」は
+      // ループあり版へ差し替えたが、曲としては同じ1件のため code は変えず file_path だけが更新される。
+      const bgmSql = await loadSqlAsset(SEED_BGM_MODULE);
+      await db.execAsync(stripOuterTransaction(bgmSql));
+    },
+  },
 ];
 
 /** 現在の DB バージョンを取得する（未設定なら0） */
@@ -728,17 +746,20 @@ async function getUserVersion(db: SQLiteDatabase): Promise<number> {
 
 /** 新規DBへ最新スキーマ＋シードを適用し、SCHEMA_VERSION まで一気に上げる */
 async function initializeFreshDatabase(db: SQLiteDatabase): Promise<void> {
-  const [schemaSql, seedSql, npcSql] = await Promise.all([
+  const [schemaSql, seedSql, npcSql, bgmSql] = await Promise.all([
     loadSqlAsset(SCHEMA_SQL_MODULE),
     loadSqlAsset(SEED_SQL_MODULE),
     loadSqlAsset(SEED_NPC_MODULE),
+    loadSqlAsset(SEED_BGM_MODULE),
   ]);
   await db.withTransactionAsync(async () => {
-    // スキーマ（DDL・トリガー）→ シード（マスタ投入）→ 住人 の順に適用する
+    // スキーマ（DDL・トリガー）→ シード（マスタ投入）→ 住人 → BGM の順に適用する
     await db.execAsync(schemaSql);
     await db.execAsync(stripOuterTransaction(seedSql));
     // 住人（NPC）の街・紹介文・メッセージ。本体シードで town / emotion / npc(1) が入った後に流す
     await db.execAsync(stripOuterTransaction(npcSql));
+    // BGM音源マスタ（79曲）。ambient_sound テーブルがあれば流せる
+    await db.execAsync(stripOuterTransaction(bgmSql));
     // PRAGMA はプレースホルダを使えないため整数リテラルを埋め込む（内部定義値で安全）
     await db.execAsync(`PRAGMA user_version = ${SCHEMA_VERSION}`);
   });

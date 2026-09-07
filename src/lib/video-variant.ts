@@ -46,3 +46,19 @@ export function buildVariantSeed(
 ): string {
   return `${studyDate}:${townCode}:${timeOfDay}:lv${level}`;
 }
+
+/**
+ * 天気の演出（constants/weatherEffect.ts）のパターンを選ぶためのシード。
+ *
+ * 背景と同じく学習日をシードにする。天気は「その夜に一度選ぶもの」なので、
+ * 同じ夜のあいだ降り方が変わらず、夜が変われば降り方も変わる。
+ *
+ * 背景のシード（buildVariantSeed）とは形を分けている。組み立てが同じだと
+ * 背景と天気が毎回そろって同じ添字を引き、組み合わせが固定されてしまうため。
+ */
+export function buildWeatherVariantSeed(
+  studyDate: string,
+  weatherCode: string,
+): string {
+  return `${studyDate}:weather:${weatherCode}`;
+}

@@ -1482,9 +1482,11 @@ function HomeBackground({
   const art = townCode ? getTownArt(townCode, level, timeOfDay) : undefined;
   // 動画は登録がある組み合わせだけ。無ければ静止画のまま（時間帯のフォールバックはしない）。
   // パターンが複数ある枠は学習日ごとに1つ選ぶ（同じ夜のあいだは切り替わらない）
+  // 背景動画と天気の演出は、どちらも学習日でパターンが決まる（同じ夜のあいだは変わらない）
+  const studyDate = getStudyDate(now);
   const video =
     motionEnabled && townCode
-      ? getTownVideo(townCode, level, timeOfDay, getStudyDate(now))
+      ? getTownVideo(townCode, level, timeOfDay, studyDate)
       : undefined;
 
   if (landscapeMode) {
@@ -1496,6 +1498,7 @@ function HomeBackground({
         video={video}
         session={session}
         weatherCode={weatherCode}
+        studyDate={studyDate}
         effectsEnabled={motionEnabled}
         clockHidden={clockHidden}
       />
@@ -1514,7 +1517,11 @@ function HomeBackground({
       )}
       {/* 天気の演出（要件8）。街より上・UIより下。スワイプでは動かさない
           （雨はカメラの手前にあるもので、街と一緒に流れると視点がおかしくなる） */}
-      <WeatherOverlay weatherCode={weatherCode} enabled={motionEnabled} />
+      <WeatherOverlay
+        weatherCode={weatherCode}
+        studyDate={studyDate}
+        enabled={motionEnabled}
+      />
     </>
   );
 }

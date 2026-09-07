@@ -16,19 +16,107 @@
 
 import type { AudioSource } from "expo-audio";
 
-/** BGM。キーは ambient_sound.code（sound_type = 'bgm'） */
+/**
+ * BGM。キーは ambient_sound.code（sound_type = 'bgm'）。
+ *
+ * 素材は配布元の区分に合わせて assets/audio/bgm/ループあり|ループなし/<アーティスト>/ に置く。
+ * この区分は素材整理のためのもので、アプリの再生挙動は変えない（どちらも同じプールに入り、
+ * 曲が終われば次へ進む。繰り返したいときはユーザーが1曲リピートを使う）。
+ */
 const BGM: Record<string, AudioSource> = {
   bgm_223am: require("@/assets/audio/bgm/2_23_AM.mp3"),
-  bgm_lofigirl: require("@/assets/audio/bgm/ローファイ少女は今日も寝不足.mp3"),
+  bgm_khaim_01: require("@/assets/audio/bgm/ループあり/Khaim/ootd.mp3"),
+  bgm_khaim_02: require("@/assets/audio/bgm/ループあり/Khaim/sometimes.mp3"),
+  bgm_mfp_01: require("@/assets/audio/bgm/ループあり/MFP/Paper_Cup_Coffee_3.mp3"),
+  bgm_sakuttipanda_01: require("@/assets/audio/bgm/ループあり/Sakuttipanda/すやすやタイム.mp3"),
+  bgm_modus_01: require("@/assets/audio/bgm/ループあり/modus/Melty Night_.mp3"),
+  bgm_shimtone_01: require("@/assets/audio/bgm/ループあり/shimtone/瑠璃の鳴る夜に.mp3"),
+  bgm_shimtone_02: require("@/assets/audio/bgm/ループあり/shimtone/白くほのかに.mp3"),
+  bgm_shimtone_03: require("@/assets/audio/bgm/ループあり/shimtone/花降る宵空.mp3"),
+  bgm_shimtone_04: require("@/assets/audio/bgm/ループあり/shimtone/雨の庭.mp3"),
+  bgm_shimtone_05: require("@/assets/audio/bgm/ループあり/shimtone/雨の路地裏.mp3"),
+  bgm_yuheikomatsu_01: require("@/assets/audio/bgm/ループあり/yuhei komatsu/City_Lights.mp3"),
+  bgm_yuheikomatsu_02: require("@/assets/audio/bgm/ループあり/yuhei komatsu/cigarette.mp3"),
+  bgm_ethnickawahiro_01: require("@/assets/audio/bgm/ループあり/えすにっく・かわひろ/Oxide_2.mp3"),
+  bgm_kureppu_01: require("@/assets/audio/bgm/ループあり/くれっぷ/夜風の火花.mp3"),
+  bgm_kureppu_02: require("@/assets/audio/bgm/ループあり/くれっぷ/白息.mp3"),
+  bgm_sharou_01: require("@/assets/audio/bgm/ループあり/しゃろう/さみしいおばけと東京の月_2.mp3"),
+  bgm_lofigirl: require("@/assets/audio/bgm/ループあり/しゃろう/ローファイ少女は今日も寝不足_2.mp3"),
+  bgm_shinsanworks_01: require("@/assets/audio/bgm/ループあり/しんさんわーくす/ナイトシフト.mp3"),
+  bgm_noru_01: require("@/assets/audio/bgm/ループあり/のる/Code.241_2.mp3"),
+  bgm_nekoto_01: require("@/assets/audio/bgm/ループあり/ネコト/寝台特急ローファイ瀬戸.mp3"),
+  bgm_matsuurayosuke_01: require("@/assets/audio/bgm/ループあり/松浦洋介/A_Quiet_Place_Among_Strangers.mp3"),
+  bgm_kouyatakashi_01: require("@/assets/audio/bgm/ループあり/稿屋　隆/Cat’s_cradle.mp3"),
+  bgm_kamabokosachiko_01: require("@/assets/audio/bgm/ループあり/蒲鉾さちこ/Dark blue night.mp3"),
+  bgm_kamabokosachiko_02: require("@/assets/audio/bgm/ループあり/蒲鉾さちこ/Lazy_Midnight(深夜にまったり).mp3"),
+  bgm_kamabokosachiko_03: require("@/assets/audio/bgm/ループあり/蒲鉾さちこ/Lazy_night(気だるい夜).mp3"),
+  bgm_kamabokosachiko_04: require("@/assets/audio/bgm/ループあり/蒲鉾さちこ/The_maze_of_aqua.mp3"),
+  bgm_kai_01: require("@/assets/audio/bgm/ループあり/香居/寂れた村.mp3"),
+  bgm_anonyment_01: require("@/assets/audio/bgm/ループなし/Anonyment/Treatise_Seven.mp3"),
+  bgm_flashbeat_01: require("@/assets/audio/bgm/ループなし/FLASH☆BEAT/Rain_In_The_City.mp3"),
+  bgm_flehmann_01: require("@/assets/audio/bgm/ループなし/Flehmann/Flowers_at_night.mp3"),
+  bgm_hstar_01: require("@/assets/audio/bgm/ループなし/H★/Rain_in_the_shade_of_a_tree_.mp3"),
+  bgm_hstar_02: require("@/assets/audio/bgm/ループなし/H★/rainy_night_city.mp3"),
+  bgm_khaim_03: require("@/assets/audio/bgm/ループなし/Khaim/Mad_Trick_(Prod._Khaim).mp3"),
+  bgm_mfp_02: require("@/assets/audio/bgm/ループなし/MFP/Sine_of_Fall.mp3"),
+  bgm_makeafiledmusic_01: require("@/assets/audio/bgm/ループなし/Make a filed Music/泡沫の夢.mp3"),
+  bgm_masuo_01: require("@/assets/audio/bgm/ループなし/Masuo/午後のカメレオンは星の波動を数えてうたた寝をする.mp3"),
+  bgm_nekozou_01: require("@/assets/audio/bgm/ループなし/NEKOZOU/Chill_time.mp3"),
+  bgm_nekozou_02: require("@/assets/audio/bgm/ループなし/NEKOZOU/stardust_cream_soda.mp3"),
+  bgm_nekozou_03: require("@/assets/audio/bgm/ループなし/NEKOZOU/東京ローファイポップ.mp3"),
+  bgm_sakurabeatz_01: require("@/assets/audio/bgm/ループなし/SAKURA BEATZ.JP/私のチープな25時。.mp3"),
+  bgm_soundofincense_01: require("@/assets/audio/bgm/ループなし/Sound Of Incense/BGM_-_151_-_Rainy_Sky.mp3"),
+  bgm_modus_02: require("@/assets/audio/bgm/ループなし/modus/ヒトリジメ_-_宵と静けさと_-.mp3"),
+  bgm_roku_01: require("@/assets/audio/bgm/ループなし/roku/線路花.mp3"),
+  bgm_t12ya_01: require("@/assets/audio/bgm/ループなし/t12ya/SilkyLatte.mp3"),
+  bgm_t12ya_02: require("@/assets/audio/bgm/ループなし/t12ya/the_way_home.mp3"),
+  bgm_t12ya_03: require("@/assets/audio/bgm/ループなし/t12ya/夕暮れのポラロイド.mp3"),
+  bgm_t12ya_04: require("@/assets/audio/bgm/ループなし/t12ya/雨が止むまで.mp3"),
+  bgm_yuheikomatsu_03: require("@/assets/audio/bgm/ループなし/yuhei komatsu/Remind.mp3"),
+  bgm_koudatsuno_01: require("@/assets/audio/bgm/ループなし/こうだつの/polar_star.mp3"),
+  bgm_natsucollage_01: require("@/assets/audio/bgm/ループなし/なつこらーじゅ/垣間見える狂気〜Hip-hopに乗せて〜.mp3"),
+  bgm_noru_02: require("@/assets/audio/bgm/ループなし/のる/Brush_Up!.mp3"),
+  bgm_noru_03: require("@/assets/audio/bgm/ループなし/のる/draw_in_the_night.mp3"),
+  bgm_noru_04: require("@/assets/audio/bgm/ループなし/のる/夜をさがして.mp3"),
+  bgm_noru_05: require("@/assets/audio/bgm/ループなし/のる/夜明けを待つ星.mp3"),
+  bgm_noru_06: require("@/assets/audio/bgm/ループなし/のる/小さな旅.mp3"),
+  bgm_noru_07: require("@/assets/audio/bgm/ループなし/のる/後片付けをしよう～第二幕.mp3"),
+  bgm_noru_08: require("@/assets/audio/bgm/ループなし/のる/我儘な夜のハーブティ.mp3"),
+  bgm_noru_09: require("@/assets/audio/bgm/ループなし/のる/星に逢う夜.mp3"),
+  bgm_oohiraseiji_01: require("@/assets/audio/bgm/ループなし/オオヒラセイジ/Shibuya_Nightscape .mp3"),
+  bgm_oohiraseiji_02: require("@/assets/audio/bgm/ループなし/オオヒラセイジ/止まない雨はない.mp3"),
+  bgm_oohiraseiji_03: require("@/assets/audio/bgm/ループなし/オオヒラセイジ/雨のち小夜時雨.mp3"),
+  bgm_hayashiyuu_01: require("@/assets/audio/bgm/ループなし/ハヤシユウ/Coffee_Beat.mp3"),
+  bgm_hayashiyuu_02: require("@/assets/audio/bgm/ループなし/ハヤシユウ/星降る夜のホットココア.mp3"),
+  bgm_sadoharahayato_01: require("@/assets/audio/bgm/ループなし/佐土原隼人/レイニーナイト.mp3"),
+  bgm_kitamihitsuji_01: require("@/assets/audio/bgm/ループなし/北見ヒツジ/猫と私.mp3"),
+  bgm_yamamotoryoma_01: require("@/assets/audio/bgm/ループなし/山本リョーマ/midnight_coffee.mp3"),
+  bgm_matsuurayosuke_02: require("@/assets/audio/bgm/ループなし/松浦洋介/Midnight_Chill_Coffee.mp3"),
+  bgm_matsuurayosuke_03: require("@/assets/audio/bgm/ループなし/松浦洋介/Rain_Knows_Where_I’m_Broken.mp3"),
+  bgm_matsuurayosuke_04: require("@/assets/audio/bgm/ループなし/松浦洋介/The_Last_Firefly_of_Summer.mp3"),
+  bgm_matsuurayosuke_05: require("@/assets/audio/bgm/ループなし/松浦洋介/Until_Shadows_Fade.mp3"),
+  bgm_kouyatakashi_02: require("@/assets/audio/bgm/ループなし/稿屋　隆/機械仕掛けの街.mp3"),
+  bgm_kouyatakashi_03: require("@/assets/audio/bgm/ループなし/稿屋　隆/薬指の標本.mp3"),
+  bgm_kamabokosachiko_05: require("@/assets/audio/bgm/ループなし/蒲鉾さちこ/Melancholy_autumn_rainy_day.mp3"),
+  bgm_kamabokosachiko_06: require("@/assets/audio/bgm/ループなし/蒲鉾さちこ/Peaceful_rest.mp3"),
+  bgm_kamabokosachiko_07: require("@/assets/audio/bgm/ループなし/蒲鉾さちこ/White_snow_chill_days.mp3"),
+  bgm_kamabokosachiko_08: require("@/assets/audio/bgm/ループなし/蒲鉾さちこ/年を刻んで.mp3"),
+  bgm_kamabokosachiko_09: require("@/assets/audio/bgm/ループなし/蒲鉾さちこ/荒れ地に咲く花.mp3"),
+  bgm_kazehito_01: require("@/assets/audio/bgm/ループなし/風人/ぱいかじ日和.mp3"),
 };
 
 /**
  * 環境音。キーは ambient_sound.code（sound_type = 'ambient'）。
- * 現状は仮素材の2つのみ。天気11種ぶんが揃うまで、未登録の天気は無音とする。
+ * どの天気でどれが鳴るかは lib/ambient-select.ts が決める。
+ *
+ * 単一プレイヤーでループし続けるため（AudioContext の applyAmbient）、素材は
+ * 流し続けられる長さのものを選んでいる（1〜3分）。ここに無い天気は無音。
  */
 const AMBIENT: Record<string, AudioSource> = {
-  amb_rain: require("@/assets/audio/sfx/VSQSE_0319_rain_01.mp3"),
-  amb_wind: require("@/assets/audio/sfx/VSQSE_0610_wind_01.mp3"),
+  amb_rain: require("@/assets/audio/ambient/amb_rain.mp3"), // 弱い雨（2:00）
+  amb_thunder_rain: require("@/assets/audio/ambient/amb_thunder_rain.mp3"), // 雷入りの雨（1:02）
+  amb_wind: require("@/assets/audio/ambient/amb_wind.mp3"), // 夜風（3:04）
+  amb_insect: require("@/assets/audio/ambient/amb_insect.mp3"), // 虫の音（2:07）
 };
 
 /** 効果音・鐘の用途 */
@@ -85,7 +173,9 @@ const TOWN_BELL: Record<string, AudioSource> = {};
  * 選択中の街の終了演出の鐘を返す。街ごとの鐘が登録されていればそれを、
  * 無ければ既定の鐘（SFX.bell）を返す。既定も未制作なら undefined（＝鳴らさない）。
  */
-export function getTownBell(townCode: string | null | undefined): AudioSource | undefined {
+export function getTownBell(
+  townCode: string | null | undefined,
+): AudioSource | undefined {
   if (townCode && TOWN_BELL[townCode]) return TOWN_BELL[townCode];
   return SFX.bell;
 }

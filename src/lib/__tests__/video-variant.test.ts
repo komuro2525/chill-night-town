@@ -1,4 +1,8 @@
-import { buildVariantSeed, pickVariantIndex } from "../video-variant";
+import {
+  buildVariantSeed,
+  buildWeatherVariantSeed,
+  pickVariantIndex,
+} from "../video-variant";
 
 // 背景のループ動画に複数パターンがあるときの選び方（要件2.2）。
 //
@@ -75,6 +79,43 @@ describe("buildVariantSeed（シードの組み立て）", () => {
   test("同じ枠でも学習日が違えば別のシード", () => {
     expect(buildVariantSeed("2026-08-02", "nightTown", "night", 3)).not.toBe(
       buildVariantSeed("2026-08-01", "nightTown", "night", 3),
+    );
+  });
+});
+
+describe("buildWeatherVariantSeed（天気の演出のシード）", () => {
+  test("学習日と天気コードが反映される", () => {
+    expect(buildWeatherVariantSeed("2026-08-01", "rainy_night")).toBe(
+      "2026-08-01:weather:rainy_night",
+    );
+  });
+
+  test("同じ日でも天気が違えば別のシード", () => {
+    expect(buildWeatherVariantSeed("2026-08-01", "snowy_night")).not.toBe(
+      buildWeatherVariantSeed("2026-08-01", "rainy_night"),
+    );
+  });
+
+  test("同じ天気でも学習日が違えば別のシード（夜ごとに降り方が変わる）", () => {
+    expect(buildWeatherVariantSeed("2026-08-02", "rainy_night")).not.toBe(
+      buildWeatherVariantSeed("2026-08-01", "rainy_night"),
+    );
+  });
+
+  test("学習日が変われば選び直される（1か月のうちに全パターンが出る）", () => {
+    const seen = new Set<number>();
+    for (let day = 1; day <= 31; day++) {
+      const date = `2026-08-${String(day).padStart(2, "0")}`;
+      seen.add(pickVariantIndex(buildWeatherVariantSeed(date, "stormy_night"), 4));
+    }
+    expect(seen.size).toBe(4);
+  });
+
+  // 背景（街×時間帯×レベル）と天気は同じ学習日に同時に抽選される。シードの形が
+  // かぶっていると、両方が同じ添字を引き続けて組み合わせが固定されてしまう
+  test("背景のシードとは形が重ならない", () => {
+    expect(buildWeatherVariantSeed("2026-08-01", "rainy_night")).not.toBe(
+      buildVariantSeed("2026-08-01", "rainy", "night", 1),
     );
   });
 });
