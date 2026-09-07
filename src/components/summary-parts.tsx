@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { Animated, StyleSheet, Text, View } from "react-native";
 
 import { LightColor, Spacing } from "@/constants/theme";
@@ -76,7 +76,9 @@ function starsFor(seed: number): StarSpec[] {
 /** 星1つ。ゆっくり明るさが上下するだけで、位置も大きさも動かさない */
 function Star({ spec }: { spec: StarSpec }) {
   const dim = spec.opacity * 0.3;
-  const value = useRef(new Animated.Value(spec.opacity)).current;
+  // useRef(...).current はレンダー中の ref 参照になり React Compiler が扱えない。
+  // 遅延初期化の useState なら生成は初回だけで、setter を呼ばないので再描画も起きない
+  const [value] = useState(() => new Animated.Value(spec.opacity));
 
   useEffect(() => {
     const loop = Animated.loop(
@@ -151,7 +153,7 @@ const SHOOTING_DISTANCE_MAX = 260;
  * 演出の反復に見え、夜空を眺めている感じが出ないためである。
  */
 function ShootingStar() {
-  const progress = useRef(new Animated.Value(0)).current;
+  const [progress] = useState(() => new Animated.Value(0));
   // 1回ごとに決まる見え方。位置・距離・傾きをまとめて持つ
   const [shot, setShot] = useState({
     top: "18%",
@@ -468,7 +470,7 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(255,255,255,0.04)",
   },
   listBar: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     right: undefined,
     backgroundColor: "rgba(255,206,138,0.16)",
   },

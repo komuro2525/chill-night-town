@@ -230,7 +230,6 @@ export function AudioProvider({ children }: { children: ReactNode }) {
   const ambientPlayer = useRef<AudioPlayer | null>(null);
   // 最新の音量を同期的に参照する（コールバック内で古い値を掴まないため）
   const volumesRef = useRef<Volumes>(DEFAULT_VOLUMES);
-  volumesRef.current = volumes;
 
   // BGM再生キュー（現在の再生ソース＋シャッフルで組んだ並び）と現在の位置（要件9）
   const bgmPoolRef = useRef<AmbientSound[]>([]);
@@ -241,11 +240,20 @@ export function AudioProvider({ children }: { children: ReactNode }) {
   const currentTrackRef = useRef<AmbientSound | null>(null);
   // コールバックから最新のソース・シャッフルを同期的に参照する
   const bgmSourceRef = useRef<BgmSource>("all");
-  bgmSourceRef.current = bgmSource;
   const bgmShuffleRef = useRef(false);
-  bgmShuffleRef.current = bgmShuffle;
   const bgmRepeatOneRef = useRef(false);
-  bgmRepeatOneRef.current = bgmRepeatOne;
+
+  // 上記4つの控えを state に追従させる。
+  // 代入はレンダー中ではなく effect で行う（レンダー中の ref 書き込みは
+  // React Compiler が扱えない）。値を変える経路（setVolume・refreshBgmQueue・
+  // setBgmRepeatOne）は同じ場所で ref にも即書き込んでいるため、
+  // 「コールバックが古い値を掴まない」という保証はこの effect に依存していない
+  useEffect(() => {
+    volumesRef.current = volumes;
+    bgmSourceRef.current = bgmSource;
+    bgmShuffleRef.current = bgmShuffle;
+    bgmRepeatOneRef.current = bgmRepeatOne;
+  });
   // シーク直後は古い再生位置が一瞬返るため、目標に追いつくまで位置更新を無視するロック
   const seekLockRef = useRef<{ target: number; until: number } | null>(null);
   // 進行中のフェードを止めるためのタイマー
@@ -664,12 +672,16 @@ export function AudioProvider({ children }: { children: ReactNode }) {
     }
   }, [loadBgmTrack]);
 
-  // 曲が最後まで再生されたら自動で次の曲へ（要件9）。handleBgmStatus から ref 越しに呼ばれる
-  advanceRef.current = () => {
-    if (bgmPoolRef.current.length === 0) return;
-    goToNext();
-    playBgm(false);
-  };
+  // 曲が最後まで再生されたら自動で次の曲へ（要件9）。handleBgmStatus から ref 越しに呼ばれる。
+  // 代入は effect で行う（レンダー中の ref 書き込みは React Compiler が扱えない）。
+  // 読むのは再生状態の更新コールバック＝コミット後なので支障はない
+  useEffect(() => {
+    advanceRef.current = () => {
+      if (bgmPoolRef.current.length === 0) return;
+      goToNext();
+      playBgm(false);
+    };
+  }, [goToNext, playBgm]);
 
   const toggleBgm = useCallback(() => {
     if (bgmPlayer.current?.playing) pauseBgm();

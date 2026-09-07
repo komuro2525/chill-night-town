@@ -349,7 +349,7 @@ const styles = StyleSheet.create({
     padding: Spacing.four,
   },
   introCover: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: "rgba(6,10,20,0.98)",
     alignItems: "center",
     justifyContent: "center",
