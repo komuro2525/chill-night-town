@@ -113,7 +113,10 @@ const BGM: Record<string, AudioSource> = {
  * 流し続けられる長さのものを選んでいる（1〜3分）。ここに無い天気は無音。
  */
 const AMBIENT: Record<string, AudioSource> = {
-  amb_rain: require("@/assets/audio/ambient/amb_rain.mp3"), // 弱い雨（2:00）
+  // 小さめの雨（1:37）。以前「弱い雨」を当てていたが、実際に聴くと音が強く
+  // 「雨音の夜」の静けさに合わなかったため、Phase 7-1 まで使っていたこちらへ戻した
+  // （2026-09-08 ユーザー判断）。強いほうは assets/未使用/環境音/弱い雨.mp3 へ退避
+  amb_rain: require("@/assets/audio/ambient/amb_rain.mp3"),
   amb_thunder_rain: require("@/assets/audio/ambient/amb_thunder_rain.mp3"), // 雷入りの雨（1:02）
   amb_wind: require("@/assets/audio/ambient/amb_wind.mp3"), // 夜風（3:04）
   amb_insect: require("@/assets/audio/ambient/amb_insect.mp3"), // 虫の音（2:07）
@@ -159,23 +162,67 @@ export function getSfxSource(key: SfxKey): AudioSource | undefined {
 /**
  * 街ごとの終了演出の鐘（要件3.3）。街コードをキーに音色を変える。
  * 背景アート（townArt.ts）と同じ「街コード→アセット」方式。素材は街ごとに
- * assets/audio/bell/<townCode>/<townCode>_bell.mp3 へ置く（詳細は同フォルダの README）。
+ * assets/audio/bell/<townCode>/ へ置く（命名・音づくりの規約は同フォルダの README）。
+ *
+ * **1街につき複数テイクを持てる。** 鳴らすたびに1本を無作為に選ぶ。
+ * 実際の鐘は一打ごとに響きが違うため、同じサンプルが毎回鳴ると機械的に聞こえる——
+ * 変えるのは**同じ鐘の別テイクだけ**で、音色（どの鐘か）は街ごとに固定する。
+ * 音程や長さの違うテイクを混ぜると「夜ごとに鐘が変わった」ように聞こえるため、
+ * 響きの似たものを2〜4本選んで並べること。
  *
  * 未登録の街は既定の鐘（SFX.bell）へフォールバックする（背景が night に落ちるのと同じ）。
  * これにより素材が無い街でも終了演出は必ず鳴る。素材が届いた街から下に1行足すだけで有効になる。
  *
- * TODO(素材): 現状は全街とも素材未制作のため未登録＝全街が既定の鐘。届いた街から登録する。
- *   例) nightTown: require("@/assets/audio/bell/nightTown/nightTown_bell.mp3"),
+ * **TODO(素材): いまは wav 原本を直接参照している（暫定）。**
+ * 規約は mp3（assets/audio/bell/<townCode>/<townCode>_bell_<NN>.mp3）だが、
+ * 変換前でも鳴らせるようにするため、当面 鐘/ の wav をそのまま指している。
+ * mp3 化したら各街のフォルダへ移し、下の require を差し替えること
+ * （wav 合計 約14MB → mp3 なら約1/10になる）。
+ *
+ * **どのテイクを選んだか**: 聴かずに選べるよう、各 wav の長さ・音量（RMS）と
+ * 打点直後のゼロ交差から求めた支配周波数を測り、**音程の揃ったものだけ**を採った。
+ * 同じ音色系統でも音程が2群に分かれる素材があり、混ぜると「夜ごとに鐘が変わった」
+ * ように聞こえるためである（梵鐘=330/337Hz群と383/400Hz群、
+ * ハンドベル=4kHz台と6kHz台）。**耳で確かめて合わなければ差し替えてよい。**
  */
-const TOWN_BELL: Record<string, AudioSource> = {};
+const TOWN_BELL: Record<string, AudioSource[]> = {
+  // 港町=時計台のベル。3本とも 836〜855Hz とよく揃っている（尾の長さだけ違う）
+  nightTown: [
+    require("@/assets/audio/bell/鐘/bell_town_clocktower/bell_town_clocktower_01.wav"),
+    require("@/assets/audio/bell/鐘/bell_town_clocktower/bell_town_clocktower_02.wav"),
+  ],
+  // 城下町=梵鐘。低い群（330Hz・337Hz）を採る。02・04 は383/400Hzで別の音になる
+  castleTown: [
+    require("@/assets/audio/bell/鐘/bell_town_bonshou/bell_town_bonshou_01.wav"),
+    require("@/assets/audio/bell/鐘/bell_town_bonshou/bell_town_bonshou_03.wav"),
+  ],
+  // 雪国=ハンドベル。4kHz台の群から、とくに近い3本（4090〜4266Hz）を採る。
+  // 07〜12 は6kHz台で明らかに高く、混ぜない
+  snowTown: [
+    require("@/assets/audio/bell/鐘/bell_town_handbell/bell_town_handbell_01.wav"),
+    require("@/assets/audio/bell/鐘/bell_town_handbell/bell_town_handbell_04.wav"),
+    require("@/assets/audio/bell/鐘/bell_town_handbell/bell_town_handbell_06.wav"),
+  ],
+  // 星見の丘=クリスタル。2721Hz・2757Hz の対を採る。03〜05 はばらつくため使わない
+  starHill: [
+    require("@/assets/audio/bell/鐘/bell_town_crystal/bell_town_crystal_01.wav"),
+    require("@/assets/audio/bell/鐘/bell_town_crystal/bell_town_crystal_02.wav"),
+  ],
+};
 
 /**
- * 選択中の街の終了演出の鐘を返す。街ごとの鐘が登録されていればそれを、
+ * 選択中の街の終了演出の鐘を返す。街ごとの鐘が登録されていれば**その中から無作為に1本**を、
  * 無ければ既定の鐘（SFX.bell）を返す。既定も未制作なら undefined（＝鳴らさない）。
+ *
+ * 呼ぶたびに結果が変わりうる。呼び出し側（AudioContext の getBellPlayer）は
+ * 戻り値をキーにプレイヤーを使い回すため、テイクを増やしてもプレイヤーは1本ずつで済む。
  */
 export function getTownBell(
   townCode: string | null | undefined,
 ): AudioSource | undefined {
-  if (townCode && TOWN_BELL[townCode]) return TOWN_BELL[townCode];
+  const takes = townCode ? TOWN_BELL[townCode] : undefined;
+  if (takes && takes.length > 0) {
+    return takes[Math.floor(Math.random() * takes.length)];
+  }
   return SFX.bell;
 }
