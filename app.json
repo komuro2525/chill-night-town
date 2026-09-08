@@ -6,7 +6,7 @@
     "orientation": "default",
     "icon": "./assets/images/icon.png",
     "scheme": "chillnighttown",
-    "userInterfaceStyle": "automatic",
+    "userInterfaceStyle": "dark",
     "backgroundColor": "#05070f",
     "android": {
       "backgroundColor": "#05070f",
