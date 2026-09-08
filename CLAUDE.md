@@ -7,6 +7,10 @@
 
 ## 技術スタック
 
+> **Expo は変わりが速い。** 学習データの記憶で書かず、**必ずこのバージョンのドキュメントを見てから**コードを書くこと。
+> https://docs.expo.dev/versions/v57.0.0/
+> 実際、SDK 56 で `expo-router` と `@react-navigation` の関係が逆転し、`StyleSheet.absoluteFillObject` は RN 0.86 で削除された。古い記憶のまま書くと動かない。
+
 - Expo（React Native）+ Expo Router — **Expo SDK 57** / React Native 0.86 / React 19.2 / TypeScript 6.0
 - SQLite（expo-sqlite）— サーバーなしの完全ローカル構成
 - 状態管理: Context API 3本構成（`contexts/TimerContext.tsx` / `contexts/AudioContext.tsx` / `contexts/SettingsContext.tsx`）。外部の状態管理ライブラリは使わない
