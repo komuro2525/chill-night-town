@@ -1,8 +1,9 @@
 import { VideoView } from "expo-video";
 import { StyleSheet } from "react-native";
 
-import { getWeatherEffect } from "@/constants/weatherEffect";
+import { getWeatherEffect, getWeatherFlash } from "@/constants/weatherEffect";
 import { useLoopVideoPlayer } from "@/hooks/use-loop-video";
+import { WeatherFlash } from "./weather-flash";
 
 // その夜の天気の演出レイヤー（要件8章）。背景（街）の上、UIの下に敷く。
 //
@@ -30,8 +31,19 @@ export function WeatherOverlay({
   enabled: boolean;
 }) {
   const effect = enabled ? getWeatherEffect(weatherCode, studyDate) : undefined;
-  if (!effect) return null;
-  return <WeatherVideo source={effect.source} opacity={effect.opacity} />;
+  // 雷のように「時々だけ光る」ものは、降り続ける素材の上へさらに重ねる
+  const flash = enabled ? getWeatherFlash(weatherCode) : undefined;
+  if (!effect && !flash) return null;
+  return (
+    <>
+      {effect ? (
+        <WeatherVideo source={effect.source} opacity={effect.opacity} />
+      ) : null}
+      {flash ? (
+        <WeatherFlash source={flash.source} opacity={flash.opacity} />
+      ) : null}
+    </>
+  );
 }
 
 // プレイヤーはフックのため、演出の有無で条件分岐できるよう内側の部品に分ける。

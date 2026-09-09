@@ -51,8 +51,7 @@ const WEATHER_EFFECT: Record<string, WeatherEffect[]> = {
       opacity: 0.8,
     },
   ],
-  // 嵐の夜: 強い雨。雷の映像は使わず、雷らしさは環境音のほうで出す
-  // （雷単体に対応する天気コードが無いため。assets/未使用/README.md 参照）
+  // 嵐の夜: 強い雨。雷は下の WEATHER_FLASH で時々重ねる（改訂履歴 要件57）
   stormy_night: [
     {
       source: require("@/assets/home/weather/stormy_night_1.mp4"),
@@ -95,6 +94,34 @@ const WEATHER_EFFECT: Record<string, WeatherEffect[]> = {
   ],
 };
 
+
+// 天気に**重ねる単発の演出**（雷など）。上のループ素材の上へさらに敷く。
+//
+// 雨や雪は降り続けるのでループでよいが、雷は光り続けない。ループさせると素材の尺ごとに
+// 光ってしまい画面が落ち着かなくなるため、一度流したら伏せて間隔を置く
+// （間隔の決め方は components/weather-flash.tsx）。
+//
+// 天気1種につき1本。素材は同じく黒背景・screen 合成前提。
+const WEATHER_FLASH: Record<string, WeatherEffect> = {
+  // 嵐の夜: 強い雨（上のループ）に、雷を時々重ねる。
+  // 当初は雷の映像を使わず環境音だけで雷らしさを出す方針だったが、素材の採用にあたり
+  // 「ループさせず間隔を置く」形が決まったため映像も使うことにした（改訂履歴 要件57）。
+  stormy_night: {
+    source: require("@/assets/home/weather/stormy_night_flash.mp4"),
+    opacity: 0.9,
+  },
+};
+
+/**
+ * その天気に重ねる単発の演出を返す（無ければ undefined）。
+ * ループ素材（getWeatherEffect）とは別に、上へ重ねて時々流す。
+ */
+export function getWeatherFlash(
+  weatherCode: string | null | undefined,
+): WeatherEffect | undefined {
+  if (!weatherCode) return undefined;
+  return WEATHER_FLASH[weatherCode];
+}
 /**
  * その夜に重ねる演出を返す（未選択・素材が無ければ undefined）。
  * undefined のときは何も重ねない（天気演出のないニュートラルな夜空）。
