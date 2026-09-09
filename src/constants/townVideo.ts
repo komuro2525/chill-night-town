@@ -126,6 +126,18 @@ const TOWN_VIDEO: Record<string, TownVideoSet> = {
       ],
     },
   },
+  // snowTown（雪国）。夜の Lv.5 のみ。1280×720（静止画 1670×942 と同じ16:9）
+  snowTown: {
+    night: {
+      5: [
+        {
+          source: require("@/assets/home/snowTown/night/mp4/snowTown_night_lv5.mp4"),
+          width: 1280,
+          height: 720,
+        },
+      ],
+    },
+  },
 };
 
 /**
