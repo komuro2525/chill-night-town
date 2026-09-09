@@ -51,10 +51,10 @@ try { run("UPDATE audio_setting SET bgm_source = 'bad'"); } catch { sourceCheck 
 check("bgm_source の CHECK で不正値を弾く", sourceCheck);
 
 console.log("B. お気に入り（user_sound_preference）とプレイリスト（playlist_entry・重複可）");
-// BGM曲（シードの79曲に1曲足して80曲。以降は先頭3曲だけを使う）
+// BGM曲（シードの109曲に1曲足して110曲。以降は先頭3曲だけを使う）
 run("INSERT INTO ambient_sound (code, sound_type, name) VALUES ('bgm_x', 'bgm', 'X')");
 const bgm = all("SELECT id FROM ambient_sound WHERE sound_type='bgm' ORDER BY id").map((r) => r.id);
-check("BGM曲が80曲ある", bgm.length === 80);
+check("BGM曲が110曲ある", bgm.length === 110);
 
 // お気に入り（setFavorite 相当）
 run(

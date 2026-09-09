@@ -44,7 +44,7 @@ type Migration = {
 // **必ず DELTA_MIGRATIONS の最後の version と一致させること。** 小さいままだと、新規
 // インストールは「最新形のスキーマ＋古い user_version」で始まり、次の起動で適用済みの
 // 差分がもう一度流れて落ちる（ADD COLUMN が duplicate column で失敗する）。
-const SCHEMA_VERSION = 34;
+const SCHEMA_VERSION = 35;
 
 // 既存DB（過去バージョン）向けの差分マイグレーション（version >= 2）。
 // 新規インストールはスキーマSQL（=最新）を適用して一気に SCHEMA_VERSION まで上がるため、
@@ -722,14 +722,37 @@ const DELTA_MIGRATIONS: Migration[] = [
   },
   {
     version: 34,
-    up: async (db) => {
-      // BGMを78曲追加して79曲にする（要件9）。素材は配布元の区分どおり
-      // assets/audio/bgm/ループあり|ループなし/<アーティスト>/ に置いた。
-      // ループの有無は素材整理のための区分で、再生挙動は変えない（どちらも同じプールに入り、
-      // 繰り返しはユーザーの1曲リピート操作で行う）ため、マスタには持たせない。
+    up: async () => {
+      // 何もしない。
       //
-      // 曲目録は db/seed_bgm.sql が単一の出所（冪等）。既存の「ローファイ少女は今日も寝不足」は
-      // ループあり版へ差し替えたが、曲としては同じ1件のため code は変えず file_path だけが更新される。
+      // 元々ここでBGMの曲目録（db/seed_bgm.sql）を流して79曲にしていたが、v35 で
+      // ambient_sound に genre 列が増え、seed_bgm.sql も genre を含む形になった。
+      // v33 のDBに対しては「列がまだ無いのに genre へ INSERT する」ことになり落ちるため、
+      // 投入は列を足したあとの v35 に一本化し、この版は空にした（v34 まで進んでいる端末は
+      // 79曲を持っているが、v35 で同じファイルを流し直すので結果は同じになる）。
+    },
+  },
+  {
+    version: 35,
+    up: async (db) => {
+      // BGMのジャンル（要件9・改訂55）。曲側の属性と、ユーザーが選んでいる絞り込みを別々に持つ。
+      //   ・ambient_sound.genre  … 曲のジャンル（BGMは必ず持ち、環境音はNULL）
+      //   ・audio_setting.bgm_genre … 「すべて」で流すジャンル。既定 'calm'＝しずかな夜
+      //     （静かな曲だけが最初から流れる状態を既定にする。お気に入り・マイプレイリストには効かせない）
+      await db.execAsync(
+        "ALTER TABLE ambient_sound ADD COLUMN genre TEXT CHECK (genre IS NULL OR genre IN ('calm', 'city', 'classic'))",
+      );
+      await db.execAsync(
+        "ALTER TABLE audio_setting ADD COLUMN bgm_genre TEXT NOT NULL DEFAULT 'calm' CHECK (bgm_genre IN ('all', 'calm', 'city', 'classic'))",
+      );
+
+      // modus「Melty Night」は しんさんわーくす「ナイトシフト」と1バイトも違わない同一ファイルだった
+      // （配布元からの取得時に別名で保存されたものと見られる）。同じ音が2曲として並び、
+      // 片方のクレジットが誤りになるため、ナイトシフトを残して削除する。
+      // お気に入り・プレイリストの行は ON DELETE CASCADE で一緒に消える。
+      await db.runAsync("DELETE FROM ambient_sound WHERE code = ?", "bgm_modus_01");
+
+      // 曲目録（109曲・ジャンル入り）。冪等なので、v34 まで進んでいた端末にも同じ結果になる
       const bgmSql = await loadSqlAsset(SEED_BGM_MODULE);
       await db.execAsync(stripOuterTransaction(bgmSql));
     },

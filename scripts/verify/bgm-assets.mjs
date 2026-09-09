@@ -6,13 +6,17 @@
 //   1. db/seed_bgm.sql が新規初期化（スキーマ＋本体シード）の上で流れ、79曲入る
 //   2. seed_bgm.sql の冪等性（何度流しても増えない・上書きで内容が揃う）
 //   3. seed_bgm.sql・src/constants/audioAssets.ts・実ファイルの三者が過不足なく一致する
-//   4. v34 相当: 旧2曲だけのDBへ流すと、差分の78曲が入り、ループあり版へ差し替えた
-//      「ローファイ少女は今日も寝不足」の file_path が更新される（code は変えない）
+//   4. 全曲にジャンルが入っていること（要件9・改訂55）。ジャンル未設定の曲は
+//      既定の「しずかな夜」で鳴らないまま一覧にだけ出るため、取りこぼしを検出する
+//   5. v35 相当: 旧79曲のDBへ流すと109曲になり、同じ音源だった modus「Melty Night」が消え、
+//      ループあり版へ差し替えた「ローファイ少女は今日も寝不足」の file_path が更新される
+//      （code は変えないので、お気に入り・プレイリストは外れない）
 //
 // 実行: node scripts/verify/bgm-assets.mjs
 
 import { DatabaseSync } from "node:sqlite";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
@@ -39,12 +43,43 @@ const all = (sql, ...a) => db.prepare(sql).all(...a);
 const one = (sql, ...a) => db.prepare(sql).get(...a);
 
 const tracks = all(
-  "SELECT code, name, artist, file_path FROM ambient_sound WHERE sound_type='bgm' ORDER BY id",
+  "SELECT code, name, artist, genre, file_path FROM ambient_sound WHERE sound_type='bgm' ORDER BY id",
 );
-check("BGMが79曲入る", tracks.length === 79);
+check("BGMが109曲入る", tracks.length === 109);
 check(
   "曲名・アーティスト・パスがすべて埋まっている",
   tracks.every((t) => t.name && t.artist && t.file_path),
+);
+
+const noGenre = tracks.filter((t) => !t.genre);
+check(
+  `全曲にジャンルが入っている${noGenre.length ? `（未設定: ${noGenre.map((t) => t.code)}）` : ""}`,
+  noGenre.length === 0,
+);
+const byGenre = tracks.reduce((a, t) => ((a[t.genre] = (a[t.genre] ?? 0) + 1), a), {});
+console.log(
+  `    内訳: しずかな夜 ${byGenre.calm ?? 0} / 夜の街 ${byGenre.city ?? 0} / クラシック ${byGenre.classic ?? 0}`,
+);
+check(
+  "3ジャンルとも1曲以上ある（どのタブも空にならない）",
+  (byGenre.calm ?? 0) > 0 && (byGenre.city ?? 0) > 0 && (byGenre.classic ?? 0) > 0,
+);
+check(
+  "既定のジャンル（しずかな夜）が最も多い＝既定で十分な曲数が鳴る",
+  (byGenre.calm ?? 0) >= (byGenre.city ?? 0) && (byGenre.calm ?? 0) >= (byGenre.classic ?? 0),
+);
+
+// 同じ音源が別の曲として二重に入っていないか（配布元から別名で保存された取り違えの検出）
+const byHash = new Map();
+for (const t of tracks) {
+  const h = createHash("md5").update(readFileSync(join(ROOT, t.file_path))).digest("hex");
+  if (!byHash.has(h)) byHash.set(h, []);
+  byHash.get(h).push(t.code);
+}
+const sameAudio = [...byHash.values()].filter((v) => v.length > 1);
+check(
+  `中身が同じ音源が2曲として入っていない${sameAudio.length ? `（${JSON.stringify(sameAudio)}）` : ""}`,
+  sameAudio.length === 0,
 );
 
 // ---------------------------------------------------------------------
@@ -53,7 +88,7 @@ db.exec("UPDATE ambient_sound SET name = 'ずれた曲名' WHERE code = 'bgm_223
 db.exec(bgmSeed);
 check(
   "流し直しても曲数は増えない",
-  one("SELECT COUNT(*) AS n FROM ambient_sound WHERE sound_type='bgm'").n === 79,
+  one("SELECT COUNT(*) AS n FROM ambient_sound WHERE sound_type='bgm'").n === 109,
 );
 check(
   "流し直すと曲名が正へ戻る（code で上書き）",
@@ -70,7 +105,7 @@ const assetEntries = [
   ...bgmBlock.matchAll(/^\s*(\w+): require\("@\/(.+?)"\),$/gm),
 ].map((m) => ({ code: m[1], file: m[2] }));
 
-check("audioAssets.ts のBGMも79曲", assetEntries.length === 79);
+check("audioAssets.ts のBGMも109曲", assetEntries.length === 109);
 check(
   "キーの重複が無い",
   new Set(assetEntries.map((e) => e.code)).size === assetEntries.length,
@@ -113,29 +148,54 @@ check(`置いてあるのに未登録のファイルが無い${unregistered.leng
   unregistered.length === 0);
 
 // ---------------------------------------------------------------------
-console.log("D. マイグレーション v34（旧2曲のDBへ流す）");
+console.log("D. マイグレーション v35（旧79曲・ジャンル無しのDBへ流す）");
 const old = new DatabaseSync(":memory:");
 old.exec(schema);
 old.exec(seed);
-// v33 までのDBが持っていた2曲（ローファイ少女はルート直下の旧ファイル）
+// v34 のDBの形（genre 列がまだ無い）に戻してから、v35 の中身を流す
+old.exec("ALTER TABLE ambient_sound DROP COLUMN genre");
+old.exec("ALTER TABLE audio_setting DROP COLUMN bgm_genre");
 old.exec(`
   INSERT INTO ambient_sound (code, sound_type, name, artist, file_path) VALUES
     ('bgm_223am', 'bgm', '2:23 AM', 'しゃろう', 'assets/audio/bgm/2_23_AM.mp3'),
-    ('bgm_lofigirl', 'bgm', 'ローファイ少女は今日も寝不足', 'しゃろう', 'assets/audio/bgm/ローファイ少女は今日も寝不足.mp3');
+    ('bgm_lofigirl', 'bgm', 'ローファイ少女は今日も寝不足', 'しゃろう', 'assets/audio/bgm/ローファイ少女は今日も寝不足.mp3'),
+    ('bgm_modus_01', 'bgm', 'Melty Night', 'modus', 'assets/audio/bgm/ループあり/modus/Melty Night_.mp3');
 `);
 const lofiIdBefore = old.prepare("SELECT id FROM ambient_sound WHERE code='bgm_lofigirl'").get().id;
 
 // ユーザーのお気に入りが、差し替えをまたいで残ることも見る
 old.exec("INSERT INTO user (nickname, daily_goal_minutes) VALUES ('夜子', 60)");
 const userId = old.prepare("SELECT id FROM user LIMIT 1").get().id;
+old.prepare("INSERT INTO audio_setting (user_id) VALUES (?)").run(userId);
 old
   .prepare("INSERT INTO user_sound_preference (user_id, ambient_sound_id, is_favorite) VALUES (?, ?, 1)")
   .run(userId, lofiIdBefore);
 
+// v35 の中身（列追加 → 重複曲の削除 → 曲目録の流し直し）
+old.exec(
+  "ALTER TABLE ambient_sound ADD COLUMN genre TEXT CHECK (genre IS NULL OR genre IN ('calm', 'city', 'classic'))",
+);
+old.exec(
+  "ALTER TABLE audio_setting ADD COLUMN bgm_genre TEXT NOT NULL DEFAULT 'calm' CHECK (bgm_genre IN ('all', 'calm', 'city', 'classic'))",
+);
+old.prepare("DELETE FROM ambient_sound WHERE code = ?").run("bgm_modus_01");
 old.exec(bgmSeed);
 
 const after = old.prepare("SELECT COUNT(*) AS n FROM ambient_sound WHERE sound_type='bgm'").get();
-check("2曲のDBが79曲になる（差分の78曲が入る）", after.n === 79);
+check("109曲になる", after.n === 109);
+check(
+  "同じ音源だった modus「Melty Night」が消え、ナイトシフトが残る",
+  !old.prepare("SELECT 1 FROM ambient_sound WHERE code='bgm_modus_01'").get() &&
+    !!old.prepare("SELECT 1 FROM ambient_sound WHERE code='bgm_shinsanworks_01'").get(),
+);
+check(
+  "既存曲にもジャンルが入る（流し直しで上書きされる）",
+  old.prepare("SELECT genre FROM ambient_sound WHERE code='bgm_lofigirl'").get().genre === "city",
+);
+check(
+  "audio_setting の既定は 'calm'（しずかな夜だけが鳴る）",
+  old.prepare("SELECT bgm_genre FROM audio_setting").get().bgm_genre === "calm",
+);
 
 const lofi = old.prepare("SELECT id, file_path FROM ambient_sound WHERE code='bgm_lofigirl'").get();
 check("ローファイ少女は同じ行のまま（id が変わらない＝お気に入り・プレイリストが外れない）",

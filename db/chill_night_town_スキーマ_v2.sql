@@ -128,6 +128,7 @@ CREATE TABLE npc (
 -- 6. ambient_sound : BGM・環境音マスタ
 --    ・sound_type='bgm' の有効行がミニプレイヤーのBGMプール（シャッフル再生対象）
 --    ・artist はミニプレイヤーのクレジット表記に使用（フリー音源の表記義務対応）
+--    ・genre は曲の絞り込み（要件9・BGMのジャンル）。BGMは必ず持ち、環境音はNULL
 -- =====================================================================
 CREATE TABLE ambient_sound (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -135,6 +136,8 @@ CREATE TABLE ambient_sound (
     sound_type      TEXT    NOT NULL DEFAULT 'ambient' CHECK (sound_type IN ('bgm', 'ambient')),
     name            TEXT    NOT NULL,         -- BGMの場合は曲名としてミニプレイヤーに表示
     artist          TEXT,                     -- アーティスト名・クレジット表記（BGM用）
+    genre           TEXT    CHECK (genre IS NULL OR genre IN ('calm', 'city', 'classic')),
+                                              -- BGMのジャンル（calm=しずかな夜 / city=夜の街 / classic=クラシック）。環境音はNULL
     file_path       TEXT,
     is_active       INTEGER NOT NULL DEFAULT 1 CHECK (is_active IN (0, 1))
 );
@@ -380,6 +383,9 @@ CREATE INDEX idx_calendar_event_user_date ON calendar_event(user_id, event_date)
 --     ・bgm_source : どの曲群を流すか（all=登録曲全部 / favorites=お気に入り /
 --       playlist=マイプレイリスト）。bgm_shuffle : シャッフル再生のON/OFF（既定OFF＝並び順）
 --     ・bgm_repeat_one : 1曲リピート（ONで再生中の曲を繰り返す）。要件9・音楽プレイリスト
+--     ・bgm_genre : 「すべて」のときに流すジャンル（既定 calm=しずかな夜）。
+--       all は絞り込みなし。お気に入り・マイプレイリストには効かせない
+--       （ユーザーが自分で選んだ曲を、後からジャンルで間引かないため）
 --     ・playlist_name : マイプレイリストの表示名（ユーザーが編集できる）。要件9・音楽プレイリスト
 -- =====================================================================
 CREATE TABLE audio_setting (
@@ -391,6 +397,7 @@ CREATE TABLE audio_setting (
     bgm_source      TEXT    NOT NULL DEFAULT 'all' CHECK (bgm_source IN ('all', 'favorites', 'playlist')),
     bgm_shuffle     INTEGER NOT NULL DEFAULT 0 CHECK (bgm_shuffle IN (0, 1)),
     bgm_repeat_one  INTEGER NOT NULL DEFAULT 0 CHECK (bgm_repeat_one IN (0, 1)),
+    bgm_genre       TEXT    NOT NULL DEFAULT 'calm' CHECK (bgm_genre IN ('all', 'calm', 'city', 'classic')),
     playlist_name   TEXT    NOT NULL DEFAULT 'マイプレイリスト',
     updated_at      TEXT    NOT NULL DEFAULT (datetime('now'))
 );

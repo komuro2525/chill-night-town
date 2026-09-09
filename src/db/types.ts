@@ -124,12 +124,20 @@ export type NpcMessage = {
   created_at: string;
 };
 
+/**
+ * BGMのジャンル（要件9）。曲そのものの属性で、1曲に1つ決まる。
+ * 環境音は持たない（NULL）。
+ */
+export type BgmGenre = "calm" | "city" | "classic";
+
 export type AmbientSound = {
   id: number;
   code: string;
   sound_type: SoundType;
   name: string;
   artist: string | null;
+  /** BGMのジャンル。環境音は null */
+  genre: BgmGenre | null;
   file_path: string | null;
   is_active: Bool;
 };
@@ -267,6 +275,12 @@ export type CalendarEvent = {
 /** BGMの再生ソース（要件9・音楽プレイリスト） */
 export type BgmSource = "all" | "favorites" | "playlist";
 
+/**
+ * 「すべて」で流すジャンルの絞り込み（要件9）。"all" は絞り込まない。
+ * 曲側の属性（BgmGenre）と違い、こちらは「いまユーザーが選んでいる状態」。
+ */
+export type BgmGenreFilter = "all" | BgmGenre;
+
 export type AudioSetting = {
   user_id: number;
   bgm_volume: number;
@@ -277,6 +291,8 @@ export type AudioSetting = {
   bgm_shuffle: Bool;
   /** 1曲リピート（ONで再生中の曲を繰り返す） */
   bgm_repeat_one: Bool;
+  /** 「すべて」で流すジャンル（既定 calm）。お気に入り・マイプレイリストには効かせない */
+  bgm_genre: BgmGenreFilter;
   /** マイプレイリストの表示名（ユーザー編集可） */
   playlist_name: string;
   updated_at: string;

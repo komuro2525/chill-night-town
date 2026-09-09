@@ -26,6 +26,9 @@ export type PlaylistItem = {
 /**
  * BGMの全曲に、★お気に入りとプレイリスト所属の有無を付けて返す（曲は id 昇順）。
  * すべて／お気に入りタブの一覧に使う。
+ *
+ * ジャンルでの絞り込みはここでは行わない。画面側が手元の配列で絞る——タブやジャンルを
+ * 切り替えるたびにDBを引き直すと、切替の操作が重くなるため（要件9・改訂55）。
  */
 export async function getBgmLibrary(userId: number): Promise<LibraryTrack[]> {
   const db = await getDatabase();

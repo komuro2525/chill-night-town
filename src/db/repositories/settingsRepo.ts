@@ -3,7 +3,12 @@
 // 行は常に1件のため、更新は WHERE を付けず全行を対象にする（他のリポジトリと同じ方針）。
 
 import { getDatabase } from "../database";
-import type { AudioSetting, BgmSource, NotificationSetting } from "../types";
+import type {
+  AudioSetting,
+  BgmGenreFilter,
+  BgmSource,
+  NotificationSetting,
+} from "../types";
 
 /** 音量設定を取得する（ユーザー未作成時は null） */
 export async function getAudioSetting(): Promise<AudioSetting | null> {
@@ -45,20 +50,25 @@ export async function updateAudioVolumes(volumes: {
   );
 }
 
-/** BGMの再生設定（ソース・シャッフル・1曲リピート）を取得する（要件9・音楽プレイリスト） */
+/** BGMの再生設定（ソース・ジャンル・シャッフル・1曲リピート）を取得する（要件9・音楽プレイリスト） */
 export async function getPlaybackSettings(): Promise<{
   source: BgmSource;
+  genre: BgmGenreFilter;
   shuffle: boolean;
   repeatOne: boolean;
 }> {
   const db = await getDatabase();
   const row = await db.getFirstAsync<{
     bgm_source: BgmSource;
+    bgm_genre: BgmGenreFilter;
     bgm_shuffle: number;
     bgm_repeat_one: number;
-  }>("SELECT bgm_source, bgm_shuffle, bgm_repeat_one FROM audio_setting LIMIT 1");
+  }>(
+    "SELECT bgm_source, bgm_genre, bgm_shuffle, bgm_repeat_one FROM audio_setting LIMIT 1",
+  );
   return {
     source: row?.bgm_source ?? "all",
+    genre: row?.bgm_genre ?? "calm",
     shuffle: (row?.bgm_shuffle ?? 0) === 1,
     repeatOne: (row?.bgm_repeat_one ?? 0) === 1,
   };
@@ -88,6 +98,15 @@ export async function updateBgmSource(source: BgmSource): Promise<void> {
   await db.runAsync(
     "UPDATE audio_setting SET bgm_source = ?, updated_at = datetime('now')",
     source,
+  );
+}
+
+/** 「すべて」で流すジャンルを保存する（all=絞り込まない）。要件9 */
+export async function updateBgmGenre(genre: BgmGenreFilter): Promise<void> {
+  const db = await getDatabase();
+  await db.runAsync(
+    "UPDATE audio_setting SET bgm_genre = ?, updated_at = datetime('now')",
+    genre,
   );
 }
 
