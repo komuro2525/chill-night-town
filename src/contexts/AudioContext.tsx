@@ -24,7 +24,7 @@ import {
   type SfxKey,
 } from "@/constants/audioAssets";
 import { masterRepo, playlistRepo, settingsRepo, userRepo } from "@/db/repositories";
-import type { AmbientSound, BgmSource } from "@/db/types";
+import type { AmbientSound, BgmGenreFilter, BgmSource } from "@/db/types";
 import { selectAmbientCode } from "@/lib/ambient-select";
 import {
   avoidImmediateRepeat,
@@ -107,12 +107,19 @@ type AudioContextValue = {
   // --- プレイリスト（要件9・音楽プレイリスト）。プレイリスト画面が参照・操作する ---
   /** 再生ソース（all=登録曲全部 / favorites=お気に入り / playlist=マイプレイリスト） */
   bgmSource: BgmSource;
+  /**
+   * 「すべて」で流すジャンル（all=絞り込まない / calm=しずかな夜 / city=夜の街 /
+   * classic=クラシック）。既定は calm。お気に入り・マイプレイリストには効かない（要件9）
+   */
+  bgmGenre: BgmGenreFilter;
   /** シャッフル再生ON/OFF（全ソース共通。一巡するまで同じ曲は再生しない） */
   bgmShuffle: boolean;
   /** 1曲リピートON/OFF（ONで再生中の曲を繰り返す） */
   bgmRepeatOne: boolean;
   /** 再生ソースを切り替えて保存し、キューを組み直す */
   setBgmSource: (source: BgmSource) => Promise<void>;
+  /** ジャンルを切り替えて保存し、そのジャンルの先頭曲へ移る（要件9） */
+  setBgmGenre: (genre: BgmGenreFilter) => Promise<void>;
   /** シャッフルON/OFFを切り替えて保存し、キューを組み直す */
   setBgmShuffle: (on: boolean) => Promise<void>;
   /** 1曲リピートON/OFFを切り替えて保存し、再生中プレイヤーへ即反映する */
@@ -215,6 +222,8 @@ export function AudioProvider({ children }: { children: ReactNode }) {
   const [bgmHasTracks, setBgmHasTracks] = useState(false);
   // プレイリスト（要件9）: 再生ソースとシャッフル・1曲リピート。正はDB（audio_setting）。既定OFF
   const [bgmSource, setBgmSourceState] = useState<BgmSource>("all");
+  // ジャンルの既定は calm（しずかな夜）。静かな曲だけが最初から流れる状態にする（要件9）
+  const [bgmGenre, setBgmGenreState] = useState<BgmGenreFilter>("calm");
   const [bgmShuffle, setBgmShuffleState] = useState(false);
   const [bgmRepeatOne, setBgmRepeatOneState] = useState(false);
 
@@ -236,10 +245,15 @@ export function AudioProvider({ children }: { children: ReactNode }) {
   const bgmIndexRef = useRef(0);
   // 現在表示/再生中の曲ID。キュー組み直し時に「同じ曲を維持できるか」の判定に使う
   const currentTrackIdRef = useRef<number | null>(null);
+  // 実際にプレイヤーへ読み込んである曲ID（要件9: 停止中は音源を読み込まない）。
+  // currentTrackIdRef と食い違っているときは「表示だけ先に切り替わっている」状態で、
+  // 再生を始める直前に読み込んで揃える
+  const loadedTrackIdRef = useRef<number | null>(null);
   // ロック画面に出す曲名・アーティスト用（bgmTrack と同じ値を同期的に読むための控え）
   const currentTrackRef = useRef<AmbientSound | null>(null);
   // コールバックから最新のソース・シャッフルを同期的に参照する
   const bgmSourceRef = useRef<BgmSource>("all");
+  const bgmGenreRef = useRef<BgmGenreFilter>("calm");
   const bgmShuffleRef = useRef(false);
   const bgmRepeatOneRef = useRef(false);
 
@@ -251,6 +265,7 @@ export function AudioProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     volumesRef.current = volumes;
     bgmSourceRef.current = bgmSource;
+    bgmGenreRef.current = bgmGenre;
     bgmShuffleRef.current = bgmShuffle;
     bgmRepeatOneRef.current = bgmRepeatOne;
   });
@@ -609,10 +624,17 @@ export function AudioProvider({ children }: { children: ReactNode }) {
         // updateInterval を指定して再生位置の更新を受け取る（進捗バー用）
         player = createAudioPlayer(source, { updateInterval: 500 });
         bgmPlayer.current = player;
+        loadedTrackIdRef.current = track.id;
         player.addListener("playbackStatusUpdate", handleBgmStatus);
-      } else {
+      } else if (player.playing) {
+        // 鳴っている最中の切り替えは、その場で差し替えて途切れさせない
         player.replace(source);
+        loadedTrackIdRef.current = track.id;
       }
+      // 停止中は読み込まない（要件9）。曲名の表示だけ先に切り替えておき、音源は
+      // 再生ボタンが押された時点で playBgm が読み込む。曲が100曲を超えたいま、
+      // 鳴らさない曲まで毎回読むとタブ・ジャンルの切替そのものが重くなるため
+
       // 1曲リピートON時はプレイヤー自身でループさせる（曲終了イベントを待たず途切れない）
       player.loop = bgmRepeatOneRef.current;
       setBgmTrack(track);
@@ -633,6 +655,15 @@ export function AudioProvider({ children }: { children: ReactNode }) {
       if (bgmPoolRef.current.length === 0) return;
       const player = bgmPlayer.current ?? loadBgmTrack(bgmIndexRef.current);
       if (!player) return;
+      // 停止中に切り替えて読み込みを遅らせていた曲を、ここで読み込む（要件9）
+      if (loadedTrackIdRef.current !== currentTrackIdRef.current) {
+        const track = bgmPoolRef.current[bgmIndexRef.current];
+        const source = track ? getBgmSource(track.code) : undefined;
+        if (!source) return;
+        player.replace(source);
+        player.loop = bgmRepeatOneRef.current;
+        loadedTrackIdRef.current = track.id;
+      }
       // 即時再生のときは走行中のフェードを止める（消し忘れると音量を下げ続けてしまう）
       if (!fade && fadeTimer.current) {
         clearInterval(fadeTimer.current);
@@ -699,6 +730,9 @@ export function AudioProvider({ children }: { children: ReactNode }) {
   const restartBgm = useCallback(() => {
     setBgmProgress(0);
     setBgmPositionSec(0);
+    // まだ読み込んでいない曲（停止中に切り替えた直後）は、表示を0に戻すだけでよい。
+    // 読み込み前にシークすると、前の曲の再生位置を動かしてしまう
+    if (loadedTrackIdRef.current !== currentTrackIdRef.current) return;
     bgmPlayer.current
       ?.seekTo(0)
       .catch((e) => console.error("BGMの頭出しに失敗しました", e));
@@ -708,6 +742,8 @@ export function AudioProvider({ children }: { children: ReactNode }) {
   const seekBgm = useCallback((sec: number) => {
     const player = bgmPlayer.current;
     if (!player) return;
+    // 読み込み前の曲は長さも分からないため動かさない（restartBgm と同じ理由）
+    if (loadedTrackIdRef.current !== currentTrackIdRef.current) return;
     const duration = player.duration || 0;
     const target = Math.max(0, duration > 0 ? Math.min(sec, duration) : sec);
     setBgmPositionSec(target);
@@ -809,9 +845,11 @@ export function AudioProvider({ children }: { children: ReactNode }) {
       const playable = tracks.filter((t) => getBgmSource(t.code));
       setBgmHasTracks(playable.length > 0);
       setBgmSourceState(settings.source);
+      setBgmGenreState(settings.genre);
       setBgmShuffleState(settings.shuffle);
       setBgmRepeatOneState(settings.repeatOne);
       bgmSourceRef.current = settings.source;
+      bgmGenreRef.current = settings.genre;
       bgmShuffleRef.current = settings.shuffle;
       bgmRepeatOneRef.current = settings.repeatOne;
       // 既存プレイヤーがあればリピート設定を即反映する
@@ -822,6 +860,7 @@ export function AudioProvider({ children }: { children: ReactNode }) {
           favoriteIds,
           playlistOrderedIds: playlistIds,
           source: settings.source,
+          genre: settings.genre,
           shuffle: settings.shuffle,
         }),
         opts?.playFromTop ?? false,
@@ -841,6 +880,20 @@ export function AudioProvider({ children }: { children: ReactNode }) {
         console.error("再生ソースの保存に失敗しました", e);
       }
       // タブ切替はそのソースの先頭曲から流す（要件9）
+      await refreshBgmQueue({ playFromTop: true });
+    },
+    [refreshBgmQueue],
+  );
+
+  // ジャンルの切り替え。ソースのタブを切り替えたときと同じく、そのジャンルの先頭曲へ移る
+  // （停止中は曲を差し替えるだけで再生はしない＝デフォルト停止の方針。要件9）
+  const setBgmGenre = useCallback(
+    async (genre: BgmGenreFilter) => {
+      try {
+        await settingsRepo.updateBgmGenre(genre);
+      } catch (e) {
+        console.error("ジャンルの保存に失敗しました", e);
+      }
       await refreshBgmQueue({ playFromTop: true });
     },
     [refreshBgmQueue],
@@ -1067,9 +1120,11 @@ export function AudioProvider({ children }: { children: ReactNode }) {
       startBgm,
       playTrack,
       bgmSource,
+      bgmGenre,
       bgmShuffle,
       bgmRepeatOne,
       setBgmSource,
+      setBgmGenre,
       setBgmShuffle,
       setBgmRepeatOne,
       refreshBgm: refreshBgmQueue,
@@ -1096,9 +1151,11 @@ export function AudioProvider({ children }: { children: ReactNode }) {
       startBgm,
       playTrack,
       bgmSource,
+      bgmGenre,
       bgmShuffle,
       bgmRepeatOne,
       setBgmSource,
+      setBgmGenre,
       setBgmShuffle,
       setBgmRepeatOne,
       refreshBgmQueue,

@@ -50,7 +50,11 @@ import { TutorialOverlay } from "@/components/tutorial-overlay";
 import { WeatherOverlay } from "@/components/weather-overlay";
 import { WeatherPicker } from "@/components/weather-picker";
 import { WeatherRow } from "@/components/weather-row";
-import { clampLoopCount, MIN_SAVE_MINUTES, STUDY_DAY } from "@/constants/domain";
+import {
+  clampLoopCount,
+  MIN_SAVE_MINUTES,
+  STUDY_DAY,
+} from "@/constants/domain";
 import { ClockAccent, Fonts, Spacing } from "@/constants/theme";
 import { getTownArt } from "@/constants/townArt";
 import { getTownVideo, type TownVideo } from "@/constants/townVideo";
@@ -78,7 +82,12 @@ import type { GrowthResult } from "@/db/repositories/growthRepo";
 import type { StudyDaySummary } from "@/db/repositories/sessionRepo";
 import type { SelectedTown } from "@/db/repositories/townProgressRepo";
 import type { ActiveSession, NightWeather } from "@/db/types";
-import { getTimeOfDay } from "@/lib/background-schedule";
+import {
+  getTimeOfDay,
+  getTimeOfDayStartMinutes,
+  TIME_OF_DAY_ORDER,
+  type TimeOfDay,
+} from "@/lib/background-schedule";
 import {
   getContinueThreshold,
   getExtensionThreshold,
@@ -89,7 +98,7 @@ import {
   advanceDevTime,
   now as appNow,
   nowMs,
-  setDevTimeToHour,
+  setDevTimeToMinutes,
   useAppNow,
 } from "@/lib/clock";
 import {
@@ -143,7 +152,7 @@ export default function HomeScreen() {
   const [idle, setIdle] = useState(false);
   const idleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   // 開発用: 時刻の上書き（null = 実時間）。夜間帯判定の確認に使う。__DEV__ でのみ切り替える
-  const [devHour, setDevHour] = useState<number | null>(null);
+  const [devClock, setDevClock] = useState<TimeOfDay | null>(null);
   // その学習日に選択済みの天気（未選択は null）。演出・記録の参照先は daily_night_weather
   const [weather, setWeather] = useState<NightWeather | null>(null);
   // ホームの天気の行から開く選択欄（要件2.5）
@@ -1004,13 +1013,16 @@ export default function HomeScreen() {
             onSeedCalendar={() => void handleSeedCalendar()}
             habitStep={habitStep}
             onToggleHabitStep={() => void handleToggleHabitStep()}
-            devHour={devHour}
-            onCycleDevHour={() => {
-              const i = DEV_CLOCK_HOURS.indexOf(devHour);
-              const next = DEV_CLOCK_HOURS[(i + 1) % DEV_CLOCK_HOURS.length];
-              setDevHour(next);
-              // 実体は clock.ts の1箇所。計測・5:00判定にも同じ時刻が効く
-              setDevTimeToHour(next);
+            devClock={devClock}
+            onCycleDevClock={() => {
+              const i = DEV_CLOCK_STEPS.indexOf(devClock);
+              const next = DEV_CLOCK_STEPS[(i + 1) % DEV_CLOCK_STEPS.length];
+              setDevClock(next);
+              // 実体は clock.ts の1箇所。計測・5:00判定にも同じ時刻が効く。
+              // 帯の開始時刻は季節で変わるため、切り替えのたびに求める
+              setDevTimeToMinutes(
+                next === null ? null : getTimeOfDayStartMinutes(next),
+              );
             }}
           />
 
@@ -1090,8 +1102,7 @@ export default function HomeScreen() {
             //   ・基準が初期値でない          → このセッションで一度カードを出した後
             // どちらかに当てはまれば、達成の宣言ではなく区切りの知らせとして出す
             const threshold = session.break_suggest_threshold_minutes ?? 0;
-            const isFirstCard =
-              threshold <= saved + getPlannedMinutes(session);
+            const isFirstCard = threshold <= saved + getPlannedMinutes(session);
             setBreakGoalNewlyReached(
               isFirstCard &&
                 saved < user.daily_goal_minutes &&
@@ -1288,13 +1299,30 @@ const DEV_ADVANCE_MINUTES = 30;
 // 開発用: テスト通知が鳴るまでの秒数。押してからアプリを閉じ、画面を消すのに足りる長さ
 const DEV_TEST_NOTICE_SECONDS = 10;
 
-// 開発用の時刻上書き。夜間帯判定（要件2.3）の両側を実機で確認するために使う。
-// null = 実時間 / 21 = 夜間帯内（開始できる） / 12 = 夜間帯外（開始できない）
+// 開発用の時刻上書き。実時間と、背景の5つの時間帯（背景_季節×時間帯スケジュール）を
+// 順に切り替える。合わせる時刻は各帯の**開始時刻**で、季節によって変わる
+// （春の sunrise は 4:45、冬は 6:10）。算出は lib/background-schedule.ts の純関数に委ねる。
+//
+// これで「夜間帯判定（要件2.3）の内と外」も「時間帯ごとの背景（要件2.2）」も、
+// 実際にその時刻まで待たずに確認できる。null = 実時間。
 // 上書きの実体は src/lib/clock.ts にあり、計測・5:00判定にも同じ時刻が効く。
-const DEV_CLOCK_HOURS: (number | null)[] = [null, 21, 12];
+const DEV_CLOCK_STEPS: (TimeOfDay | null)[] = [null, ...TIME_OF_DAY_ORDER];
 
-function devHourLabel(hour: number | null): string {
-  return hour === null ? "実時間" : `${hour}:00`;
+const DEV_TOD_LABEL: Record<TimeOfDay, string> = {
+  sunrise: "日の出",
+  day: "昼",
+  sunset: "日没",
+  night: "夜",
+  latenight: "深夜",
+};
+
+/** 開発用の時刻ボタンの表示（実時間 / 「夜 18:30」のように帯名と合わせた時刻） */
+function devClockLabel(step: TimeOfDay | null): string {
+  if (step === null) return "実時間";
+  const m = getTimeOfDayStartMinutes(step);
+  const hh = Math.floor(m / 60);
+  const mm = m % 60;
+  return `${DEV_TOD_LABEL[step]} ${hh}:${String(mm).padStart(2, "0")}`;
 }
 
 // アイドル最小表示（無操作が続いたとき）。操作系UIを隠し、最小UI（時刻・日付・再生中と、
@@ -1447,7 +1475,6 @@ function TopOverlay({
           </Text>
         ) : null}
       </View>
-
     </View>
   );
 }
@@ -1485,9 +1512,11 @@ function HomeBackground({
   const art = townCode ? getTownArt(townCode, level, timeOfDay) : undefined;
   // 動画は登録がある組み合わせだけ。無ければ静止画のまま（時間帯のフォールバックはしない）。
   // パターンが複数ある枠は学習日ごとに1つ選ぶ（同じ夜のあいだは切り替わらない）
+  // 背景動画と天気の演出は、どちらも学習日でパターンが決まる（同じ夜のあいだは変わらない）
+  const studyDate = getStudyDate(now);
   const video =
     motionEnabled && townCode
-      ? getTownVideo(townCode, level, timeOfDay, getStudyDate(now))
+      ? getTownVideo(townCode, level, timeOfDay, studyDate)
       : undefined;
 
   if (landscapeMode) {
@@ -1499,6 +1528,7 @@ function HomeBackground({
         video={video}
         session={session}
         weatherCode={weatherCode}
+        studyDate={studyDate}
         effectsEnabled={motionEnabled}
         clockHidden={clockHidden}
       />
@@ -1517,7 +1547,11 @@ function HomeBackground({
       )}
       {/* 天気の演出（要件8）。街より上・UIより下。スワイプでは動かさない
           （雨はカメラの手前にあるもので、街と一緒に流れると視点がおかしくなる） */}
-      <WeatherOverlay weatherCode={weatherCode} enabled={motionEnabled} />
+      <WeatherOverlay
+        weatherCode={weatherCode}
+        studyDate={studyDate}
+        enabled={motionEnabled}
+      />
     </>
   );
 }
@@ -1569,8 +1603,8 @@ function DevPanel({
   onSeedCalendar,
   habitStep,
   onToggleHabitStep,
-  devHour,
-  onCycleDevHour,
+  devClock,
+  onCycleDevClock,
 }: {
   townLevel: number;
   onCycleLevel: () => void;
@@ -1578,11 +1612,14 @@ function DevPanel({
   onSeedCalendar: () => void;
   habitStep: number;
   onToggleHabitStep: () => void;
-  devHour: number | null;
-  onCycleDevHour: () => void;
+  devClock: TimeOfDay | null;
+  onCycleDevClock: () => void;
 }) {
   const router = useRouter();
   const { reload } = useSettings();
+  // 項目は畳んでおき、左端の丸ボタンで開く。常時並べていると本来のUIと
+  // 背景の見え方を確かめる邪魔になるため
+  const [open, setOpen] = useState(false);
 
   if (!__DEV__) return null;
 
@@ -1598,62 +1635,80 @@ function DevPanel({
 
   return (
     <View style={styles.devArea} pointerEvents="box-none">
-      {/* レベルを 1→2→3→4→5→1 と循環（背景アート・Lv表示に反映。実績値も辻褄を合わせる） */}
-      <Pressable onPress={onCycleLevel} style={styles.devButton}>
-        <ThemedText type="small" style={styles.devButtonText}>
-          レベル: Lv{townLevel}
-        </ThemedText>
-      </Pressable>
-      {/* 時刻の上書き: 実時間 → 21:00（夜間帯内）→ 12:00（夜間帯外）を順に切り替える */}
-      <Pressable onPress={onCycleDevHour} style={styles.devButton}>
-        <ThemedText type="small" style={styles.devButtonText}>
-          時刻: {devHourLabel(devHour)}
-        </ThemedText>
-      </Pressable>
-      {/* 今夜の学習記録を消す。目標達成・休憩提案の確認をやり直すため */}
-      <Pressable onPress={onClearStudyDay} style={styles.devButton}>
-        <ThemedText type="small" style={styles.devButtonText}>
-          今夜の学習時間を初期化
-        </ThemedText>
-      </Pressable>
-      {/* カレンダー確認用のダミー記録（過去数日＋4〜6月の傾向違い＋アルバムの段階比較）をまとめて入れる */}
-      <Pressable onPress={onSeedCalendar} style={styles.devButton}>
-        <ThemedText type="small" style={styles.devButtonText}>
-          カレンダー用のダミー記録を入れる
-        </ThemedText>
-      </Pressable>
-      {/* 習慣型のレベルアップ閾値: 本番=5回/Lv ⇄ テスト=1回/Lv */}
-      <Pressable onPress={onToggleHabitStep} style={styles.devButton}>
-        <ThemedText type="small" style={styles.devButtonText}>
-          レベルアップ:{" "}
-          {habitStep === 1 ? "1回/Lv(テスト)" : `${habitStep}回/Lv(本番)`}
-        </ThemedText>
-      </Pressable>
-      {/* 5:00自動終了・ポモドーロの進行を、実際に待たずに確認するため時刻を進める */}
+      {/* 開閉の入口。閉じているあいだは画面左端にこの丸だけが出る */}
       <Pressable
-        onPress={() => advanceDevTime(DEV_ADVANCE_MINUTES * 60 * 1000)}
-        style={styles.devButton}
+        onPress={() => setOpen((v) => !v)}
+        style={styles.devToggle}
+        accessibilityLabel="開発用メニューの開閉"
       >
-        <ThemedText type="small" style={styles.devButtonText}>
-          時刻を+{DEV_ADVANCE_MINUTES}分進める
+        <ThemedText type="small" style={styles.devToggleText}>
+          {open ? "×" : "test"}
         </ThemedText>
       </Pressable>
-      {/* 10秒後に鳴るテスト通知。押したらアプリを閉じる・画面を消して届くか見る。
+
+      {!open ? null : (
+        <View style={styles.devList}>
+          {/* レベルを 1→2→3→4→5→1 と循環（背景アート・Lv表示に反映。実績値も辻褄を合わせる） */}
+          <Pressable onPress={onCycleLevel} style={styles.devButton}>
+            <ThemedText type="small" style={styles.devButtonText}>
+              レベル: Lv{townLevel}
+            </ThemedText>
+          </Pressable>
+          {/* 時刻の上書き: 実時間 → 5つの時間帯（日の出・昼・日没・夜・深夜）を順に切り替える。
+          合わせる時刻は各帯の開始時刻で、季節によって変わる */}
+          <Pressable onPress={onCycleDevClock} style={styles.devButton}>
+            <ThemedText type="small" style={styles.devButtonText}>
+              時刻: {devClockLabel(devClock)}
+            </ThemedText>
+          </Pressable>
+          {/* 今夜の学習記録を消す。目標達成・休憩提案の確認をやり直すため */}
+          <Pressable onPress={onClearStudyDay} style={styles.devButton}>
+            <ThemedText type="small" style={styles.devButtonText}>
+              今夜の学習時間を初期化
+            </ThemedText>
+          </Pressable>
+          {/* カレンダー確認用のダミー記録（過去数日＋4〜6月の傾向違い＋アルバムの段階比較）をまとめて入れる */}
+          <Pressable onPress={onSeedCalendar} style={styles.devButton}>
+            <ThemedText type="small" style={styles.devButtonText}>
+              カレンダー用のダミー記録を入れる
+            </ThemedText>
+          </Pressable>
+          {/* 習慣型のレベルアップ閾値: 本番=5回/Lv ⇄ テスト=1回/Lv */}
+          <Pressable onPress={onToggleHabitStep} style={styles.devButton}>
+            <ThemedText type="small" style={styles.devButtonText}>
+              レベルアップ:{" "}
+              {habitStep === 1 ? "1回/Lv(テスト)" : `${habitStep}回/Lv(本番)`}
+            </ThemedText>
+          </Pressable>
+          {/* 5:00自動終了・ポモドーロの進行を、実際に待たずに確認するため時刻を進める */}
+          <Pressable
+            onPress={() => advanceDevTime(DEV_ADVANCE_MINUTES * 60 * 1000)}
+            style={styles.devButton}
+          >
+            <ThemedText type="small" style={styles.devButtonText}>
+              時刻を+{DEV_ADVANCE_MINUTES}分進める
+            </ThemedText>
+          </Pressable>
+          {/* 10秒後に鳴るテスト通知。押したらアプリを閉じる・画面を消して届くか見る。
           届かなければOS側（許可・集中モード・通知の要約）の問題と切り分けられる */}
-      <Pressable
-        onPress={() => void scheduleTestNotification(DEV_TEST_NOTICE_SECONDS)}
-        style={styles.devButton}
-      >
-        <ThemedText type="small" style={styles.devButtonText}>
-          テスト通知（{DEV_TEST_NOTICE_SECONDS}秒後）
-        </ThemedText>
-      </Pressable>
-      {/* 全ユーザーデータを削除して初期設定へ（正式版は Phase 6 の設定画面） */}
-      <Pressable onPress={handleReset} style={styles.devButton}>
-        <ThemedText type="small" style={styles.devButtonText}>
-          開発用: データ初期化して初期設定へ
-        </ThemedText>
-      </Pressable>
+          <Pressable
+            onPress={() =>
+              void scheduleTestNotification(DEV_TEST_NOTICE_SECONDS)
+            }
+            style={styles.devButton}
+          >
+            <ThemedText type="small" style={styles.devButtonText}>
+              テスト通知（{DEV_TEST_NOTICE_SECONDS}秒後）
+            </ThemedText>
+          </Pressable>
+          {/* 全ユーザーデータを削除して初期設定へ（正式版は Phase 6 の設定画面） */}
+          <Pressable onPress={handleReset} style={styles.devButton}>
+            <ThemedText type="small" style={styles.devButtonText}>
+              開発用: データ初期化して初期設定へ
+            </ThemedText>
+          </Pressable>
+        </View>
+      )}
     </View>
   );
 }
@@ -1788,9 +1843,25 @@ const styles = StyleSheet.create({
     bottom: DEV_PANEL_BOTTOM,
     left: 0,
     right: 0,
-    alignItems: "center",
+    // 入口の丸は画面左端に置く。開いた項目もそこから下げて左揃えにする
+    alignItems: "flex-start",
+    paddingLeft: Spacing.four,
     gap: Spacing.two,
   },
+  // 開閉の入口（閉じているあいだはこれだけが出る）
+  devToggle: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.5)",
+    backgroundColor: "rgba(0,0,0,0.55)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  devToggleText: { color: "#ffffff" },
+  // 開いたときの項目。入口の丸に左を揃える
+  devList: { alignItems: "flex-start", gap: Spacing.two },
   devButton: {
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.5)",

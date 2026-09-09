@@ -11,12 +11,51 @@
 // notification-message.ts・event-notice.ts・study-notice.ts に委ねる。
 // ここはOSとのやり取りだけを担う。DBを読んで内容を組み立てる調整は notification-sync.ts が行う。
 
-import * as Notifications from "expo-notifications";
 import { Platform } from "react-native";
 import { getDevOffsetMs } from "./clock";
 import type { EventNotice } from "./event-notice";
 import { buildNotificationContent } from "./notification-message";
 import type { StudyNotice } from "./study-notice";
+
+type NotificationsModule = typeof import("expo-notifications");
+
+/**
+ * expo-notifications は**遅延して読み込み、失敗しても握る**。
+ *
+ * Android版 Expo Go は SDK 53 でプッシュ通知（リモート通知）を落としており、
+ * `expo-notifications` を読み込むと内部の PushTokenManager が
+ * `requireNativeModule('ExpoPushTokenManager')` で例外を投げる。
+ * **本アプリはローカル通知しか使わない**が、静的 import だとこの巻き添えで
+ * モジュールの読み込み自体が失敗し、アプリ全体が起動できなくなる
+ * （iOS は警告で済むため、Android だけで起きる）。
+ *
+ * 通知は要件12章の機能であって**起動の前提条件ではない**ため、読めない環境では
+ * 通知だけを無効にしてアプリは動かす。development build では通常どおり読める。
+ */
+let notificationsModule: NotificationsModule | null = null;
+let loadAttempted = false;
+
+function getNotifications(): NotificationsModule | null {
+  if (loadAttempted) return notificationsModule;
+  loadAttempted = true;
+  try {
+    // 静的 import は読み込み時に評価されてしまうため、ここで require する
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    notificationsModule = require("expo-notifications") as NotificationsModule;
+  } catch (e) {
+    console.warn(
+      "通知モジュールを読み込めませんでした。通知は無効のまま動作します" +
+        "（Android版 Expo Go の制限。development build では利用できます）",
+      e,
+    );
+  }
+  return notificationsModule;
+}
+
+/** 通知機能が使える環境か（使えないときの案内を画面側で出したい場合に使う） */
+export function isNotificationAvailable(): boolean {
+  return getNotifications() !== null;
+}
 
 /**
  * 通知の種別（content.data に載せる）。フォアグラウンド時に出すかどうかの判定に使う。
@@ -55,34 +94,44 @@ let channelReady: Promise<void> | null = null;
 
 function ensureStudyNoticeChannel(): Promise<void> {
   if (Platform.OS !== "android") return Promise.resolve();
+  const N = getNotifications();
+  if (!N) return Promise.resolve();
   if (!channelReady) {
-    channelReady = Notifications.setNotificationChannelAsync(
-      STUDY_NOTICE_CHANNEL_ID,
-      {
-        name: "学習中のお知らせ",
-        // 休憩の始まり・終わりに気づくための通知のため、音の鳴る重要度にする
-        importance: Notifications.AndroidImportance.HIGH,
-      },
-    ).then(() => undefined);
+    channelReady = N.setNotificationChannelAsync(STUDY_NOTICE_CHANNEL_ID, {
+      name: "学習中のお知らせ",
+      // 休憩の始まり・終わりに気づくための通知のため、音の鳴る重要度にする
+      importance: N.AndroidImportance.HIGH,
+    }).then(() => undefined);
   }
   return channelReady;
 }
 
-// 通知の表示方法。ハンドラが呼ばれるのはアプリがフォアグラウンドにあるときだけなので、
-// 学習中のお知らせはここで表示を落とせば「バックグラウンド中のみ通知」になる（UC 12.2）。
-// 音は鳴らさない（アプリ内の静けさを保つ）。モジュール読み込み時に一度だけ設定する
-Notifications.setNotificationHandler({
-  handleNotification: async (notification) => {
-    const show =
-      notification.request.content.data?.kind !== STUDY_NOTICE_KIND;
-    return {
-      shouldShowBanner: show,
-      shouldShowList: show,
-      shouldPlaySound: false,
-      shouldSetBadge: false,
-    };
-  },
-});
+/** 表示方法の設定は一度だけ行う（モジュール読み込み時ではなく、最初に通知を使うとき） */
+let handlerReady = false;
+
+/**
+ * 通知の表示方法を設定する。ハンドラが呼ばれるのはアプリがフォアグラウンドにあるときだけなので、
+ * 学習中のお知らせはここで表示を落とせば「バックグラウンド中のみ通知」になる（UC 12.2）。
+ * 音は鳴らさない（アプリ内の静けさを保つ）。
+ *
+ * 以前はモジュール直下で実行していたが、読み込みを遅延させたためここへ移した。
+ */
+function ensureNotificationHandler(N: NotificationsModule): void {
+  if (handlerReady) return;
+  handlerReady = true;
+  N.setNotificationHandler({
+    handleNotification: async (notification) => {
+      const show =
+        notification.request.content.data?.kind !== STUDY_NOTICE_KIND;
+      return {
+        shouldShowBanner: show,
+        shouldShowList: show,
+        shouldPlaySound: false,
+        shouldSetBadge: false,
+      };
+    },
+  });
+}
 
 /**
  * 通知許可を確保する（要件12章）。
@@ -95,7 +144,12 @@ Notifications.setNotificationHandler({
  * @returns 許可されていれば true。拒否・要求不可なら false
  */
 export async function ensureNotificationPermission(): Promise<boolean> {
-  const current = await Notifications.getPermissionsAsync();
+  const N = getNotifications();
+  // 通知モジュールが無い環境（Android版 Expo Go）では許可の取りようがない
+  if (!N) return false;
+  ensureNotificationHandler(N);
+
+  const current = await N.getPermissionsAsync();
   if (current.granted) return true;
 
   if (!current.canAskAgain) {
@@ -107,7 +161,7 @@ export async function ensureNotificationPermission(): Promise<boolean> {
     return false;
   }
 
-  const requested = await Notifications.requestPermissionsAsync();
+  const requested = await N.requestPermissionsAsync();
   if (!requested.granted) {
     console.warn("通知許可: 要求しましたが許可されませんでした", {
       status: requested.status,
@@ -134,15 +188,20 @@ export async function applyNotificationSchedule({
   eventNotices: EventNotice[];
   studyNotices?: StudyNotice[];
 }): Promise<void> {
-  await Notifications.cancelAllScheduledNotificationsAsync();
+  const N = getNotifications();
+  // 通知が使えない環境では何もしない（呼び出し側は結果を見ないため、静かに抜ける）
+  if (!N) return;
+  ensureNotificationHandler(N);
+
+  await N.cancelAllScheduledNotificationsAsync();
 
   if (reminderTime) {
     const [hour, minute] = reminderTime.split(":").map(Number);
     const content = buildNotificationContent(reminderTime);
-    await Notifications.scheduleNotificationAsync({
+    await N.scheduleNotificationAsync({
       content: { title: content.title, body: content.body },
       trigger: {
-        type: Notifications.SchedulableTriggerInputTypes.DAILY,
+        type: N.SchedulableTriggerInputTypes.DAILY,
         hour,
         minute,
       },
@@ -150,10 +209,10 @@ export async function applyNotificationSchedule({
   }
 
   for (const n of eventNotices) {
-    await Notifications.scheduleNotificationAsync({
+    await N.scheduleNotificationAsync({
       content: { title: n.title, body: n.body },
       trigger: {
-        type: Notifications.SchedulableTriggerInputTypes.DATE,
+        type: N.SchedulableTriggerInputTypes.DATE,
         // 予定の発火時刻もアプリ内時刻（clock.ts）で組み立てているため、
         // 学習中のお知らせと同じく実時間へ直す（本番は常に恒等）
         date: toRealTime(n.fireAt),
@@ -163,7 +222,7 @@ export async function applyNotificationSchedule({
 
   if (studyNotices.length > 0) await ensureStudyNoticeChannel();
   for (const n of studyNotices) {
-    await Notifications.scheduleNotificationAsync({
+    await N.scheduleNotificationAsync({
       content: {
         title: n.title,
         body: n.body,
@@ -174,7 +233,7 @@ export async function applyNotificationSchedule({
         data: { kind: STUDY_NOTICE_KIND },
       },
       trigger: {
-        type: Notifications.SchedulableTriggerInputTypes.DATE,
+        type: N.SchedulableTriggerInputTypes.DATE,
         // 出来事の時刻はアプリ内時刻で算出されるため、実時間へ直してからOSへ渡す
         date: toRealTime(n.fireAt),
         channelId: STUDY_NOTICE_CHANNEL_ID, // Android 8以降は音がチャンネル単位のため
@@ -203,15 +262,18 @@ export async function scheduleTestNotification(seconds = 10): Promise<void> {
   console.log(`テスト通知: 許可=${granted} / ${seconds}秒後に予約します`);
   if (!granted) return;
 
+  const N = getNotifications();
+  if (!N) return;
+
   await ensureStudyNoticeChannel();
-  await Notifications.scheduleNotificationAsync({
+  await N.scheduleNotificationAsync({
     content: {
       title: "テスト通知",
       body: `${seconds}秒後に鳴るよう予約したものです。`,
       sound: "default",
     },
     trigger: {
-      type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
+      type: N.SchedulableTriggerInputTypes.TIME_INTERVAL,
       seconds,
       repeats: false,
       channelId: STUDY_NOTICE_CHANNEL_ID,
@@ -227,8 +289,10 @@ export async function scheduleTestNotification(seconds = 10): Promise<void> {
  * 画面からは区別できない。ここで予約の有無と発火時刻を確認できるようにしておく。
  */
 async function logScheduledNotifications(): Promise<void> {
+  const N = getNotifications();
+  if (!N) return;
   try {
-    const scheduled = await Notifications.getAllScheduledNotificationsAsync();
+    const scheduled = await N.getAllScheduledNotificationsAsync();
     console.log(
       `通知の予約: ${scheduled.length}件`,
       scheduled.map((s) => ({

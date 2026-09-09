@@ -6,8 +6,8 @@ import {
   ActivityIndicator,
   Alert,
   Animated,
+  FlatList,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   View,
@@ -27,12 +27,12 @@ import type {
   LibraryTrack,
   PlaylistItem,
 } from "@/db/repositories/playlistRepo";
-import type { AmbientSound, BgmSource } from "@/db/types";
+import type { AmbientSound, BgmGenreFilter, BgmSource } from "@/db/types";
 import { validatePlaylistName } from "@/lib/validation";
 
 // 音楽プレイリスト画面（要件9・音楽プレイリスト）。ミニプレイヤーの曲名タップで開く。
 //
-// 上部で再生ソース（すべて/お気に入り/マイプレイリスト）・シャッフル・1曲リピートを選び、
+// 上部で再生ソース（すべて/お気に入り/マイプレイリスト）・ジャンル・シャッフル・1曲リピートを選び、
 // 再生ボタンで流す。再生中は現在再生中バー（シークバー＋残り時間）を出す。曲タップでその曲を再生。
 // 各曲の「…」メニューからお気に入り・プレイリストに追加・クレジット表示を行う。
 // マイプレイリストは「編集」でドラッグ並び替えと複数選択＋ゴミ箱の削除ができる。名前も編集できる。
@@ -42,6 +42,15 @@ const SOURCES: { value: BgmSource; label: string }[] = [
   { value: "all", label: "すべて" },
   { value: "favorites", label: "お気に入り" },
   { value: "playlist", label: "マイプレイリスト" },
+];
+
+// ジャンル（要件9・改訂55）。「すべて」のときだけ出す絞り込みで、既定は「しずかな夜」。
+// お気に入り・マイプレイリストはユーザーが自分で入れた曲なので絞り込まない
+const GENRES: { value: BgmGenreFilter; label: string }[] = [
+  { value: "all", label: "すべて" },
+  { value: "calm", label: "しずかな夜" },
+  { value: "city", label: "夜の街" },
+  { value: "classic", label: "クラシック" },
 ];
 
 const DANGER = "rgba(255,120,120,0.95)";
@@ -154,14 +163,29 @@ export default function PlaylistScreen() {
     setDragData(playlistItems);
   }, [playlistItems]);
 
+  // 再生中の曲だけを見る（bgmTrack のオブジェクトごと見ると、同じ曲でも
+  // 参照が変わるたびに一覧全体を作り直すことになる）
+  const playingTrackId = audio.bgmTrack?.id ?? null;
   const isPlaylist = audio.bgmSource === "playlist";
-  // すべて/お気に入りタブの一覧（マイプレイリストは playlistItems を別に描く）
-  const shownLibrary = audio.bgmSource === "favorites" ? favorites : library;
+  // すべて/お気に入りタブの一覧（マイプレイリストは playlistItems を別に描く）。
+  //
+  // 絞り込みは手元の配列で行う（DBを引き直さない）。タブやジャンルを切り替えるたびに
+  // 読み直すと、その都度クエリと一覧の作り直しが走って切替が重くなるため。
+  // ジャンルは「すべて」のときだけ効かせる（要件9）
+  const shownLibrary = useMemo(() => {
+    if (audio.bgmSource === "favorites") return favorites;
+    if (audio.bgmGenre === "all") return library;
+    return library.filter((l) => l.track.genre === audio.bgmGenre);
+  }, [audio.bgmSource, audio.bgmGenre, favorites, library]);
 
   function selectSource(value: BgmSource) {
     setEditing(false);
     setSelectedIds([]);
     void audio.setBgmSource(value);
+  }
+
+  function selectGenre(value: BgmGenreFilter) {
+    void audio.setBgmGenre(value);
   }
 
   async function toggleFavorite(target: MenuTarget) {
@@ -339,6 +363,31 @@ export default function PlaylistScreen() {
         })}
       </View>
 
+      {/* ジャンル（要件9）。「すべて」のときだけ出す。お気に入り・マイプレイリストは
+          ユーザーが自分で入れた曲なので絞り込まない */}
+      {audio.bgmSource === "all" && (
+        <View style={styles.genreRow}>
+          {GENRES.map((g) => {
+            const active = audio.bgmGenre === g.value;
+            return (
+              <Pressable
+                key={g.value}
+                onPress={() => selectGenre(g.value)}
+                style={[styles.genreChip, active && styles.genreChipActive]}
+                accessibilityState={{ selected: active }}
+              >
+                <Text
+                  style={[styles.genreText, active && styles.genreTextActive]}
+                  numberOfLines={1}
+                >
+                  {g.label}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      )}
+
       {/* 現在再生中バー（シークバー＋残り時間）。進捗の頻繁な更新を閉じ込めるため別コンポーネント */}
       <NowPlayingBar />
 
@@ -426,60 +475,43 @@ export default function PlaylistScreen() {
           contentContainerStyle={styles.list}
         />
       ) : (
-        <ScrollView
-          contentContainerStyle={styles.list}
-          keyboardShouldPersistTaps="handled"
-        >
-          {isPlaylist ? (
-            playlistItems.length === 0 ? (
-              <View style={styles.empty}>
-                <Text style={styles.emptyText}>
-                  「すべて」の一覧から … の「追加」でプレイリストに入れてください
-                </Text>
-              </View>
-            ) : (
-              playlistItems.map((item) => (
-                <TrackRow
-                  key={item.entryId}
-                  track={item.track}
-                  playing={audio.bgmTrack?.id === item.track.id}
-                  onPlay={() => audio.playTrack(item.track.id)}
-                  onOpenMenu={() =>
-                    openMenu({
-                      track: item.track,
-                      isFavorite: item.isFavorite,
-                      inPlaylist: true,
-                    })
-                  }
-                />
-              ))
-            )
-          ) : shownLibrary.length === 0 ? (
+        // 曲が100曲を超えるため、一覧は FlatList で見えているぶんだけ描く
+        // （ScrollView + map だと全曲ぶんの行を最初に作ることになり、画面を開く操作と
+        //   曲の切り替えが目に見えて重くなる）
+        <FlatList<LibraryTrack | PlaylistItem>
+          data={isPlaylist ? playlistItems : shownLibrary}
+          keyExtractor={(item) =>
+            "entryId" in item ? String(item.entryId) : String(item.track.id)
+          }
+          renderItem={({ item }) => (
+            <TrackRow
+              track={item.track}
+              playing={playingTrackId === item.track.id}
+              onPlay={() => audio.playTrack(item.track.id)}
+              onOpenMenu={() =>
+                openMenu({
+                  track: item.track,
+                  isFavorite: item.isFavorite,
+                  inPlaylist: "entryId" in item ? true : item.inPlaylist,
+                })
+              }
+            />
+          )}
+          ListEmptyComponent={
             <View style={styles.empty}>
               <Text style={styles.emptyText}>
-                {audio.bgmSource === "favorites"
-                  ? "★を付けた曲がここに集まります"
-                  : "登録された曲がありません"}
+                {isPlaylist
+                  ? "「すべて」の一覧から … の「追加」でプレイリストに入れてください"
+                  : audio.bgmSource === "favorites"
+                    ? "★を付けた曲がここに集まります"
+                    : "登録された曲がありません"}
               </Text>
             </View>
-          ) : (
-            shownLibrary.map((item) => (
-              <TrackRow
-                key={item.track.id}
-                track={item.track}
-                playing={audio.bgmTrack?.id === item.track.id}
-                onPlay={() => audio.playTrack(item.track.id)}
-                onOpenMenu={() =>
-                  openMenu({
-                    track: item.track,
-                    isFavorite: item.isFavorite,
-                    inPlaylist: item.inPlaylist,
-                  })
-                }
-              />
-            ))
-          )}
-        </ScrollView>
+          }
+          style={styles.listFlex}
+          contentContainerStyle={styles.list}
+          keyboardShouldPersistTaps="handled"
+        />
       )}
 
       {/* 曲の「…」メニュー（追加・お気に入り・クレジット）。背景1タップで閉じる。
@@ -749,6 +781,28 @@ const styles = StyleSheet.create({
   },
   segText: { color: "rgba(255,255,255,0.6)", fontSize: 12 },
   segTextActive: { color: LightColor, fontWeight: "600" },
+  // ジャンル（要件9）。ソースのタブより控えめな見た目にして、主従を分かるようにする
+  genreRow: {
+    flexDirection: "row",
+    justifyContent: "center",
+    flexWrap: "wrap",
+    gap: Spacing.two,
+    marginTop: Spacing.three,
+    marginHorizontal: Spacing.four,
+  },
+  genreChip: {
+    paddingVertical: Spacing.one,
+    paddingHorizontal: Spacing.three,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.14)",
+  },
+  genreChipActive: {
+    borderColor: LightColor,
+    backgroundColor: "rgba(18,26,46,0.9)",
+  },
+  genreText: { color: "rgba(255,255,255,0.55)", fontSize: 11 },
+  genreTextActive: { color: LightColor, fontWeight: "600" },
   nowPlaying: {
     flexDirection: "row",
     alignItems: "center",

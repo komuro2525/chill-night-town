@@ -16,14 +16,20 @@ import { useLoopVideoPlayer } from "@/hooks/use-loop-video";
 // ときとおやすみの暗転後は、背景と同じく再生しない（呼び出し側が enabled を落とす）。
 export function WeatherOverlay({
   weatherCode,
+  studyDate,
   enabled,
 }: {
   /** その学習日に選択された天気（night_weather.code）。未選択は null */
   weatherCode: string | null | undefined;
+  /**
+   * 表示中の学習日（YYYY-MM-DD）。同じ天気に降り方の違う素材が複数あるとき、
+   * どれを流すかの抽選に使う（同じ夜のあいだは切り替わらない）
+   */
+  studyDate: string;
   /** 演出を出すか（背景を動かす設定・おやすみの暗転に追従する） */
   enabled: boolean;
 }) {
-  const effect = enabled ? getWeatherEffect(weatherCode) : undefined;
+  const effect = enabled ? getWeatherEffect(weatherCode, studyDate) : undefined;
   if (!effect) return null;
   return <WeatherVideo source={effect.source} opacity={effect.opacity} />;
 }

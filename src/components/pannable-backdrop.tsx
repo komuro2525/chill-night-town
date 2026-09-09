@@ -1,5 +1,5 @@
-import type { ReactNode } from "react";
-import { useWindowDimensions } from "react-native";
+import { useState, type ReactNode } from "react";
+import { StyleSheet, View } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Animated, {
   useAnimatedStyle,
@@ -27,7 +27,16 @@ export function PannableBackdrop({
   onTap?: () => void;
   children: ReactNode;
 }) {
-  const { width: winW, height: winH } = useWindowDimensions();
+  // 覆う対象は**自分が実際に置かれた領域**で、useWindowDimensions は使わない。
+  //
+  // 端末を回すと useWindowDimensions の更新が実際のレイアウトより遅れることがあり、
+  // その一瞬だけ「縦向きのサイズで横向きの画面に描く」状態になる。ここは幅・高さを
+  // 明示指定するため、ずれると画像が画面からはみ出して**拡大されて一部しか見えない**
+  // 見え方になる（寸法が追いつくと直るため「一瞬だけ拡大される」症状になっていた）。
+  // onLayout で測れば描画と寸法が必ず同じ値になり、ずれようがない。
+  const [box, setBox] = useState({ width: 0, height: 0 });
+  const winW = box.width;
+  const winH = box.height;
 
   // 画面を必ず覆う倍率（縦横比の大きい方に合わせる）
   const coverScale = Math.max(winW / intrinsicWidth, winH / intrinsicHeight);
@@ -81,21 +90,38 @@ export function PannableBackdrop({
   }));
 
   return (
-    <GestureDetector gesture={gesture}>
-      <Animated.View
-        style={[
-          {
-            position: "absolute",
-            width: dispW,
-            height: dispH,
-            left: (winW - dispW) / 2,
-            top: (winH - dispH) / 2,
-          },
-          animatedStyle,
-        ]}
-      >
-        {children}
-      </Animated.View>
-    </GestureDetector>
+    // 覆う対象の枠。ここを測った値だけを使って中身を敷く
+    <View
+      style={StyleSheet.absoluteFill}
+      onLayout={(e) => {
+        const { width, height } = e.nativeEvent.layout;
+        // 同じ値での再設定は描き直しを増やすだけなので弾く
+        setBox((prev) =>
+          prev.width === width && prev.height === height
+            ? prev
+            : { width, height },
+        );
+      }}
+    >
+      {/* 測る前（初回の1フレーム）は敷かない。0サイズで一瞬潰れて見えるのを避ける */}
+      {winW > 0 && winH > 0 ? (
+        <GestureDetector gesture={gesture}>
+          <Animated.View
+            style={[
+              {
+                position: "absolute",
+                width: dispW,
+                height: dispH,
+                left: (winW - dispW) / 2,
+                top: (winH - dispH) / 2,
+              },
+              animatedStyle,
+            ]}
+          >
+            {children}
+          </Animated.View>
+        </GestureDetector>
+      ) : null}
+    </View>
   );
 }

@@ -16,6 +16,10 @@ const SEED_SQL_MODULE = require("../../db/chill_night_town_シードデータ.sq
 // 生成物であり、文面の正は docs/NPCセリフ集.md（npm run npc:seed で再生成する）。
 // eslint-disable-next-line @typescript-eslint/no-require-imports -- 同上
 const SEED_NPC_MODULE = require("../../db/seed_npc.sql") as number;
+// BGM音源マスタ。新規初期化と既存DBのデルタの両方から exec して、曲目録を単一の出所にする
+// （冪等：code で衝突したら曲名・アーティスト・パスを上書きする）。
+// eslint-disable-next-line @typescript-eslint/no-require-imports -- 同上
+const SEED_BGM_MODULE = require("../../db/seed_bgm.sql") as number;
 
 /**
  * シードSQLはファイル自身が `BEGIN TRANSACTION; ... COMMIT;` で囲まれている。
@@ -40,7 +44,7 @@ type Migration = {
 // **必ず DELTA_MIGRATIONS の最後の version と一致させること。** 小さいままだと、新規
 // インストールは「最新形のスキーマ＋古い user_version」で始まり、次の起動で適用済みの
 // 差分がもう一度流れて落ちる（ADD COLUMN が duplicate column で失敗する）。
-const SCHEMA_VERSION = 33;
+const SCHEMA_VERSION = 35;
 
 // 既存DB（過去バージョン）向けの差分マイグレーション（version >= 2）。
 // 新規インストールはスキーマSQL（=最新）を適用して一気に SCHEMA_VERSION まで上がるため、
@@ -716,6 +720,43 @@ const DELTA_MIGRATIONS: Migration[] = [
       );
     },
   },
+  {
+    version: 34,
+    up: async () => {
+      // 何もしない。
+      //
+      // 元々ここでBGMの曲目録（db/seed_bgm.sql）を流して79曲にしていたが、v35 で
+      // ambient_sound に genre 列が増え、seed_bgm.sql も genre を含む形になった。
+      // v33 のDBに対しては「列がまだ無いのに genre へ INSERT する」ことになり落ちるため、
+      // 投入は列を足したあとの v35 に一本化し、この版は空にした（v34 まで進んでいる端末は
+      // 79曲を持っているが、v35 で同じファイルを流し直すので結果は同じになる）。
+    },
+  },
+  {
+    version: 35,
+    up: async (db) => {
+      // BGMのジャンル（要件9・改訂55）。曲側の属性と、ユーザーが選んでいる絞り込みを別々に持つ。
+      //   ・ambient_sound.genre  … 曲のジャンル（BGMは必ず持ち、環境音はNULL）
+      //   ・audio_setting.bgm_genre … 「すべて」で流すジャンル。既定 'calm'＝しずかな夜
+      //     （静かな曲だけが最初から流れる状態を既定にする。お気に入り・マイプレイリストには効かせない）
+      await db.execAsync(
+        "ALTER TABLE ambient_sound ADD COLUMN genre TEXT CHECK (genre IS NULL OR genre IN ('calm', 'city', 'classic'))",
+      );
+      await db.execAsync(
+        "ALTER TABLE audio_setting ADD COLUMN bgm_genre TEXT NOT NULL DEFAULT 'calm' CHECK (bgm_genre IN ('all', 'calm', 'city', 'classic'))",
+      );
+
+      // modus「Melty Night」は しんさんわーくす「ナイトシフト」と1バイトも違わない同一ファイルだった
+      // （配布元からの取得時に別名で保存されたものと見られる）。同じ音が2曲として並び、
+      // 片方のクレジットが誤りになるため、ナイトシフトを残して削除する。
+      // お気に入り・プレイリストの行は ON DELETE CASCADE で一緒に消える。
+      await db.runAsync("DELETE FROM ambient_sound WHERE code = ?", "bgm_modus_01");
+
+      // 曲目録（109曲・ジャンル入り）。冪等なので、v34 まで進んでいた端末にも同じ結果になる
+      const bgmSql = await loadSqlAsset(SEED_BGM_MODULE);
+      await db.execAsync(stripOuterTransaction(bgmSql));
+    },
+  },
 ];
 
 /** 現在の DB バージョンを取得する（未設定なら0） */
@@ -728,17 +769,20 @@ async function getUserVersion(db: SQLiteDatabase): Promise<number> {
 
 /** 新規DBへ最新スキーマ＋シードを適用し、SCHEMA_VERSION まで一気に上げる */
 async function initializeFreshDatabase(db: SQLiteDatabase): Promise<void> {
-  const [schemaSql, seedSql, npcSql] = await Promise.all([
+  const [schemaSql, seedSql, npcSql, bgmSql] = await Promise.all([
     loadSqlAsset(SCHEMA_SQL_MODULE),
     loadSqlAsset(SEED_SQL_MODULE),
     loadSqlAsset(SEED_NPC_MODULE),
+    loadSqlAsset(SEED_BGM_MODULE),
   ]);
   await db.withTransactionAsync(async () => {
-    // スキーマ（DDL・トリガー）→ シード（マスタ投入）→ 住人 の順に適用する
+    // スキーマ（DDL・トリガー）→ シード（マスタ投入）→ 住人 → BGM の順に適用する
     await db.execAsync(schemaSql);
     await db.execAsync(stripOuterTransaction(seedSql));
     // 住人（NPC）の街・紹介文・メッセージ。本体シードで town / emotion / npc(1) が入った後に流す
     await db.execAsync(stripOuterTransaction(npcSql));
+    // BGM音源マスタ（79曲）。ambient_sound テーブルがあれば流せる
+    await db.execAsync(stripOuterTransaction(bgmSql));
     // PRAGMA はプレースホルダを使えないため整数リテラルを埋め込む（内部定義値で安全）
     await db.execAsync(`PRAGMA user_version = ${SCHEMA_VERSION}`);
   });

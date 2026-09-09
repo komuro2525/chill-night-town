@@ -11,7 +11,10 @@ import { ThemedView } from "@/components/themed-view";
 import { Spacing } from "@/constants/theme";
 import { useSettings } from "@/contexts/SettingsContext";
 import { settingsRepo } from "@/db/repositories";
-import { ensureNotificationPermission } from "@/lib/notifications";
+import {
+  ensureNotificationPermission,
+  isNotificationAvailable,
+} from "@/lib/notifications";
 import { refreshNotifications } from "@/lib/notification-sync";
 import { validateNotificationTime } from "@/lib/validation";
 
@@ -30,6 +33,16 @@ const DEFAULT_NOTIFICATION_TIME = "21:00";
  * @param what 許可されると何ができるかの説明（通知の種類ごとに変わる）
  */
 function alertNotificationDenied(what: string) {
+  // 通知モジュール自体が使えない環境（Android版 Expo Go）では、OSの設定を開いても
+  // 何も変わらない。許可の問題と混同させないよう、案内を分ける
+  if (!isNotificationAvailable()) {
+    Alert.alert(
+      "この環境では通知を使えません",
+      "Expo Go では通知の仕組みを利用できないため、お知らせは届きません。ビルドしたアプリでは利用できます。",
+      [{ text: "閉じる", style: "cancel" }],
+    );
+    return;
+  }
   Alert.alert(
     "通知が許可されていません",
     `端末の設定から Chill Night Town の通知を許可すると、${what}。`,

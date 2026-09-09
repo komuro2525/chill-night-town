@@ -11,19 +11,31 @@ describe("selectAmbientCode（夜の天気→環境音コード）", () => {
     expect(selectAmbientCode("rainy_night")).toBe("amb_rain");
   });
 
-  test("嵐の夜も雨の環境音（雨の音を流す）", () => {
-    expect(selectAmbientCode("stormy_night")).toBe("amb_rain");
+  // 嵐は映像側で雷を使わないと決めたぶん、雷らしさを音で出す。
+  // 雨の環境音（amb_rain）と取り違えると嵐が雨と区別できなくなる
+  test("嵐の夜は雷入りの雨（雨だけの環境音ではない）", () => {
+    expect(selectAmbientCode("stormy_night")).toBe("amb_thunder_rain");
   });
 
   test("霧の夜は夜風の環境音", () => {
     expect(selectAmbientCode("foggy_night")).toBe("amb_wind");
   });
 
+  test("闇夜・雲間の夜も夜風の環境音", () => {
+    expect(selectAmbientCode("dark_night")).toBe("amb_wind");
+    expect(selectAmbientCode("cloudy_night")).toBe("amb_wind");
+  });
+
+  test("満月の夜は虫の音", () => {
+    expect(selectAmbientCode("full_moon_night")).toBe("amb_insect");
+  });
+
   test("対応する素材の無い天気は null（＝鳴らさない・ニュートラルな夜）", () => {
-    // 素材が仮の2種のみのため、多くの天気はまだ無音（要件9: 未対応はニュートラル）
+    // 音を当てない夜をあえて残している（音の有無そのものが天気の選びがいになる）
     expect(selectAmbientCode("starry_night")).toBeNull();
-    expect(selectAmbientCode("full_moon_night")).toBeNull();
+    expect(selectAmbientCode("moonlight_night")).toBeNull();
     expect(selectAmbientCode("snowy_night")).toBeNull();
+    expect(selectAmbientCode("silent_night")).toBeNull();
     expect(selectAmbientCode("fireworks_night")).toBeNull();
   });
 

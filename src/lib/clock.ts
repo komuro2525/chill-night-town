@@ -42,7 +42,10 @@ const tickers = new Map<
   { id: ReturnType<typeof setInterval>; subscribers: Set<(ms: number) => void> }
 >();
 
-function subscribeTick(intervalMs: number, onTick: (ms: number) => void): () => void {
+function subscribeTick(
+  intervalMs: number,
+  onTick: (ms: number) => void,
+): () => void {
   let ticker = tickers.get(intervalMs);
   if (!ticker) {
     const subscribers = new Set<(ms: number) => void>();
@@ -111,16 +114,19 @@ export function isDevTimeOverridden(): boolean {
 }
 
 /**
- * 今日の指定時刻（hour:00:00）へ時刻を合わせる。null で実時間へ戻す。
+ * 今日の指定時刻（0時からの分）へ時刻を合わせる。null で実時間へ戻す。
  * オフセットは実時間との差として保持するため、合わせた後も時刻は自然に進む。
+ *
+ * 分単位で受けるのは、背景の時間帯の境界が 4:45 のように分を持つため
+ * （lib/background-schedule.ts の getTimeOfDayStartMinutes と組で使う）。
  */
-export function setDevTimeToHour(hour: number | null): void {
+export function setDevTimeToMinutes(minutes: number | null): void {
   if (!__DEV__) return;
-  if (hour === null) {
+  if (minutes === null) {
     devOffsetMs = 0;
   } else {
     const target = new Date();
-    target.setHours(hour, 0, 0, 0);
+    target.setHours(Math.floor(minutes / 60), minutes % 60, 0, 0);
     devOffsetMs = target.getTime() - Date.now();
   }
   emitChange();

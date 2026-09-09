@@ -1,13 +1,7 @@
-import {
-  DarkTheme,
-  DefaultTheme,
-  Stack,
-  ThemeProvider,
-  useRouter,
-} from "expo-router";
+import { DarkTheme, Stack, ThemeProvider, useRouter } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
+import { StatusBar } from "expo-status-bar";
 import { useEffect } from "react";
-import { useColorScheme } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
@@ -22,8 +16,6 @@ import { refreshNotifications } from "@/lib/notification-sync";
 SplashScreen.preventAutoHideAsync();
 
 export default function RootLayout() {
-  const colorScheme = useColorScheme();
-
   // 画面の向きはホーム画面が一元管理する（要件2.4: 横画面対応はホームのみ）。
   // ホームは常にマウントされている根の画面で、フォーカス/離脱に応じて縦固定⇄回転許可を
   // 切り替え、離脱時（他画面・アンマウント）は縦へ戻す（src/app/index.tsx）。
@@ -31,7 +23,13 @@ export default function RootLayout() {
     // 全画面でジェスチャ（ホームの街探索スワイプ等）を有効にするためルートに配置する
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
-        <ThemeProvider value={colorScheme === "dark" ? DarkTheme : DefaultTheme}>
+        {/* 配色は常に dark 固定。OSのライト設定に追従すると地の色が白へ寄り、
+            夜空と灯りでできた画面が判別しづらくなる（詳細は hooks/use-theme.ts） */}
+        <ThemeProvider value={DarkTheme}>
+          {/* 配色をdark固定にしたので、ステータスバーの文字も明色で固定する。
+              既定（auto）はOSの設定を見るため、OSがライトだと暗い文字が
+              暗い画面に乗って読めなくなる。ホームは別途 hidden にしている */}
+          <StatusBar style="light" />
           <SettingsProvider>
             <AudioProvider>
               <TimerProvider>

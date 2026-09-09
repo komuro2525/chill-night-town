@@ -14,10 +14,13 @@ import { dirname, join } from "node:path";
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const schema = readFileSync(join(ROOT, "db", "chill_night_town_スキーマ_v2.sql"), "utf8");
 const seed = readFileSync(join(ROOT, "db", "chill_night_town_シードデータ.sql"), "utf8");
+// BGMの曲目録は本体シードから分かれている（新規初期化と同じ順で流す）
+const bgmSeed = readFileSync(join(ROOT, "db", "seed_bgm.sql"), "utf8");
 
 const db = new DatabaseSync(":memory:");
 db.exec(schema);
 db.exec(seed);
+db.exec(bgmSeed);
 
 let failures = 0;
 const check = (name, cond) => {
@@ -48,10 +51,10 @@ try { run("UPDATE audio_setting SET bgm_source = 'bad'"); } catch { sourceCheck 
 check("bgm_source の CHECK で不正値を弾く", sourceCheck);
 
 console.log("B. お気に入り（user_sound_preference）とプレイリスト（playlist_entry・重複可）");
-// BGM曲を3曲用意（シードは2曲。1曲足す）
+// BGM曲（シードの109曲に1曲足して110曲。以降は先頭3曲だけを使う）
 run("INSERT INTO ambient_sound (code, sound_type, name) VALUES ('bgm_x', 'bgm', 'X')");
 const bgm = all("SELECT id FROM ambient_sound WHERE sound_type='bgm' ORDER BY id").map((r) => r.id);
-check("BGM曲が3曲ある", bgm.length === 3);
+check("BGM曲が110曲ある", bgm.length === 110);
 
 // お気に入り（setFavorite 相当）
 run(

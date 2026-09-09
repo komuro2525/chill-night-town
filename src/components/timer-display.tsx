@@ -152,7 +152,11 @@ export function TimerDisplay({
                 </Text>
               </>
             ) : (
-              <Text style={styles.phase}>{isPaused ? "一時停止中" : "学習中"}</Text>
+              // 黙々モードにはフェーズが無いが、ラベルは計測中インジケータ
+              // （measuring-indicator.tsx）と同じ「作業中」で揃える
+              <Text style={styles.phase}>
+                {isPaused ? "一時停止中" : "作業中"}
+              </Text>
             )}
 
             {/* 休憩中は実績学習時間が増えない（要件0章）ため、数字が止まって見える。

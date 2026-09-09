@@ -1,6 +1,11 @@
 import { Image } from "expo-image";
 import { useState } from "react";
-import { type ImageSourcePropType, Pressable, StyleSheet, View } from "react-native";
+import {
+  type ImageSourcePropType,
+  Pressable,
+  StyleSheet,
+  View,
+} from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { MinimalHomeUI } from "@/components/minimal-home";
@@ -18,8 +23,13 @@ import type { ActiveSession } from "@/db/types";
 //
 // スワイプによる街探索は行わない（全景が収まるためスクロール不要）。
 
-// 背景の当て方。cover=全画面に敷き詰め（上下は切れる／素材は横向きのセーフマージンを想定）。
-// 現行アートは縦向き前提のため、見栄えが悪ければ "contain" に変える
+// 背景の当て方。cover=全画面に敷き詰め（上下は切れる）。
+//
+// 背景素材はすべて約16:9（1672x941・比1.78）で、端末を横にすると画面は約2.16のため、
+// **上下が2割ほど切れる**（例: 844x390 の端末で約18%）。これは要件2.4の
+// 「背景素材は、横向き表示時に見える上下の範囲を考慮した高さで制作すること」に沿った
+// 前提であり、切れること自体は想定どおり。切れる位置に見せたいものが入る場合は、
+// 素材側で余白を持たせるか "contain" に変える（contain は左右に帯が出る）。
 const CONTENT_FIT: "cover" | "contain" = "cover";
 
 export function LandscapeHome({
@@ -27,6 +37,7 @@ export function LandscapeHome({
   video,
   session,
   weatherCode,
+  studyDate,
   effectsEnabled,
   clockHidden,
 }: {
@@ -38,9 +49,11 @@ export function LandscapeHome({
   session: ActiveSession | null;
   /** その学習日に選択された天気（要件8）。未選択は null＝演出なし */
   weatherCode: string | null | undefined;
+  /** 表示中の学習日（YYYY-MM-DD）。天気の素材が複数あるときの抽選に使う */
+  studyDate: string;
   /** 天気の演出を出すか（「背景を動かす」設定・おやすみの暗転に追従する） */
   effectsEnabled: boolean;
-  /** 設定「学習中の時計」（要件10.16）がOFFか。計測中の時計と経過時間を出さない */
+  /** 設定「学習中の時計」（要件10.16）がOFFか。計測中の時計（文字盤）を出さない（実績学習時間は残す） */
   clockHidden: boolean;
 }) {
   const insets = useSafeAreaInsets();
@@ -54,15 +67,27 @@ export function LandscapeHome({
       accessibilityLabel="タップで情報表示を切り替え"
     >
       {video ? (
-        <TownVideoBackdrop video={video} poster={art} contentFit={CONTENT_FIT} />
+        <TownVideoBackdrop
+          video={video}
+          poster={art}
+          contentFit={CONTENT_FIT}
+        />
       ) : art ? (
-        <Image source={art} style={StyleSheet.absoluteFill} contentFit={CONTENT_FIT} />
+        <Image
+          source={art}
+          style={StyleSheet.absoluteFill}
+          contentFit={CONTENT_FIT}
+        />
       ) : (
         <View style={[StyleSheet.absoluteFill, styles.fallback]} />
       )}
 
       {/* 天気の演出（要件8）。街より上・最小情報表示より下に敷く */}
-      <WeatherOverlay weatherCode={weatherCode} enabled={effectsEnabled} />
+      <WeatherOverlay
+        weatherCode={weatherCode}
+        studyDate={studyDate}
+        enabled={effectsEnabled}
+      />
 
       {/* アイドル最小表示と同じUI。横画面は閲覧専用のため時計は非操作（onPressClock を渡さない） */}
       {infoVisible ? (

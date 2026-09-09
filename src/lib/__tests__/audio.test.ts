@@ -123,8 +123,16 @@ describe("nextTrackIndex（曲が終わったら次の曲へ。要件9）", () =
   });
 });
 
-describe("buildBgmQueue（再生ソース×シャッフルでキューを組む・要件9）", () => {
+describe("buildBgmQueue（再生ソース×ジャンル×シャッフルでキューを組む・要件9）", () => {
   const tracks = [{ id: 1 }, { id: 2 }, { id: 3 }, { id: 4 }];
+
+  // ジャンル絞り込みの検証用（要件9・改訂55）。既定は calm＝しずかな夜だけが鳴る
+  const genreTracks = [
+    { id: 1, genre: "calm" as const },
+    { id: 2, genre: "city" as const },
+    { id: 3, genre: "classic" as const },
+    { id: 4, genre: "calm" as const },
+  ];
 
   test("all: 登録曲全部を tracks の順で返す（シャッフルOFF）", () => {
     const q = buildBgmQueue({
@@ -135,6 +143,95 @@ describe("buildBgmQueue（再生ソース×シャッフルでキューを組む�
       shuffle: false,
     });
     expect(q.map((t) => t.id)).toEqual([1, 2, 3, 4]);
+  });
+
+  // --- ジャンル絞り込み（要件9・改訂55）。既定 calm のとき静かな曲だけが鳴ることを固定する。
+  // 「すべて」にだけ効かせるのは、お気に入り・プレイリストはユーザーが自分で入れた曲であり、
+  // 後からジャンルで間引くと「入れたのに鳴らない」が起きるため。
+  test("all: ジャンルを指定すると、そのジャンルの曲だけになる", () => {
+    const q = buildBgmQueue({
+      tracks: genreTracks,
+      favoriteIds: [],
+      playlistOrderedIds: [],
+      source: "all",
+      genre: "calm",
+      shuffle: false,
+    });
+    expect(q.map((t) => t.id)).toEqual([1, 4]);
+  });
+
+  test("all: genre が 'all' なら絞り込まない", () => {
+    const q = buildBgmQueue({
+      tracks: genreTracks,
+      favoriteIds: [],
+      playlistOrderedIds: [],
+      source: "all",
+      genre: "all",
+      shuffle: false,
+    });
+    expect(q.map((t) => t.id)).toEqual([1, 2, 3, 4]);
+  });
+
+  test("all: genre を省略しても絞り込まない（既定は絞り込みなし）", () => {
+    const q = buildBgmQueue({
+      tracks: genreTracks,
+      favoriteIds: [],
+      playlistOrderedIds: [],
+      source: "all",
+      shuffle: false,
+    });
+    expect(q.map((t) => t.id)).toEqual([1, 2, 3, 4]);
+  });
+
+  test("all: そのジャンルの曲が1曲も無ければ空になる（呼び出し側は鳴らさない）", () => {
+    const q = buildBgmQueue({
+      tracks: [{ id: 1, genre: "calm" as const }],
+      favoriteIds: [],
+      playlistOrderedIds: [],
+      source: "all",
+      genre: "classic",
+      shuffle: false,
+    });
+    expect(q).toEqual([]);
+  });
+
+  test("favorites: ジャンルを指定しても★の曲は間引かれない（自分で入れた曲は鳴らす）", () => {
+    const q = buildBgmQueue({
+      tracks: genreTracks,
+      favoriteIds: [2, 3],
+      playlistOrderedIds: [],
+      source: "favorites",
+      genre: "calm",
+      shuffle: false,
+    });
+    expect(q.map((t) => t.id)).toEqual([2, 3]);
+  });
+
+  test("playlist: ジャンルを指定してもプレイリストの並びは変わらない", () => {
+    const q = buildBgmQueue({
+      tracks: genreTracks,
+      favoriteIds: [],
+      playlistOrderedIds: [3, 2],
+      source: "playlist",
+      genre: "calm",
+      shuffle: false,
+    });
+    expect(q.map((t) => t.id)).toEqual([3, 2]);
+  });
+
+  test("ジャンルが未設定（null）の曲は、絞り込み時には出ない", () => {
+    const q = buildBgmQueue({
+      tracks: [
+        { id: 1, genre: "calm" as const },
+        { id: 2, genre: null },
+      ],
+      favoriteIds: [],
+      playlistOrderedIds: [],
+      source: "all",
+      genre: "calm",
+      shuffle: false,
+    });
+    expect(q.map((t) => t.id)).toEqual([1]);
   });
 
   test("favorites: ★の曲だけを tracks の順（安定順）で返す", () => {

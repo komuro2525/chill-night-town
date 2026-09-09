@@ -71,16 +71,25 @@ export function nextTrackIndex(current: number, length: number): number {
 /** BGMの再生ソース（要件9・音楽プレイリスト）。audio_setting.bgm_source に対応 */
 export type BgmSource = "all" | "favorites" | "playlist";
 
-/** キュー生成に使う曲の最小情報（id で所属・並びを判定する） */
-export type QueueTrack = { id: number };
+/**
+ * ジャンルの絞り込み（要件9・改訂55）。audio_setting.bgm_genre に対応。
+ * "all" は絞り込まない。既定は "calm"（しずかな夜）で、賑やかな曲は選んだときだけ鳴る。
+ */
+export type BgmGenreFilter = "all" | "calm" | "city" | "classic";
+
+/** キュー生成に使う曲の最小情報（id で所属・並びを判定し、genre で絞る） */
+export type QueueTrack = { id: number; genre?: string | null };
 
 /**
  * 再生キュー（曲の並び）を作る（要件9・音楽プレイリスト）。純関数。
  *
  * ソースごとに対象を絞ってから、シャッフルなら並べ替える:
- *   ・all       … 登録曲全部（tracks の順）
+ *   ・all       … 登録曲全部（tracks の順）。genre を渡すとそのジャンルだけに絞る
  *   ・favorites … ★お気に入りの曲だけ（tracks の順を保つ＝安定順）
  *   ・playlist  … マイプレイリストに入れた曲を playlistOrderedIds の順に
+ *
+ * ジャンルを all にだけ効かせるのは、お気に入り・マイプレイリストが「ユーザーが自分で
+ * 入れた曲」だからで、後からジャンルで間引くと「入れたのに鳴らない」が起きる（要件9・改訂55）。
  * シャッフルは「一巡するまで同じ曲を出さない」ため、ここでは対象集合を一度だけ
  * 並べ替える（呼び出し側は末尾まで流し切ってから作り直す）。乱数を注入してテスト可能にする。
  *
@@ -91,10 +100,20 @@ export function buildBgmQueue<T extends QueueTrack>(params: {
   favoriteIds: number[];
   playlistOrderedIds: number[];
   source: BgmSource;
+  /** 「すべて」で流すジャンル。省略・"all" なら絞り込まない */
+  genre?: BgmGenreFilter;
   shuffle: boolean;
   random?: () => number;
 }): T[] {
-  const { tracks, favoriteIds, playlistOrderedIds, source, shuffle: doShuffle, random } = params;
+  const {
+    tracks,
+    favoriteIds,
+    playlistOrderedIds,
+    source,
+    genre = "all",
+    shuffle: doShuffle,
+    random,
+  } = params;
 
   let base: T[];
   if (source === "favorites") {
@@ -107,7 +126,7 @@ export function buildBgmQueue<T extends QueueTrack>(params: {
       .map((id) => byId.get(id))
       .filter((t): t is T => t !== undefined);
   } else {
-    base = [...tracks];
+    base = genre === "all" ? [...tracks] : tracks.filter((t) => t.genre === genre);
   }
 
   return doShuffle ? shuffle(base, random) : base;

@@ -6,16 +6,77 @@
 ## 命名・配置
 
 ```
-assets/audio/bell/<townCode>/<townCode>_bell.mp3
+assets/audio/bell/<townCode>/<townCode>_bell_<NN>.mp3
 ```
 
 - `<townCode>`: `nightTown` / `castleTown` / `snowTown` / `starHill`（`town.code` と一致）
-- 例: `assets/audio/bell/castleTown/castleTown_bell.mp3`
+- `<NN>`: テイク番号（`01` から連番）
+- 例: `assets/audio/bell/castleTown/castleTown_bell_01.mp3`
+
+**形式は mp3。** アプリに同梱するのは mp3 のみとし、wav 原本は `鐘/` に残す
+（同じ内容で容量が約1/10。環境音と同じ運用）。
+
+> **いまは暫定で wav を直接参照している**（2026-09-08）。変換前でも鳴らせるようにするため、
+> `TOWN_BELL` が `鐘/` の wav をそのまま指している。**合計 約14MB がアプリに載る**ので、
+> mp3 化したら各街のフォルダへ移し、`src/constants/audioAssets.ts` の require を
+> 差し替えること（約1/10になる）。
+
+## 1街につき複数テイクを持てる
+
+鳴らすたびに、その街のテイクから**1本を無作為に選ぶ**。
+実際の鐘は一打ごとに響きが違うため、同じサンプルが毎回鳴ると機械的に聞こえる。
+
+**変えてよいのは「同じ鐘の別テイク」だけ。** 音色（どの鐘か）は街ごとに固定する。
+音程や長さの違うテイクを混ぜると「夜ごとに鐘が変わった」ように聞こえ、
+夜を締める儀式としての一貫性が崩れる。
+
+**選ぶ本数は2〜4本を目安**にする。実際に聴き比べて、**響きの似たものだけ**を選ぶこと。
+1本だけ置いた場合は常にそれが鳴る（＝従来どおりの固定音）。
+
+## 音色の割り当て
+
+wav 原本は `鐘/` に音色系統ごとのフォルダで置いてある。街との対応は次のとおり。
+
+| 街 | 音色 | 原本フォルダ | イメージ |
+| :--- | :--- | :--- | :--- |
+| nightTown（港町） | 時計台のベル | `鐘/bell_town_clocktower/`（3本） | 澄んだ金属音・長めの余韻 |
+| castleTown（城下町） | 梵鐘 | `鐘/bell_town_bonshou/`（4本） | 低く深い一打・尾を引く |
+| snowTown（雪国） | ハンドベル | `鐘/bell_town_handbell/`（12本） | 手元で鳴らす小さな鐘 |
+| starHill（星見の丘） | クリスタル | `鐘/bell_town_crystal/`（5本＋アクセント） | 澄んだチャイム・風鈴系 |
+
+※ レベルでは分けない（街ごとに1音色）。
+
+### 現在採用しているテイク（2026-09-08）
+
+各 wav の長さ・音量（RMS）と、打点直後のゼロ交差から求めた支配周波数を測り、
+**音程の揃ったものだけ**を選んだ。同じ音色系統でも音程が2群に分かれる素材があり、
+混ぜると「夜ごとに鐘が変わった」ように聞こえるためである。
+**耳で確かめて合わなければ差し替えてよい。**
+
+| 街 | 採用 | 支配周波数 | 見送ったもの |
+| :--- | :--- | :--- | :--- |
+| nightTown | clocktower `01` `02` | 836 / 851Hz | `03`（855Hz・15.1秒と長い） |
+| castleTown | bonshou `01` `03` | 330 / 337Hz | `02` `04`（383 / 400Hz＝別の音） |
+| snowTown | handbell `01` `04` `06` | 4213 / 4090 / 4266Hz | `02` `03` `05`（4458〜4996Hz）、`07`〜`12`（6kHz台で明らかに高い） |
+| starHill | crystal `01` `02` | 2757 / 2721Hz | `03` `04` `05`（2383 / 3050 / 4069Hz とばらつく） |
 
 ## 反映のしかた
 
-素材を置いたら、[`src/constants/audioAssets.ts`](../../../src/constants/audioAssets.ts) の
-`TOWN_BELL` にその街の `require(...)` を1行足すだけで有効になる（`getTownBell()` が拾う）。
+mp3 を `<townCode>/` へ置いたら、[`src/constants/audioAssets.ts`](../../../src/constants/audioAssets.ts) の
+`TOWN_BELL` にその街の配列を足すだけで有効になる（`getTownBell()` が拾う）。
+
+```ts
+const TOWN_BELL: Record<string, AudioSource[]> = {
+  nightTown: [
+    require("@/assets/audio/bell/nightTown/nightTown_bell_01.mp3"),
+    require("@/assets/audio/bell/nightTown/nightTown_bell_02.mp3"),
+  ],
+};
+```
+
+**`require` していないファイルはアプリに同梱されない**（`app.json` に
+`assetBundlePatterns` を置いていないため）。使わなかったテイクや wav 原本を
+残しておいてもアプリの容量には響かない。
 
 ## フォールバック
 
@@ -27,9 +88,3 @@ assets/audio/bell/<townCode>/<townCode>_bell.mp3
 
 街ごとに**音色（timbre）は変えてよい**が、**気分は全街で揃える**こと。
 やわらかく・余韻があり・急かさない、落ち着いた締めの一打にする（コンセプト準拠）。
-
-- nightTown（港町）: 時計台のベル（澄んだ金属音・長めの余韻）※イメージ
-- castleTown（城下町）: 梵鐘（低く深い一打・尾を引く）※イメージ
-- snowTown / starHill: 未定（雪にこもった鈍い鐘 / 風鈴・チャイム系 など）※イメージ
-
-※ レベルでは分けない（街ごとに1音）。

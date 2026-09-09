@@ -15,6 +15,11 @@ import { formatDuration } from "./timer-display";
 // ポモドーロモードの場合は現在フェーズ。タップでタイマー表示を再展開する
 // （タップの受け口は時計側が持つ）。
 //
+// 設定「学習中の時計」（要件10.16）がOFFのときは時計（文字盤）だけが消え、
+// **この表示は残る**。狙いは「終了予定までの残りを意識せずに済ませる」ことで、
+// それは文字盤を隠せば足りる。実績学習時間はやった量の手応えであり、
+// 消すとどれだけ作業したか分からず不便になる（改訂54）。
+//
 // 経過の秒境界に合わせて更新するため独立した部品にしている。上部オーバーレイ本体に
 // この毎秒更新を持たせると、時計・バッテリー・レベル・学習時間まで描き直すことになるため、
 // 更新をこの部品に閉じ込める。useTimerNow は一時停止/再開の瞬間も正確に反映する。
@@ -22,16 +27,10 @@ import { formatDuration } from "./timer-display";
 export function MeasuringIndicator({
   session,
   width,
-  timeHidden = false,
 }: {
   session: ActiveSession;
   /** 時計と同じ幅に揃えて中央寄せする */
   width: number;
-  /**
-   * 経過時間を出さず、状態の一言だけにする（要件10.16「学習中の時計」がOFFのとき）。
-   * 時間を意識したくない人向けだが、状態まで消すと計測中だと分からなくなるため残す。
-   */
-  timeHidden?: boolean;
 }) {
   const now = useTimerNow(session);
 
@@ -42,14 +41,14 @@ export function MeasuringIndicator({
       ? getPomodoroPhase(session, getElapsedSeconds(session, now))
       : null;
 
-  // 一時停止中はフェーズより「止まっている」ことを優先して伝える
+  // 一時停止中はフェーズより「止まっている」ことを優先して伝える。
+  // 黙々モードにはフェーズが無いが、ラベルはポモドーロの作業フェーズと同じ「作業中」で
+  // 揃える（要件2.1・2.4・10.16 がいずれも「作業中」と定めている）
   const label = isPaused
     ? "一時停止中"
-    : phase
-      ? phase.kind === "work"
-        ? "作業中"
-        : "休憩中"
-      : "学習中";
+    : phase?.kind === "break"
+      ? "休憩中"
+      : "作業中";
 
   // 休憩中は実績学習時間が進まないため、タイマー表示と同じく休憩の残り時間を出す
   const seconds =
@@ -60,7 +59,7 @@ export function MeasuringIndicator({
       style={[styles.text, { width }, isPaused && styles.paused]}
       numberOfLines={1}
     >
-      {timeHidden ? label : `${formatDuration(seconds)} ${label}`}
+      {`${formatDuration(seconds)} ${label}`}
     </Text>
   );
 }

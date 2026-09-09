@@ -7,6 +7,10 @@
 
 ## 技術スタック
 
+> **Expo は変わりが速い。** 学習データの記憶で書かず、**必ずこのバージョンのドキュメントを見てから**コードを書くこと。
+> https://docs.expo.dev/versions/v57.0.0/
+> 実際、SDK 56 で `expo-router` と `@react-navigation` の関係が逆転し、`StyleSheet.absoluteFillObject` は RN 0.86 で削除された。古い記憶のまま書くと動かない。
+
 - Expo（React Native）+ Expo Router — **Expo SDK 57** / React Native 0.86 / React 19.2 / TypeScript 6.0
 - SQLite（expo-sqlite）— サーバーなしの完全ローカル構成
 - 状態管理: Context API 3本構成（`contexts/TimerContext.tsx` / `contexts/AudioContext.tsx` / `contexts/SettingsContext.tsx`）。外部の状態管理ライブラリは使わない
@@ -26,10 +30,13 @@
 | E-R図 | `docs/E-R図.drawio` |
 | 改訂履歴（要件・ユースケース・テーブル定義の変更経緯と理由） | `docs/改訂履歴.md` |
 | **申し送り事項（却下した案・暫定実装・踏んだ罠・残件）** | **`docs/申し送り事項.md`** |
+| **引き継ぎ 残作業（素材の入れ方・開発用ボタンの整理）** | **`docs/引き継ぎ_残作業.md`** |
 | セキュリティ方針（脅威モデル・対策・対象外の理由） | `docs/セキュリティ方針.md` |
 | 必要素材一覧（暫定素材と差し替え先） | `docs/必要素材一覧.md` |
 | 開発環境 導入手順書（環境構築・トラブルシューティング） | `docs/開発環境_導入手順書.md` |
 | テスト仕様書（`npm run test:doc` で自動生成。手で編集しない） | `docs/テスト仕様書.md` |
+
+**いま残っているのは素材の投入と開発用ボタンの整理だけである。着手前に `docs/引き継ぎ_残作業.md` を読むこと**（素材の置き場所・命名・登録先ファイルと、まだ決まっていない判断が書いてある）。
 
 **着手前に `docs/申し送り事項.md` を読むこと。** 一度検討して却下した案が列挙してあり、読まずに提案すると同じ議論を繰り返すことになる。
 
