@@ -282,7 +282,7 @@ export default function SettingsScreen() {
           {/* 学習中の時計（要件10.16）。稼働中も変更可 */}
           <SettingRow
             label="学習中の時計"
-            note="放置中と横向きのとき、学習中の時計と経過時間を出します。オフにすると「学習中」の表示だけになります"
+            note="放置中と横向きのとき、学習中の時計を出します。オフにすると作業した時間だけが残ります"
             right={
               <Switch
                 value={user.minimal_clock_enabled === 1}

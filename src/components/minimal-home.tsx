@@ -20,7 +20,7 @@ import { ClockButton } from "./clock-button";
 import { MeasuringIndicator } from "./measuring-indicator";
 
 // ホームの「最小UI」（アイドル最小表示・横画面で共用。要件2.4）。
-// 左上に バッテリー・日付・大きな時刻・再生中の曲名。計測中のみ右上に時計＋「作業中」を出す。
+// 左上に バッテリー・日付・大きな時刻・再生中の曲名。計測中のみ右上に時計＋実績学習時間＋状態を出す。
 // 操作系は持たない表示専用。時計だけは onPressClock を渡したときにタップできる
 // （縦のアイドルでは詳細（タイマー表示）へ飛ぶ。横画面は閲覧専用のため渡さない）。
 
@@ -37,9 +37,9 @@ export function MinimalHomeUI({
   insets: EdgeInsets;
   /**
    * 設定「学習中の時計」（要件10.16）がOFFか。
-   * true なら時計と経過時間を出さず、「作業中」の一言だけを残す。
-   * 状態表示まで消さないのは、計測中だと分かる手掛かりが無くなると
-   * 回しっぱなしのまま放置する事故が起きるため。
+   * true なら時計（文字盤）を出さず、「作業中」と実績学習時間だけを残す。
+   * 文字盤が示す「終了予定までの残り」を意識せずに済ませるための設定で、
+   * 実績学習時間まで消すとどれだけ作業したか分からず不便になる（改訂54）。
    */
   clockHidden?: boolean;
   /** 指定時のみ時計をタップできる（縦のアイドルで詳細へ飛ぶ。横画面は渡さない＝非操作） */
@@ -72,7 +72,7 @@ export function MinimalHomeUI({
         </Text>
       </View>
 
-      {/* 計測中のみ右上に時計＋「作業中」。onPressClock があるときだけタップできる */}
+      {/* 計測中のみ右上に時計＋実績学習時間＋状態。onPressClock があるときだけタップできる */}
       {session ? (
         <View
           style={[styles.clock, { top, right: insets.right + Spacing.four }]}
@@ -89,11 +89,8 @@ export function MinimalHomeUI({
               running={session.pause_started_at === null}
             />
           )}
-          <MeasuringIndicator
-            session={session}
-            width={CLOCK_SIZE}
-            timeHidden={clockHidden}
-          />
+          {/* 実績学習時間は clockHidden でも出す（要件10.16・改訂54） */}
+          <MeasuringIndicator session={session} width={CLOCK_SIZE} />
         </View>
       ) : null}
     </>
