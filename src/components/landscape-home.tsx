@@ -1,14 +1,6 @@
 import { Image } from "expo-image";
 import { useState } from "react";
-import {
-  type ImageSourcePropType,
-  Pressable,
-  Image as RNImage,
-  StyleSheet,
-  Text,
-  useWindowDimensions,
-  View,
-} from "react-native";
+import { type ImageSourcePropType, Pressable, StyleSheet, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { MinimalHomeUI } from "@/components/minimal-home";
@@ -51,7 +43,7 @@ export function LandscapeHome({
   studyDate: string;
   /** 天気の演出を出すか（「背景を動かす」設定・おやすみの暗転に追従する） */
   effectsEnabled: boolean;
-  /** 設定「学習中の時計」（要件10.16）がOFFか。計測中の時計（文字盤）を出さない（実績学習時間は残す） */
+  /** 設定「学習中の時計」（要件10.16）がOFFか。計測中の時計と経過時間を出さない */
   clockHidden: boolean;
 }) {
   const insets = useSafeAreaInsets();
@@ -87,70 +79,11 @@ export function LandscapeHome({
           clockHidden={clockHidden}
         />
       ) : null}
-
-      <LandscapeDebugReadout art={art} video={video} />
     </Pressable>
-  );
-}
-
-/**
- * 開発用の切り分け表示（__DEV__ 限定）。
- *
- * 「縦 → UI最小化 → 横」で背景が拡大されて一部しか見えないことがある、という報告の
- * 原因を切り分けるために置いている。contentFit="cover" は素材と画面の比の差だけ切り取るので、
- * 比が想定どおりなら切れ方は毎回同じはずである。**毎回違う／想定より大きく拡大される**なら、
- * 画面サイズか素材の実寸が思っているものと違うことになる。
- *
- * 原因が確定したら消すこと（docs/開発用テストボタン.md の撤去チェックリストに載せてある）。
- */
-function LandscapeDebugReadout({
-  art,
-  video,
-}: {
-  art: ImageSourcePropType | undefined;
-  video: TownVideo | undefined;
-}) {
-  const { width: winW, height: winH } = useWindowDimensions();
-  if (!__DEV__) return null;
-
-  const resolved = art ? RNImage.resolveAssetSource(art) : undefined;
-  const srcW = video?.width ?? resolved?.width;
-  const srcH = video?.height ?? resolved?.height;
-  const screenRatio = winH > 0 ? winW / winH : 0;
-  const srcRatio = srcW && srcH ? srcW / srcH : 0;
-  // cover は「画面の比 ÷ 素材の比」の分だけ縦を切る（画面の方が横長のとき）
-  const cropPercent =
-    srcRatio > 0 && screenRatio > srcRatio
-      ? Math.round((1 - srcRatio / screenRatio) * 100)
-      : 0;
-
-  return (
-    <View style={styles.debug} pointerEvents="none">
-      <Text style={styles.debugText}>
-        画面 {Math.round(winW)}×{Math.round(winH)}（比 {screenRatio.toFixed(2)}）
-      </Text>
-      <Text style={styles.debugText}>
-        素材 {srcW ?? "?"}×{srcH ?? "?"}（比 {srcRatio.toFixed(2)}）
-        {video ? " 動画" : " 静止画"}
-      </Text>
-      <Text style={styles.debugText}>
-        {CONTENT_FIT} / 上下の切れ 約{cropPercent}%
-      </Text>
-    </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#05070f" },
   fallback: { backgroundColor: "#05070f" },
-  // 開発用の切り分け表示（__DEV__ 限定・原因が確定したら消す）
-  debug: {
-    position: "absolute",
-    left: 8,
-    bottom: 8,
-    padding: 6,
-    borderRadius: 6,
-    backgroundColor: "rgba(0,0,0,0.6)",
-  },
-  debugText: { color: "#ffffff", fontSize: 10, fontVariant: ["tabular-nums"] },
 });
