@@ -27,15 +27,68 @@ export type TimeOfDay = "sunrise" | "day" | "sunset" | "night" | "latenight";
  */
 const SEASON_BOUNDARIES: Record<
   Season,
-  { sunrise: number; day: number; sunset: number; night: number; latenight: number }
+  {
+    sunrise: number;
+    day: number;
+    sunset: number;
+    night: number;
+    latenight: number;
+  }
 > = {
   // 分 = 時*60+分。実際の日の出（春≈5:15 / 夏≈4:40 / 秋≈5:50 / 冬≈6:40）・
   // 日の入り（春≈18:00 / 夏≈18:50 / 秋≈17:15 / 冬≈16:40）に合わせる
-  spring: { sunrise: 4 * 60 + 45, day: 5 * 60 + 45, sunset: 17 * 60 + 30, night: 18 * 60 + 30, latenight: 23 * 60 },
-  summer: { sunrise: 4 * 60 + 10, day: 5 * 60 + 10, sunset: 18 * 60 + 15, night: 19 * 60 + 30, latenight: 23 * 60 },
-  autumn: { sunrise: 5 * 60 + 20, day: 6 * 60 + 20, sunset: 16 * 60 + 40, night: 17 * 60 + 45, latenight: 23 * 60 },
-  winter: { sunrise: 6 * 60 + 10, day: 7 * 60 + 10, sunset: 16 * 60, night: 17 * 60 + 10, latenight: 23 * 60 },
+  spring: {
+    sunrise: 4 * 60 + 45,
+    day: 5 * 60 + 45,
+    sunset: 17 * 60 + 30,
+    night: 18 * 60 + 30,
+    latenight: 23 * 60,
+  },
+  summer: {
+    sunrise: 4 * 60 + 10,
+    day: 5 * 60 + 10,
+    sunset: 18 * 60 + 15,
+    night: 19 * 60 + 30,
+    latenight: 23 * 60,
+  },
+  autumn: {
+    sunrise: 5 * 60 + 20,
+    day: 6 * 60 + 20,
+    sunset: 16 * 60 + 40,
+    night: 17 * 60 + 45,
+    latenight: 23 * 60,
+  },
+  winter: {
+    sunrise: 6 * 60 + 10,
+    day: 7 * 60 + 10,
+    sunset: 16 * 60,
+    night: 17 * 60 + 10,
+    latenight: 23 * 60,
+  },
 };
+
+/** 時間帯の並び（朝→深夜）。開発用の時刻切り替えで順に回すのに使う */
+export const TIME_OF_DAY_ORDER: readonly TimeOfDay[] = [
+  "sunrise",
+  "day",
+  "sunset",
+  "night",
+  "latenight",
+] as const;
+
+/**
+ * 指定した時間帯の開始時刻（0時からの分）を、その日の季節の境界から返す。
+ *
+ * 開発用の時刻切り替え（時間帯ごとの背景を実際に待たずに見る）で、
+ * その帯の代表時刻として使う。**開始時刻を採るのは、その帯に入った直後から
+ * 次の帯まで最も長く留まれるため**（境界の直前だとすぐ次の帯へ移ってしまう）。
+ */
+export function getTimeOfDayStartMinutes(
+  timeOfDay: TimeOfDay,
+  instant: Date = now(),
+): number {
+  return SEASON_BOUNDARIES[getSeason(instant)][timeOfDay];
+}
 
 /** 月（1〜12）から季節を返す */
 export function getSeason(instant: Date = now()): Season {
